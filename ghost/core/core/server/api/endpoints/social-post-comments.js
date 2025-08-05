@@ -1,47 +1,23 @@
-const models = require('../../models');
-const commentsService = require('../../services/comments');
-function handleCacheHeaders(model, frame) {
-    if (model) {
-        const postId = model.get('post_id');
-        const parentId = model.get('parent_id');
-        const pathsToInvalidate = [
-            postId ? `/api/members/comments/post/${postId}/` : null,
-            parentId ? `/api/members/comments/${parentId}/replies/` : null
-        ].filter(path => path !== null);
-        frame.setHeader('X-Cache-Invalidate', pathsToInvalidate.join(', '));
-    }
-}
+const commentsService = require('../../services/social-comments');
+
+const ALLOWED_INCLUDES = [
+    'user', 
+    'replies', 
+    'replies.user', 
+    'replies.count.likes', 
+    'replies.liked', 
+    'count.replies', 
+    'count.likes', 
+    'liked', 
+    'post', 
+    'parent'
+];
+const UNSAFE_ATTRS = ['status'];
 
 /** @type {import('@tryghost/api-framework').Controller} */
 const controller = {
-    docName: 'comments',
+    docName: 'socialpostcomments',
 
-    edit: {
-        headers: {
-            cacheInvalidate: false
-        },
-        options: [
-            'id'
-        ],
-        validation: {
-            options: {
-                id: {
-                    required: true
-                }
-            }
-        },
-        permissions: true,
-        async query(frame) {
-            const result = await models.Comment.edit({
-                id: frame.data.comments[0].id,
-                status: frame.data.comments[0].status
-            }, frame.options);
-
-            handleCacheHeaders(result, frame);
-
-            return result;
-        }
-    },
     browse: {
         headers: {
             cacheInvalidate: false
@@ -54,20 +30,192 @@ const controller = {
             'fields',
             'filter',
             'order',
-            'debug',
-            'impersonate_member_uuid'
+            'debug'
         ],
         validation: {
             options: {
-                post_id: {
+                include: ALLOWED_INCLUDES
+            }
+        },
+        permissions: true,
+        async query(frame) {
+            return await commentsService.controller.browse(frame);
+        }
+    },
+
+    replies: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'include',
+            'page',
+            'limit',
+            'fields',
+            'filter',
+            'order',
+            'debug',
+            'id'
+        ],
+        validation: {
+            options: {
+                include: ALLOWED_INCLUDES
+            }
+        },
+        permissions: 'browse',
+        async query(frame) {
+            return await commentsService.controller.replies(frame);
+        }
+    },
+
+    read: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'include'
+        ],
+        data: [
+            'id',
+            'email'
+        ],
+        validation: {
+            options: {
+                include: ALLOWED_INCLUDES
+            }
+        },
+        permissions: true,
+        async query(frame) {
+            return await commentsService.controller.read(frame);
+        }
+    },
+
+    edit: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'id',
+            'include'
+        ],
+        validation: {
+            options: {
+                include: {
+                    values: ALLOWED_INCLUDES
+                },
+                id: {
                     required: true
                 }
             }
         },
         permissions: true,
         async query(frame) {
-            const result = await commentsService.controller.adminBrowse(frame);
-            return result;
+            return await commentsService.controller.edit(frame);
+        }
+    },
+
+    add: {
+        statusCode: 201,
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'include'
+        ],
+        validation: {
+            options: {
+                include: ALLOWED_INCLUDES
+            },
+            data: {
+                post_id: {
+                    required: true
+                }
+            }
+        },
+        permissions: {
+            unsafeAttrs: UNSAFE_ATTRS
+        },
+        async query(frame) {
+            return await commentsService.controller.add(frame);
+        }
+    },
+
+    destroy: {
+        statusCode: 204,
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'include',
+            'id'
+        ],
+        validation: {
+            options: {
+                include: ALLOWED_INCLUDES
+            }
+        },
+        permissions: true,
+        async query() {
+            return await commentsService.controller.destroy();
+        }
+    },
+
+    counts: {
+        headers: {
+            cacheInvalidate: false
+        },
+        permissions: false,
+        options: [
+            'ids'
+        ],
+        async query(frame) {
+            return await commentsService.controller.count(frame);
+        }
+    },
+
+    like: {
+        statusCode: 204,
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'id'
+        ],
+        validation: {
+        },
+        permissions: true,
+        async query(frame) {
+            return await commentsService.controller.like(frame);
+        }
+    },
+
+    unlike: {
+        statusCode: 204,
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'id'
+        ],
+        validation: {},
+        permissions: true,
+        async query(frame) {
+            return await commentsService.controller.unlike(frame);
+        }
+    },
+
+    report: {
+        statusCode: 204,
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'id'
+        ],
+        validation: {},
+        permissions: true,
+        async query(frame) {
+            await commentsService.controller.report(frame);
         }
     }
 };

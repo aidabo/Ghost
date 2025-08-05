@@ -1,0 +1,280 @@
+const _ = require('lodash');
+const errors = require('@tryghost/errors');
+
+/**
+ * @typedef {import('@tryghost/api-framework').Frame} Frame
+ */
+
+const {MethodNotAllowedError} = require('@tryghost/errors');
+const tpl = require('@tryghost/tpl');
+
+const messages = {
+    cannotDestroyComments: 'You cannot destroy comments.',
+    userNotFound: 'Unable to find user'
+};
+
+module.exports = class CommentsController {
+    /**
+     * @param {import('./CommentsService')} service
+     * @param {import('./CommentsStatsService')} stats
+     */
+    constructor(service, stats) {
+        this.service = service;
+        this.stats = stats;
+    }
+
+    async #setImpersonationContext(options) {
+        if (!options.context?.user && !options.context?.internal && !options.isAdmin){
+            throw new errors.UnauthorizedError({
+                message: tpl(messages.userNotFound)
+            });
+        }
+        // if (options.impersonate_member_uuid) {
+        //     options.context = options.context || {};
+        //     options.context.user = options.context.user || {};
+        //     options.context.member.id = await this.service.getMemberIdByUUID(options.impersonate_member_uuid);
+        // }
+    }
+
+    #checkMember(frame) {
+        if (!frame.options?.context?.user) {
+            throw new errors.UnauthorizedError({
+                message: tpl(messages.userNotFound)
+            });
+        }
+    }
+
+    /**
+     * @param {Frame} frame
+     */
+    async browse(frame) {
+        if (frame.options.post_id) {
+            if (frame.options.filter) {
+                frame.options.mongoTransformer = function (query) {
+                    return {
+                        $and: [
+                            {
+                                post_id: frame.options.post_id
+                            },
+                            query
+                        ]
+                    };
+                };
+            } else {
+                frame.options.filter = `post_id:${frame.options.post_id}`;
+            }
+        }
+
+        return await this.service.getComments(frame.options);
+    }
+
+    async adminBrowse(frame) {
+        if (frame.options.post_id) {
+            if (frame.options.filter) {
+                frame.options.mongoTransformer = function (query) {
+                    return {
+                        $and: [
+                            {
+                                post_id: frame.options.post_id
+                            },
+                            query
+                        ]
+                    };
+                };
+            } else {
+                frame.options.filter = `post_id:${frame.options.post_id}`;
+            }
+        }
+
+        frame.options.isAdmin = true;
+        // Admin routes in Comments-UI lack member context due to cross-domain constraints (CORS), which prevents
+        // credentials from being passed. This causes issues like the inability to determine if a
+        // logged-in admin (acting on behalf of a member) has already liked a comment.
+        // To resolve this, we retrieve the `impersonate_member_uuid` from the request params and
+        // explicitly set it in the context options as the acting member's ID.
+        // Note: This approach is applied to several admin routes where member context is required.
+        await this.#setImpersonationContext(frame.options);
+        return await this.service.getAdminComments(frame.options);
+    }
+
+    /**
+     * @param {Frame} frame
+     */
+    async replies(frame) {
+        return this.service.getReplies(frame.options.id, _.omit(frame.options, 'id'));
+    }
+
+    /**
+     * @param {Frame} frame
+     */
+    async adminReplies(frame) {
+        frame.options.isAdmin = true;
+        frame.options.order = 'created_at asc'; // we always want to load replies from oldest to newest
+        await this.#setImpersonationContext(frame.options);
+
+        return this.service.getReplies(frame.options.id, _.omit(frame.options, 'id'));
+    }
+
+    /**
+     * @param {Frame} frame
+     */
+    async read(frame) {
+        await this.#setImpersonationContext(frame.options);
+        return await this.service.getCommentByID(frame.data.id, frame.options);
+    }
+
+    /**
+     * @param {Frame} frame
+     */
+    async edit(frame) {
+        this.#checkMember(frame);
+
+        let result;
+        if (frame.data.socialpostcomments[0].status === 'deleted') {
+            result = await this.service.deleteComment(
+                frame.options.id,
+                frame?.options?.context?.user,
+                frame.options
+            );
+        } else {
+            result = await this.service.editCommentContent(
+                frame.options.id,
+                frame?.options?.context?.user,
+                frame.data.socialpostcomments[0].html,
+                frame.options
+            );
+        }
+
+        if (result) {
+            const postId = result.get('post_id');
+            const parentId = result.get('parent_id');
+            const pathsToInvalidate = [
+                postId ? `/api/admin/social/comments/post/${postId}/` : null,
+                parentId ? `/api/admin/social/comments/replies/${parentId}/` : null
+            ].filter(path => path !== null);
+            frame.setHeader('X-Cache-Invalidate', pathsToInvalidate.join(', '));
+        }
+
+        return result;
+    }
+
+    /**
+     * @param {Frame} frame
+     */
+    async add(frame) {
+        this.#checkMember(frame);
+        const data = frame.data.socialpostcomments[0];
+
+        let result;
+        if (data.parent_id) {
+            result = await this.service.replyToComment(
+                data.parent_id,
+                data.in_reply_to_id,
+                frame.options.context.user,
+                data.html,
+                frame.options
+            );
+        } else {
+            result = await this.service.commentOnPost(
+                data.post_id,
+                frame.options.context.user,
+                data.html,
+                frame.options
+            );
+        }
+
+        if (result) {
+            const postId = result.get('post_id');
+            const parentId = result.get('parent_id');
+            const pathsToInvalidate = [
+                postId ? `/api/admin/social/comments/post/${postId}/` : null,
+                parentId ? `/api/admin/social/comments/replies/${parentId}/` : null
+            ].filter(path => path !== null);
+            frame.setHeader('X-Cache-Invalidate', pathsToInvalidate.join(', '));
+        }
+
+        return result;
+    }
+
+    async destroy() {
+        throw new MethodNotAllowedError({
+            message: tpl(messages.cannotDestroyComments)
+        });
+    }
+
+    async count(frame) {
+        if (!frame?.options?.ids || frame?.options?.ids === 'all') {
+            return await this.stats.getAllCounts();
+        }
+
+        const ids = frame?.options?.ids.split(',');
+
+        return await this.stats.getCountsByPost(ids);
+    }
+
+    /**
+     * @param {Frame} frame
+     */
+    async like(frame) {
+        this.#checkMember(frame);
+
+        const result = await this.service.likeComment(
+            frame.options.id,
+            frame.options?.context?.user,
+            frame.options
+        );
+
+        const comment = await this.service.getCommentByID(frame.options.id);
+
+        if (comment) {
+            const postId = comment.get('post_id');
+            const parentId = comment.get('parent_id');
+            const pathsToInvalidate = [
+                postId ? `/api/admin/social/comments/post/${postId}/` : null,
+                parentId ? `/api/admin/social/comments/replies/${parentId}/` : null
+            ].filter(path => path !== null);
+            frame.setHeader('X-Cache-Invalidate', pathsToInvalidate.join(', '));
+        }
+
+        return result;
+    }
+
+    /**
+     * @param {Frame} frame
+     */
+    async unlike(frame) {
+        this.#checkMember(frame);
+
+        const result = await this.service.unlikeComment(
+            frame.options.id,
+            frame.options?.context?.user,
+            frame.options
+        );
+
+        const comment = await this.service.getCommentByID(frame.options.id);
+
+        if (comment) {
+            const postId = comment.get('post_id');
+            const parentId = comment.get('parent_id');
+            const pathsToInvalidate = [
+                postId ? `/api/admin/social/comments/post/${postId}/` : null,
+                parentId ? `/api/admin/social/comments/replies/${parentId}/` : null
+            ].filter(path => path !== null);
+            frame.setHeader('X-Cache-Invalidate', pathsToInvalidate.join(', '));
+        }
+
+        return result;
+    }
+
+    /**
+     * @param {Frame} frame
+     */
+    async report(frame) {
+        this.#checkMember(frame);
+
+        return await this.service.reportComment(
+            frame.options.id,
+            frame.options?.context?.user
+        );
+    }
+};

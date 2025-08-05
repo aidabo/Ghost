@@ -238,6 +238,18 @@ module.exports = {
         return apiFramework.pipeline(require('./social-group-members'), localUtils);
     },
 
+    get socialComments() {
+        return apiFramework.pipeline(require('./social-post-comments'), localUtils);
+    },
+
+    get socialCommentReplies() {
+        return apiFramework.pipeline(require('./social-post-comment-replies'), localUtils);
+    },
+
+    get socialCommentReports() {
+        return apiFramework.pipeline(require('./social-post-comment-report'), localUtils);
+    },
+
     //custom end
 
     /**

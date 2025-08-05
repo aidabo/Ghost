@@ -1232,12 +1232,12 @@ function cardTemplate$6({
   const posterSpacerSrc = `https://img.spacergif.org/v1/${width}x${height}/0a/spacer.png`;
   const thumbnailSrc = node.customThumbnailSrc || node.thumbnailSrc;
   const videoType = getVideoType(node.src) || 'video/mp4';
-  const maxDimension = Math.max(width, height);
-  const aspectRatio = width / height;
-  const containerStyle = `width:100%; max-width:${maxDimension}px; aspect-ratio: ${aspectRatio}; margin: '0 auto'`;
+
+  //<div class="kg-video-container data-vjs-player" style="${containerStyle}"></div>
+
   return `
         <figure class="${cardClasses}" data-kg-thumbnail=${node.thumbnailSrc} data-kg-custom-thumbnail=${node.customThumbnailSrc}>
-            <div class="kg-video-container data-vjs-player" style="${containerStyle}">
+            <div class="kg-video-container data-vjs-player">
                 <video
                     controls
                     responsive

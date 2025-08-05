@@ -30,6 +30,7 @@ const {setIsRoles} = require('./role-utils');
 const models = require('./index');
 // @ts-ignore
 const logging = require('@tryghost/logging');
+const { count } = require('console');
 
 const messages = {
     isAlreadyPublished: 'Your post is already published, please reload your page.',
@@ -272,11 +273,12 @@ Post = ghostBookshelf.Model.extend({
         // @ts-ignore
         let postsMetaKeys = _.without(ghostBookshelf.model('PostsMeta').prototype.orderAttributes(), 'posts_meta.id', 'posts_meta.post_id');
 
-        // extend ordered by count of bookmarks, favors, forwards
+        // extend ordered by count of bookmarks, favors, forwards, comments
         let counts = [
             'count__bookmarks',
             'count__favors',
-            'count__forwards'
+            'count__forwards',
+            'count__comments'
         ];
 
         return [...keys, ...postsMetaKeys, ...counts];
@@ -1426,7 +1428,7 @@ Post = ghostBookshelf.Model.extend({
             // @ts-ignore
             && _.intersection(_.without(ghostBookshelf.model('PostsMeta').prototype.permittedAttributes(), 'id', 'post_id'), options.columns).length)
         ) {
-            options.withRelated = _.union(['posts_meta', 'count.bookmarks', 'count.favors', 'count.forwards'], options.withRelated || []);
+            options.withRelated = _.union(['posts_meta', 'count.bookmarks', 'count.favors', 'count.forwards', 'count.comments'], options.withRelated || []);
         }
 
         return options;
@@ -1707,6 +1709,15 @@ Post = ghostBookshelf.Model.extend({
                         .as('count__forwards');
                 });
             },
+            comments(modelOrCollection) {
+                modelOrCollection.query('columns', 'posts.*', (qb) => {
+                    qb.count('social_post_comments.id')
+                        .from('social_post_comments')
+                        .whereRaw('posts.id = social_post_comments.post_id')
+                        .as('count__comments');
+                });
+            },
+
             signups(modelOrCollection) {
                 modelOrCollection.query('columns', 'posts.*', (qb) => {
                     qb.count('members_created_events.id')

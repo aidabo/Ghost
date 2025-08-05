@@ -17,11 +17,6 @@ module.exports = combineTransactionalMigrations(
         object: 'socialpostcommentlike'
     }, ['Administrator', 'Editor', 'Author']),
     addPermissionWithRoles({
-        name: 'Edit SocialPostCommentLikes',
-        action: 'edit',
-        object: 'socialpostcommentlike'
-    }, ['Administrator', 'Editor', 'Author']),
-    addPermissionWithRoles({
         name: 'Delete SocialPostCommentLikes',
         action: 'destroy',
         object: 'socialpostcommentlike'

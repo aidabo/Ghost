@@ -1,29 +1,66 @@
 const {combineTransactionalMigrations, addPermissionWithRoles} = require('../../utils');
 
-module.exports = combineTransactionalMigrations(
-    addPermissionWithRoles({
+const ROLES = [
+    'Admin Integration',
+    'Administrator',
+    'Author',
+    'Editor',
+    'Contributor'
+];
+
+const PERMISSIONS = [
+    {
         name: 'Browse SocialPostComments',
         action: 'browse',
         object: 'socialpostcomment'
-    }, ['Administrator', 'Editor', 'Author']),
-    addPermissionWithRoles({
+    },
+    {
         name: 'Read SocialPostComments',
         action: 'read',
         object: 'socialpostcomment'
-    }, ['Administrator', 'Editor', 'Author']),
-    addPermissionWithRoles({
+    },
+    {
         name: 'Add SocialPostComments',
         action: 'add',
         object: 'socialpostcomment'
-    }, ['Administrator', 'Editor', 'Author']),
-    addPermissionWithRoles({
+    },
+    {
         name: 'Edit SocialPostComments',
         action: 'edit',
         object: 'socialpostcomment'
-    }, ['Administrator', 'Editor', 'Author']),
-    addPermissionWithRoles({
+    },
+    {
+        name: 'Replies SocialPostComments',
+        action: 'replies',
+        object: 'socialpostcomment'
+    },
+    {
+        name: 'Like SocialPostComments',
+        action: 'like',
+        object: 'socialpostcomment'
+    },
+    {
+        name: 'Unlike SocialPostComments',
+        action: 'unlike',
+        object: 'socialpostcomment'
+    },
+    {
+        name: 'Count SocialPostComments',
+        action: 'counts',
+        object: 'socialpostcomment'
+    },
+    {
         name: 'Delete SocialPostComments',
         action: 'destroy',
         object: 'socialpostcomment'
-    }, ['Administrator', 'Editor', 'Author'])
-);
+    },
+    {
+        name: 'Report SocialPostComments',
+        action: 'report',
+        object: 'socialpostcomment'
+    }
+
+];
+
+module.exports = combineTransactionalMigrations(...PERMISSIONS.map(p => addPermissionWithRoles(p, ROLES)));
+

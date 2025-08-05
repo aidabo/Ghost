@@ -137,10 +137,12 @@ export function cardTemplate({node, cardClasses}) {
     const aspectRatio = width / height;
     const containerStyle = `width:100%; max-width:${maxDimension}px; aspect-ratio: ${aspectRatio}; margin: '0 auto'`;
 
+    //<div class="kg-video-container data-vjs-player" style="${containerStyle}"></div>
+
     return (
         `
         <figure class="${cardClasses}" data-kg-thumbnail=${node.thumbnailSrc} data-kg-custom-thumbnail=${node.customThumbnailSrc}>
-            <div class="kg-video-container data-vjs-player" style="${containerStyle}">
+            <div class="kg-video-container data-vjs-player">
                 <video
                     controls
                     responsive

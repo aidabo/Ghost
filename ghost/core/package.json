@@ -124,6 +124,7 @@
     "@tryghost/tiers": "0.0.0",
     "@tryghost/tpl": "0.1.32",
     "@tryghost/url-utils": "4.4.8",
+    "@tryghost/user-events": "file:.yalc/@tryghost/user-events",
     "@tryghost/validator": "0.2.14",
     "@tryghost/version": "0.1.30",
     "@tryghost/webmentions": "0.0.0",

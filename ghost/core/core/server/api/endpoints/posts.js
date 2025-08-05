@@ -19,7 +19,8 @@ const allowedIncludes = [
     'post_revisions.author',
     'count.bookmarks',
     'count.favors',
-    'count.forwards'
+    'count.forwards',
+    'count.comments'
 ];
 const unsafeAttrs = ['status', 'authors', 'visibility'];
 
@@ -72,6 +73,7 @@ const controller = {
                     values: allowedIncludes
                 },
                 formats: {
+                    // @ts-ignore
                     values: models.Post.allowedFormats
                 }
             }

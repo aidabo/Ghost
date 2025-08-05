@@ -4,6 +4,16 @@ const logging = require('@tryghost/logging');
 
 module.exports = createTransactionalMigration(    
     async function up(knex) {
+        const trashGroup = await knex
+            .select('id')
+            .from('social_groups')
+            .where('group_name', 'Trash')
+            .first();
+
+        if (trashGroup) {
+            return;
+        }
+
         const role = await knex
             .select('id')
             .from('roles')

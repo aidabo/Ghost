@@ -17,6 +17,8 @@ const messages = {
  */
 const nonePublicAuth = (apiConfig, frame) => {
     debug('check admin permissions');
+    debug('frame', JSON.stringify(frame));
+    debug('apiConfig', JSON.stringify(apiConfig));
 
     let singular;
     if (apiConfig.docName.match(/ies$/)) {
@@ -39,6 +41,8 @@ const nonePublicAuth = (apiConfig, frame) => {
     if (apiConfig.unsafeAttrsObject) {
         unsafeAttrObject = apiConfig.unsafeAttrsObject(frame);
     }
+
+    debug('permissions', permissionIdentifier, unsafeAttrObject, singular);
 
     const permsPromise = permissions.canThis(frame.options.context)[apiConfig.method][singular](permissionIdentifier, unsafeAttrObject);
 

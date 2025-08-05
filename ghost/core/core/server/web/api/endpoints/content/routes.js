@@ -32,6 +32,8 @@ module.exports = function apiRoutes() {
     router.get('/tags', mw.authenticatePublic, http(api.tagsPublic.browse));
     router.get('/tags/:id', mw.authenticatePublic, http(api.tagsPublic.read));
     router.get('/tags/slug/:slug', mw.authenticatePublic, http(api.tagsPublic.read));
+
+    // ## Tags custom api
     router.get('/tags/all/count', mw.authenticatePublic, http(api.tagsPublic.count));
 
     // ## Settings

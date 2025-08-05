@@ -48,5 +48,23 @@ module.exports = function customApiRoutes(router) {
     // ## Tags
     router.get('/tags/all/count', mw.authAdminApi, http(api.tags.count));
 
+    // ## social comments
+    router.get('/social/comments/post/:post_id', mw.authAdminApi, http(api.socialComments.browse));
+    router.get('/social/comments/:id/replies/', mw.authAdminApi, http(api.socialComments.replies));    
+    router.get('/social/comments/counts/:ids', mw.authAdminApi, http(api.socialComments.counts));
+
+    router.post('/social/comments/post', mw.authAdminApi, http(api.socialComments.add));
+    router.get('/social/comments/:id', mw.authAdminApi, http(api.socialComments.read));    
+    router.put('/social/comments/:id', mw.authAdminApi, http(api.socialComments.edit));
+    
+    router.post('/social/comments/:id/like', mw.authAdminApi, http(api.socialComments.like));
+    router.post('/social/comments/:id/unlike', mw.authAdminApi, http(api.socialComments.unlike));
+    router.post('/social/comments/:id/report/', mw.authAdminApi, http(api.socialComments.report));
+
+    // ## for Admin user
+    router.get('/social/comments/status/:post_id', mw.authAdminApi, http(api.socialCommentReports.browse));
+    router.put('/social/comments/:id/status', mw.authAdminApi, http(api.socialCommentReports.edit));
+    router.get('/social/comments/:id/new-replies', mw.authAdminApi, http(api.socialCommentReplies.browse));
+
     return router;
 };

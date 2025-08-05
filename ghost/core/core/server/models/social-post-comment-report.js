@@ -1,3 +1,4 @@
+// @ts-nocheck
 const ghostBookshelf = require('./base');
 
 const SocialPostCommentReport = ghostBookshelf.Model.extend({
@@ -16,7 +17,7 @@ const SocialPostCommentReport = ghostBookshelf.Model.extend({
     },
 
     emitChange: function emitChange(event, options) {
-        const eventToTrigger = 'social_post_comment_report' + '.' + event;
+        const eventToTrigger = 'social_post_comment_reports' + '.' + event;
         ghostBookshelf.Model.prototype.emitChange.bind(this)(this, eventToTrigger, options);
     },
 
