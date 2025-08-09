@@ -13,7 +13,8 @@ const allowedIncludes = [
     'sentiment',
     'count.bookmarks',
     'count.favors',
-    'count.forwards'
+    'count.forwards',
+    'count.comments'
 ];
 
 const messages = {

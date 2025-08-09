@@ -22,6 +22,7 @@ COPY --chown=node:node ghost/core/.yalc ${GHOST_INSTALL}/current/.yalc
 # Modify package.json to use local .yalc packages
 RUN set -eux; \
     cd ${GHOST_INSTALL}/current && \
+    gosu node sed -i -e '/"@tryghost\/url-utils": "4.4.8",/a "@tryghost/user-events": "file:.yalc/@tryghost/user-events",' package.json && \
     gosu node sed -i 's/"@tryghost\/kg-default-nodes": "1\.4\.5"/"@tryghost\/kg-default-nodes": "file:.yalc\/@tryghost\/kg-default-nodes"/' package.json && \
     gosu node sed -i 's/"@tryghost\/kg-lexical-html-renderer": "1\.3\.5"/"@tryghost\/kg-lexical-html-renderer": "file:.yalc\/@tryghost\/kg-lexical-html-renderer"/' package.json && \
     gosu node sed -i 's/"@tryghost\/admin-api-schema": *"4\.5\.5"/"@tryghost\/admin-api-schema": "file:.yalc\/@tryghost\/admin-api-schema"/' package.json;
@@ -42,6 +43,7 @@ COPY --chown=node:node ghost/core/core/server/api/endpoints/posts.js ${GHOST_INS
 COPY --chown=node:node ghost/core/core/server/api/endpoints/users.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/tags.js ${GHOST_INSTALL}/current/core/server/api/endpoints 
 COPY --chown=node:node ghost/core/core/server/api/endpoints/tags-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints 
+COPY --chown=node:node ghost/core/core/server/api/endpoints/utils/permissions.js ${GHOST_INSTALL}/current/core/server/api/endpoints 
 
 # 4. Server endpoint Api added
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-bookmarks.js ${GHOST_INSTALL}/current/core/server/api/endpoints
@@ -52,7 +54,7 @@ COPY --chown=node:node ghost/core/core/server/api/endpoints/social-group-members
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-groups.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comment-replies.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comments.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comments-users.js ${GHOST_INSTALL}/current/core/server/api/endpoints
+COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comment-report.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 
 # 5. Migration script added
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-16-00-00-drop-social-tables.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
@@ -124,8 +126,14 @@ COPY --chown=node:node ghost/core/core/server/web/api/endpoints/admin/routes.js 
 # 11. Web route content changed
 COPY --chown=node:node ghost/core/core/server/web/api/endpoints/content/routes.js ${GHOST_INSTALL}/current/core/server/web/api/endpoints/content
 
-# 12. Config overrides changed
-COPY --chown=node:node ghost/core/core/shared/config/overrides.json /var/lib/ghost/current/core/shared/config/overrides.json
+# 12. overrides.js changed
+COPY --chown=node:node ghost/core/core/shared/config/overrides.json ${GHOST_INSTALL}/current/core/shared/config/overrides.json
+
+# 13 boot.js changed, adding social-comments.init()
+COPY --chown=node:node ghost/core/core/boot.js ${GHOST_INSTALL}/current/core
+
+# 14 Social-comments service folder added
+COPY --chown=node:node ghost/core/core/server/services/social-comments ${GHOST_INSTALL}/current/core/server/services/social-comments
 
 # Install dependencies as node user
 RUN set -eux; \

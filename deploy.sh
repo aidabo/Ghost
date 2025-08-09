@@ -5,7 +5,7 @@ S3_BUCKET="60-legacy"
 S3_FOLDER="deploy-image"
 AWS_REGION="ap-northeast-1"
 IMAGE_NAME="ghost"
-VERSION="5.116.2-alpine-next-alpha1"
+VERSION="5.116.2-alpine-next-ralpha1"
 
 # yarn docker:build
 yarn docker:next:build
