@@ -1190,7 +1190,7 @@ module.exports = {
         created_at: {type: 'dateTime', nullable: false},
         updated_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false},
-        updated_by: {type: 'string', maxlength: 24, nullable: false}
+        updated_by: {type: 'string', maxlength: 24, nullable: true}
     },    
     social_group_members: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},

@@ -86,6 +86,7 @@ COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/202
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-06-26-00-00-00-add-social-group-trash-for-administrator.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-06-26-01-00-00-add-social-group-column-of-image.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-07-12-00-00-00-add-social-tag-count-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-08-08-00-00-01-update-social-comments-enabled-to-all.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
 
 # 6. Model files changed
 COPY --chown=node:node ghost/core/core/server/models/post.js ${GHOST_INSTALL}/current/core/server/models
