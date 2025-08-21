@@ -2,6 +2,7 @@ const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const {UserCommentEvent} = require('@tryghost/user-events');
 const DomainEvents = require('@tryghost/domain-events');
+const logging = require('@tryghost/logging');
 
 const messages = {
     commentNotFound: 'Comment could not be found',
@@ -351,7 +352,7 @@ class CommentsService {
         this.checkEnabled();
         const existingComment = await this.getCommentByID(id, options);
 
-        if (existingComment.get('user_id') !== user) {
+        if (existingComment.get('created_by') !== user) {
             throw new errors.NoPermissionError({
                 // todo fix message
                 message: tpl(messages.userNotFound)
