@@ -55,6 +55,7 @@ COPY --chown=node:node ghost/core/core/server/api/endpoints/social-groups.js ${G
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comment-replies.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comments.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comment-report.js ${GHOST_INSTALL}/current/core/server/api/endpoints
+COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comments-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 
 # 5. Migration script added
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-16-00-00-drop-social-tables.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
@@ -127,6 +128,7 @@ COPY --chown=node:node ghost/core/core/server/web/api/endpoints/admin/routes.js 
 
 # 11. Web route content changed
 COPY --chown=node:node ghost/core/core/server/web/api/endpoints/content/routes.js ${GHOST_INSTALL}/current/core/server/web/api/endpoints/content
+COPY --chown=node:node ghost/core/core/server/web/api/endpoints/content/custom-routes.js ${GHOST_INSTALL}/current/core/server/web/api/endpoints/content
 
 # 12. overrides.js changed
 COPY --chown=node:node ghost/core/core/shared/config/overrides.json ${GHOST_INSTALL}/current/core/shared/config/overrides.json

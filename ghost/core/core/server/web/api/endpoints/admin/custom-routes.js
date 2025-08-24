@@ -50,16 +50,17 @@ module.exports = function customApiRoutes(router) {
 
     // ## social comments
     router.get('/social/comments/post/:post_id', mw.authAdminApi, http(api.socialComments.browse));
-    router.get('/social/comments/:id/replies/', mw.authAdminApi, http(api.socialComments.replies));    
-    router.get('/social/comments/counts/:ids', mw.authAdminApi, http(api.socialComments.counts));
+    router.get('/social/comments/:id/replies', mw.authAdminApi, http(api.socialComments.replies));
 
     router.post('/social/comments/post', mw.authAdminApi, http(api.socialComments.add));
-    router.get('/social/comments/:id', mw.authAdminApi, http(api.socialComments.read));    
+    router.get('/social/comments/:id', mw.authAdminApi, http(api.socialComments.read));
     router.put('/social/comments/:id', mw.authAdminApi, http(api.socialComments.edit));
     
     router.post('/social/comments/:id/like', mw.authAdminApi, http(api.socialComments.like));
     router.post('/social/comments/:id/unlike', mw.authAdminApi, http(api.socialComments.unlike));
-    router.post('/social/comments/:id/report/', mw.authAdminApi, http(api.socialComments.report));
+    router.post('/social/comments/:id/report', mw.authAdminApi, http(api.socialComments.report));
+
+    router.get('/social/comments/counts/:ids', mw.authAdminApi, http(api.socialComments.counts));
 
     // ## for Admin user
     router.get('/social/comments/status/:post_id', mw.authAdminApi, http(api.socialCommentReports.browse));

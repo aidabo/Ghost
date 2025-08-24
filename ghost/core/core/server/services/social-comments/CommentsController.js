@@ -126,6 +126,14 @@ module.exports = class CommentsController {
     /**
      * @param {Frame} frame
      */
+    async read_public(frame) {
+        //await this.#setImpersonationContext(frame.options);
+        return await this.service.getCommentByID(frame.data.id, frame.options);
+    }
+
+    /**
+     * @param {Frame} frame
+     */
     async edit(frame) {
         this.#checkMember(frame);
 

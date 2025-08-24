@@ -302,6 +302,11 @@ module.exports = {
 
     get recommendationsPublic() {
         return apiFramework.pipeline(require('./recommendations-public'), localUtils, 'content');
+    },
+
+    //add custom
+    get socialCommentsPublic() {
+        return apiFramework.pipeline(require('./social-post-comments-public'), localUtils);
     }
 
 };
