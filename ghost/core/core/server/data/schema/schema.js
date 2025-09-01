@@ -1,3 +1,9 @@
+const { excerpt } = require("@tryghost/html-to-plaintext");
+const { index } = require("cheerio/lib/api/traversing");
+const { title } = require("process");
+const image = require("../../lib/image");
+const { options } = require("superagent");
+
 /* String Column Sizes Information
  * (From: https://github.com/TryGhost/Ghost/pull/7932)
  *
@@ -93,8 +99,12 @@ module.exports = {
         canonical_url: {type: 'text', maxlength: 2000, nullable: true},
         newsletter_id: {type: 'string', maxlength: 24, nullable: true, references: 'newsletters.id'},
         show_title_and_feature_image: {type: 'boolean', nullable: false, defaultTo: true},
-        /*group_id: {type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', cascadeDelete: true},*/
         group_id: {type: 'string', maxlength: 24, nullable: true},
+        group_visible: {type: 'string', maxlength: 20, nullable: true, index: true, defaultTo: 'none', validations: {isIn: [['none', 'public', 'private']]}},
+        related_date: {type: 'dateTime', nullable: true, index: true},
+        related_events: {type: 'string', maxlength: 2000, nullable: true},
+        post_comment_closed: {type: 'boolean', nullable: true, defaultTo: false},
+        /*custom page data*/
         '@@INDEXES@@': [
             ['type','status','updated_at'],
             ['group_id','status','updated_at']
@@ -1190,7 +1200,7 @@ module.exports = {
         created_at: {type: 'dateTime', nullable: false},
         updated_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false},
-        updated_by: {type: 'string', maxlength: 24, nullable: false}
+        updated_by: {type: 'string', maxlength: 24, nullable: true}
     },    
     social_group_members: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
@@ -1216,7 +1226,8 @@ module.exports = {
         created_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false},    
         updated_at: {type: 'dateTime', nullable: false},
-        updated_by: {type: 'string', maxlength: 24, nullable: true},        
+        updated_by: {type: 'string', maxlength: 24, nullable: true},
+        edited_at: {type: 'dateTime', nullable: true},
         '@@INDEXES@@': [
             ['post_id', 'status']
         ]
@@ -1234,6 +1245,20 @@ module.exports = {
         user_id: {type: 'string', maxlength: 24, nullable: false, unique: false, references: 'users.id', cascadeDelete: true},
         created_at: {type: 'dateTime', nullable: false},
         updated_at: {type: 'dateTime', nullable: false}
+    },
+    social_pages: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        post_id: {type: 'string', maxlength: 24, nullable: false, unique: false, index: true, references: 'posts.id', cascadeDelete: true},
+        title: {type: 'string', maxlength: 191, nullable: false},
+        excerpt: {type: 'string', maxlength: 500, nullable: true}, 
+        image: {type: 'string', maxlength: 500, nullable: true},
+        options: {type: 'json', nullable: true},
+        props: {type: 'json', nullable: true},
+        created_at: {type: 'dateTime', nullable: false},
+        created_by: {type: 'string', maxlength: 24, nullable: false},    
+        updated_at: {type: 'dateTime', nullable: false},
+        updated_by: {type: 'string', maxlength: 24, nullable: true}
     }
     // 202504 add custom social tables end
 };
+

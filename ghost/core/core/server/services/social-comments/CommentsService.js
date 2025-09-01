@@ -351,7 +351,7 @@ class CommentsService {
         this.checkEnabled();
         const existingComment = await this.getCommentByID(id, options);
 
-        if (existingComment.get('user_id') !== user) {
+        if (existingComment.get('created_by') !== user) {
             throw new errors.NoPermissionError({
                 // todo fix message
                 message: tpl(messages.userNotFound)

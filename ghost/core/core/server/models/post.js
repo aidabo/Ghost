@@ -30,7 +30,6 @@ const {setIsRoles} = require('./role-utils');
 const models = require('./index');
 // @ts-ignore
 const logging = require('@tryghost/logging');
-const { count } = require('console');
 
 const messages = {
     isAlreadyPublished: 'Your post is already published, please reload your page.',

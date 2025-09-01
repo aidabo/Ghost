@@ -55,6 +55,7 @@ COPY --chown=node:node ghost/core/core/server/api/endpoints/social-groups.js ${G
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comment-replies.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comments.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comment-report.js ${GHOST_INSTALL}/current/core/server/api/endpoints
+COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comments-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 
 # 5. Migration script added
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-16-00-00-drop-social-tables.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
@@ -86,6 +87,16 @@ COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/202
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-06-26-00-00-00-add-social-group-trash-for-administrator.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-06-26-01-00-00-add-social-group-column-of-image.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-07-12-00-00-00-add-social-tag-count-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-08-08-00-00-01-update-social-comments-enabled-to-all.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-08-17-12-00-00-add-social-comments-column.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
+
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116 ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-00-add-social-group-visible-column-to-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-01-add-social-related-date-for-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-02-add-social-related-events-to-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-03-update-social-group-visible-for-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-04-add-social-comment-closed-column-for-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-05-add-social-pages-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 
 # 6. Model files changed
 COPY --chown=node:node ghost/core/core/server/models/post.js ${GHOST_INSTALL}/current/core/server/models
@@ -125,6 +136,7 @@ COPY --chown=node:node ghost/core/core/server/web/api/endpoints/admin/routes.js 
 
 # 11. Web route content changed
 COPY --chown=node:node ghost/core/core/server/web/api/endpoints/content/routes.js ${GHOST_INSTALL}/current/core/server/web/api/endpoints/content
+COPY --chown=node:node ghost/core/core/server/web/api/endpoints/content/custom-routes.js ${GHOST_INSTALL}/current/core/server/web/api/endpoints/content
 
 # 12. overrides.js changed
 COPY --chown=node:node ghost/core/core/shared/config/overrides.json ${GHOST_INSTALL}/current/core/shared/config/overrides.json

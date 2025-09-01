@@ -134,15 +134,17 @@ export function cardTemplate({node, cardClasses}) {
     const thumbnailSrc = node.customThumbnailSrc || node.thumbnailSrc;
     const videoType = getVideoType(node.src) || 'video/mp4';
     const maxDimension = Math.max(width, height);
-    const aspectRatio = width / height;
-    const containerStyle = `width:100%; max-width:${maxDimension}px; aspect-ratio: ${aspectRatio}; margin: '0 auto'`;
-
-    //<div class="kg-video-container data-vjs-player" style="${containerStyle}"></div>
+    // const aspectRatio = width / height;
+    // const containerStyle = `width:100%; max-width:${maxDimension}px; aspect-ratio: ${aspectRatio}; margin: '0 auto'`;
+    const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+    const divisor = gcd(width, height);
+    const aspectRatioStr = `${width / divisor} / ${height / divisor}`;
+    const containerStyle = `width:100%; max-width:${maxDimension}px; aspect-ratio: ${aspectRatioStr};`;
 
     return (
         `
         <figure class="${cardClasses}" data-kg-thumbnail=${node.thumbnailSrc} data-kg-custom-thumbnail=${node.customThumbnailSrc}>
-            <div class="kg-video-container data-vjs-player">
+            <div class="kg-video-container data-vjs-player" style="${containerStyle}">
                 <video
                     controls
                     responsive

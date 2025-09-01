@@ -49,7 +49,8 @@ module.exports = createTransactionalMigration(
                 description: 'This group is used to store deleted social groups temporarily before permanent deletion.',
                 created_by: user.user_id,
                 updated_at: now,
-                created_at: now
+                created_at: now,
+                updated_by: user.user_id
             });
         
         logging.info(`Adding group owner of administrator to trash group`);
@@ -62,7 +63,8 @@ module.exports = createTransactionalMigration(
                 role_id: groupRole.id,
                 created_by: user.user_id,
                 updated_at: now,
-                created_at: now
+                created_at: now,
+                updated_by: user.user_id
             });
     },
 

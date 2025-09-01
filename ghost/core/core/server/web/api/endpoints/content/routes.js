@@ -4,6 +4,7 @@ const api = require('../../../../api').endpoints;
 const {http} = require('@tryghost/api-framework');
 const mw = require('./middleware');
 const config = require('../../../../../shared/config');
+const customApi = require('./custom-routes');
 
 /**
  * @returns {import('express').Router}
@@ -46,6 +47,9 @@ module.exports = function apiRoutes() {
 
     // ## Recommendations
     router.get('/recommendations', mw.authenticatePublic, http(api.recommendationsPublic.browse));
+
+    // Add custom api routes
+    customApi(router);
 
     return router;
 };

@@ -20,7 +20,7 @@ class CommentsServiceEmails {
 
     async notifyPostAuthors(comment) {
         const post = await this.models.Post.findOne({id: comment.get('post_id')}, {withRelated: ['authors']});
-        const user = await this.models.User.findOne({id: comment.get('user_id')});
+        const user = await this.models.User.findOne({id: comment.get('created_by')});
 
         for (const author of post.related('authors')) {
             if (!author.get('comment_notifications')) {
@@ -82,7 +82,7 @@ class CommentsServiceEmails {
         const subject = '↪️ New reply to your comment on ' + this.settingsCache.get('title');
 
         const post = await this.models.Post.findOne({id: reply.get('post_id')});
-        const user = await this.models.User.findOne({id: reply.get('user_id')});
+        const user = await this.models.User.findOne({id: reply.get('created_by')});
 
         const userName = user.get('name') || 'Anonymous';
 
@@ -121,7 +121,7 @@ class CommentsServiceEmails {
      */
     async notifiyReport(comment, reporter) {
         const post = await this.models.Post.findOne({id: comment.get('post_id')}, {withRelated: ['authors']});
-        const user = await this.models.User.findOne({id: comment.get('user_id')});
+        const user = await this.models.User.findOne({id: comment.get('created_by')});
         const owner = await this.models.User.getOwnerUser();
 
         // For now we only send the report to the owner
