@@ -1712,7 +1712,7 @@ Post = ghostBookshelf.Model.extend({
                 modelOrCollection.query('columns', 'posts.*', (qb) => {
                     qb.count('social_post_comments.id')
                         .from('social_post_comments')
-                        .whereRaw('posts.id = social_post_comments.post_id')
+                        .whereRaw('posts.id = social_post_comments.post_id and social_post_comments.status = ?', 'published')
                         .as('count__comments');
                 });
             },
