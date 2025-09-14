@@ -20,7 +20,8 @@ const allowedIncludes = [
     'count.bookmarks',
     'count.favors',
     'count.forwards',
-    'count.comments'
+    'count.comments',
+    'post_components'
 ];
 const unsafeAttrs = ['status', 'authors', 'visibility'];
 
@@ -45,6 +46,14 @@ function getCacheHeaderFromEventString(event, dto) {
                 `${baseUrl}?member_status=paid`
             ].join(', ')
         };
+    }
+}
+
+function setDefaultPostApproved(frame) {
+    if (frame?.data?.posts && Array.isArray(frame.data.posts) && frame.data.posts.length > 0) {
+        if (typeof frame.data.posts[0].post_approved === 'undefined') {
+            frame.data.posts[0].post_approved = true;
+        }
     }
 }
 
@@ -178,6 +187,7 @@ const controller = {
             unsafeAttrs: unsafeAttrs
         },
         query(frame) {
+            setDefaultPostApproved(frame);
             // @ts-ignore
             return models.Post.add(frame.data.posts[0], frame.options)
                 .then((model) => {
@@ -231,6 +241,7 @@ const controller = {
             unsafeAttrs: unsafeAttrs
         },
         async query(frame) {
+            setDefaultPostApproved(frame);
             // @ts-ignore
             let model = await postsService.editPost(frame, {
                 eventHandler: (event, dto) => {

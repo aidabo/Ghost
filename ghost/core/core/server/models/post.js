@@ -109,7 +109,7 @@ Post = ghostBookshelf.Model.extend({
         };
     },
 
-    relationships: ['tags', 'authors', 'mobiledoc_revisions', 'post_revisions', 'posts_meta', 'tiers'],
+    relationships: ['tags', 'authors', 'mobiledoc_revisions', 'post_revisions', 'posts_meta', 'tiers', 'post_components'],
     relationshipConfig: {
         tags: {
             editable: true
@@ -125,6 +125,9 @@ Post = ghostBookshelf.Model.extend({
         },
         posts_meta: {
             editable: true
+        },
+        post_components: {
+            editable: true
         }
     },
 
@@ -133,7 +136,8 @@ Post = ghostBookshelf.Model.extend({
         tags: 'tags',
         tiers: 'products',
         authors: 'users',
-        posts_meta: 'posts_meta'
+        posts_meta: 'posts_meta',
+        post_components: 'post_components'
     },
 
     relationsMeta: {
@@ -143,6 +147,10 @@ Post = ghostBookshelf.Model.extend({
         },
         email: {
             targetTableName: 'emails',
+            foreignKey: 'post_id'
+        },
+        post_components: {
+            targetTableName: 'post_components',
             foreignKey: 'post_id'
         }
     },
@@ -370,6 +378,11 @@ Post = ghostBookshelf.Model.extend({
             },
             post_revisions: {
                 tableName: 'post_revisions',
+                type: 'oneToMany',
+                joinFrom: 'post_id'
+            },
+            post_components: {
+                tableName: 'post_components',
                 type: 'oneToMany',
                 joinFrom: 'post_id'
             }
@@ -646,6 +659,9 @@ Post = ghostBookshelf.Model.extend({
         // not a group post
         const groupId = model.get('group_id');
         if (!groupId) {
+            if (!model.get('public_post')) {
+                model.set('public_post', true);
+            }
             return; 
         }
 
@@ -663,6 +679,13 @@ Post = ghostBookshelf.Model.extend({
             throw new errors.NoPermissionError({
                 message: `You do not have permission to post in group ${group.get('id')} ${group.get('status')}`
             });
+        }
+
+        // if group is public, ensure public_post = true, otherwise false
+        if (group && group.get('type') === 'public') {
+            model.set('public_post', true);
+        } else {
+            model.set('public_post', false);
         }
     },
 
@@ -1148,6 +1171,10 @@ Post = ghostBookshelf.Model.extend({
         return this.hasMany('PostRevision', 'post_id');
     },
 
+    post_components() {
+        return this.hasMany('PostComponent', 'post_id');
+    },
+
     posts_meta: function postsMeta() {
         return this.hasOne('PostsMeta', 'post_id');
     },
@@ -1264,9 +1291,12 @@ Post = ghostBookshelf.Model.extend({
                 'type:post' : 'type:post+status:published';
         
         //default filter to get posts not in groups
-        if (!/\bgroup_id:/.test(filter)) {            
-            filter = filter ? `${filter}+(group_id:null)` : '(group_id:null)';
+        if (!/\bgroup_id:/.test(options.filter || '')) {
+            //filter = filter ? `${filter}+(group_id:null)` : '(group_id:null)';
+            filter = filter ? `${filter}+(public_post:true)` : '(public_post:true)';
         }
+
+        logging.info('Post.defaultFilters', filter, JSON.stringify(options.context || {}));
         return filter;
     },
 
@@ -1427,7 +1457,7 @@ Post = ghostBookshelf.Model.extend({
             // @ts-ignore
             && _.intersection(_.without(ghostBookshelf.model('PostsMeta').prototype.permittedAttributes(), 'id', 'post_id'), options.columns).length)
         ) {
-            options.withRelated = _.union(['posts_meta', 'count.bookmarks', 'count.favors', 'count.forwards', 'count.comments'], options.withRelated || []);
+            options.withRelated = _.union(['posts_meta', 'count.bookmarks', 'count.favors', 'count.forwards', 'count.comments', 'post_components'], options.withRelated || []);
         }
 
         return options;

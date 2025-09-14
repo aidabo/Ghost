@@ -11,5 +11,10 @@ module.exports = function customApiRoutes(router) {
     router.get('/social/comments/:id/replies/', mw.authenticatePublic, http(api.socialCommentsPublic.replies));    
     router.get('/social/comments/:id', mw.authenticatePublic, http(api.socialCommentsPublic.read));    
     router.get('/social/comments/counts/:ids', mw.authenticatePublic, http(api.socialCommentsPublic.counts));
+
+    // ## post components
+    router.get('/social/components', mw.authenticatePublic, http(api.postComponentsPublic.browse));
+    router.get('/social/components/:id', mw.authenticatePublic, http(api.postComponentsPublic.read));
+
     return router;
 };

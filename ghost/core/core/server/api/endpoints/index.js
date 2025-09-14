@@ -250,6 +250,10 @@ module.exports = {
         return apiFramework.pipeline(require('./social-post-comment-report'), localUtils);
     },
 
+    get postComponents() {
+        return apiFramework.pipeline(require('./post-components'), localUtils);
+    },
+
     //custom end
 
     /**
@@ -307,6 +311,10 @@ module.exports = {
     //add custom
     get socialCommentsPublic() {
         return apiFramework.pipeline(require('./social-post-comments-public'), localUtils);
+    },
+
+    get postComponentsPublic() {
+        return apiFramework.pipeline(require('./post-components-public'), localUtils);
     }
 
 };

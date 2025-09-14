@@ -1,9 +1,3 @@
-const { excerpt } = require("@tryghost/html-to-plaintext");
-const { index } = require("cheerio/lib/api/traversing");
-const { title } = require("process");
-const image = require("../../lib/image");
-const { options } = require("superagent");
-
 /* String Column Sizes Information
  * (From: https://github.com/TryGhost/Ghost/pull/7932)
  *
@@ -99,11 +93,19 @@ module.exports = {
         canonical_url: {type: 'text', maxlength: 2000, nullable: true},
         newsletter_id: {type: 'string', maxlength: 24, nullable: true, references: 'newsletters.id'},
         show_title_and_feature_image: {type: 'boolean', nullable: false, defaultTo: true},
+
         group_id: {type: 'string', maxlength: 24, nullable: true},
-        group_visible: {type: 'string', maxlength: 20, nullable: true, index: true, defaultTo: 'none', validations: {isIn: [['none', 'public', 'private']]}},
+        /**
+         * group.type === 'public' -> public_post = true
+         * group.type !== 'public' -> public_post = false
+         * no group -> public_post = true
+         */
+        public_post: {type: 'boolean', nullable: false, index: true, defaultTo: true},
         related_date: {type: 'dateTime', nullable: true, index: true},
         related_events: {type: 'string', maxlength: 2000, nullable: true},
+        post_approved: {type: 'boolean', nullable: false, index: true, defaultTo: true},
         post_comment_closed: {type: 'boolean', nullable: true, defaultTo: false},
+
         /*custom page data*/
         '@@INDEXES@@': [
             ['type','status','updated_at'],
@@ -1246,14 +1248,15 @@ module.exports = {
         created_at: {type: 'dateTime', nullable: false},
         updated_at: {type: 'dateTime', nullable: false}
     },
-    social_pages: {
+    post_components: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
         post_id: {type: 'string', maxlength: 24, nullable: false, unique: false, index: true, references: 'posts.id', cascadeDelete: true},
+        name: {type: 'string', maxlength: 60, nullable: false, index: true},
         title: {type: 'string', maxlength: 191, nullable: false},
         excerpt: {type: 'string', maxlength: 500, nullable: true}, 
         image: {type: 'string', maxlength: 500, nullable: true},
-        options: {type: 'json', nullable: true},
-        props: {type: 'json', nullable: true},
+        options: {type: 'text', maxlength: 1000000000, nullable: true},
+        props: {type: 'text', maxlength: 1000000000, nullable: true},
         created_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false},    
         updated_at: {type: 'dateTime', nullable: false},

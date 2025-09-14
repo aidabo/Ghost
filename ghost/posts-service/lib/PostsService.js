@@ -40,7 +40,8 @@ class PostsService {
             options.order = options.order
                 .replace('bookmarks', 'count__bookmarks')
                 .replace('favors', 'count__favors')
-                .replace('forwards', 'count__forwards');
+                .replace('forwards', 'count__forwards')
+                .replace('comments', 'count__comments');
         }
     }
 

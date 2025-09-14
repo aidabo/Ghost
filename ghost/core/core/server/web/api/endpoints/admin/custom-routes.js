@@ -67,5 +67,12 @@ module.exports = function customApiRoutes(router) {
     router.put('/social/comments/:id/status', mw.authAdminApi, http(api.socialCommentReports.edit));
     router.get('/social/comments/:id/new-replies', mw.authAdminApi, http(api.socialCommentReplies.browse));
 
+    // ## post components
+    router.get('/social/components', mw.authAdminApi, http(api.postComponents.browse));
+    router.get('/social/components/:id', mw.authAdminApi, http(api.postComponents.read));
+    router.post('/social/components', mw.authAdminApi, http(api.postComponents.add));
+    router.put('/social/components/:id', mw.authAdminApi, http(api.postComponents.edit));
+    router.del('/social/components/:id', mw.authAdminApi, http(api.postComponents.destroy));
+
     return router;
 };

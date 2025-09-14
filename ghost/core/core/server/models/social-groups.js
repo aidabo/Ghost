@@ -1,5 +1,4 @@
 // @ts-ignore
-// @ts-ignore
 const _ = require('lodash');
 // @ts-nocheck
 const ObjectId = require('bson-objectid').default;
