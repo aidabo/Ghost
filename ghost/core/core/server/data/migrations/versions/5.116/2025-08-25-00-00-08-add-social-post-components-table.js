@@ -9,22 +9,11 @@ module.exports = addTable('post_components', {
     image: {type: 'string', maxlength: 500, nullable: true},
     options: {type: 'text', maxlength: 1000000000, nullable: true},
     props: {type: 'text', maxlength: 1000000000, nullable: true},
+    tag: {type: 'string', maxlength: 32, nullable: true, index: true},
+    status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft', validations: {isIn: [['published', 'draft']]}},
     created_at: {type: 'dateTime', nullable: false},
     created_by: {type: 'string', maxlength: 24, nullable: false},
     updated_at: {type: 'dateTime', nullable: false},
     updated_by: {type: 'string', maxlength: 24, nullable: true}
 });
 
-/**
- * lexical JSON type {
-	type: "component",
-	name: "chart",
-	title: title,	
-    id: id,
-	src: https://hostname/pc/id,
-	width: "full | wide | normal",
-	height: 100%,
-	alt: "",
-}
-
- */
