@@ -2,7 +2,6 @@ const {addTable} = require('../../utils');
 
 module.exports = addTable('post_components', {
     id: {type: 'string', maxlength: 24, nullable: false, primary: true},
-    post_id: {type: 'string', maxlength: 24, nullable: false, unique: false, index: true, references: 'posts.id', cascadeDelete: true},
     name: {type: 'string', maxlength: 60, nullable: false, index: true},
     title: {type: 'string', maxlength: 191, nullable: false},
     excerpt: {type: 'string', maxlength: 500, nullable: true},
