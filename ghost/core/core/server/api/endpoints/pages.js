@@ -17,7 +17,7 @@ const ALLOWED_INCLUDES = [
     'count.favors',
     'count.forwards',
     'count.comments',
-    'post_components'
+    'social_post_components'
 ];
 const UNSAFE_ATTRS = ['status', 'authors', 'visibility'];
 

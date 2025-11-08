@@ -1177,7 +1177,7 @@ function renderVideoNode(node, options = {}) {
     node,
     options,
     cardClasses
-  }) : cardTemplate$6({
+  }) : cardTemplate$7({
     node,
     cardClasses
   });
@@ -1214,7 +1214,7 @@ function getVideoType(filename) {
   };
 
   //S3 storage extension maybe is mp4-1 etc for the same filename. 
-  var keys = Object.keys(typeMap).filter(key => extension.indexOf(key) >= 0);
+  let keys = Object.keys(typeMap).filter(key => extension.indexOf(key) >= 0);
   if (keys && keys.length > 0) {
     return typeMap[keys[0]];
   } else {
@@ -1222,7 +1222,7 @@ function getVideoType(filename) {
   }
   //return typeMap[extension] || null;
 }
-function cardTemplate$6({
+function cardTemplate$7({
   node,
   cardClasses
 }) {
@@ -1235,6 +1235,7 @@ function cardTemplate$6({
   const maxDimension = Math.max(width, height);
   // const aspectRatio = width / height;
   // const containerStyle = `width:100%; max-width:${maxDimension}px; aspect-ratio: ${aspectRatio}; margin: '0 auto'`;
+  // eslint-disable-next-line no-confusing-arrow
   const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
   const divisor = gcd(width, height);
   const aspectRatioStr = `${width / divisor} / ${height / divisor}`;
@@ -1258,11 +1259,6 @@ function cardTemplate$6({
                 >
                 <source src="${node.src}" type="${videoType}"></source>
                 <p class="vjs-no-js">
-                    To view this video please enable JavaScript, and consider upgrading to a
-                    web browser that
-                    <a href="https://videojs.com/html5-video-support/" target="_blank">
-                        supports HTML5 video
-                    </a>
                 </p>
                 </video>
 
@@ -2254,7 +2250,7 @@ function parseToggleNode(ToggleNode) {
   };
 }
 
-function cardTemplate$5({
+function cardTemplate$6({
   node
 }) {
   return `
@@ -2287,7 +2283,7 @@ function renderToggleNode(node, options = {}) {
   const document = options.createDocument();
   const htmlString = options.target === 'email' ? emailCardTemplate$1({
     node
-  }) : cardTemplate$5({
+  }) : cardTemplate$6({
     node
   });
   const container = document.createElement('div');
@@ -2891,7 +2887,7 @@ function renderFileNode(node, options = {}) {
   if (options.target === 'email') {
     return emailTemplate$1(node, document, options);
   } else {
-    return cardTemplate$4(node, document);
+    return cardTemplate$5(node, document);
   }
 }
 function emailTemplate$1(node, document, options) {
@@ -2939,7 +2935,7 @@ function emailTemplate$1(node, document, options) {
     element: container.firstElementChild
   };
 }
-function cardTemplate$4(node, document) {
+function cardTemplate$5(node, document) {
   const card = document.createElement('div');
   card.setAttribute('class', 'kg-card kg-file-card');
   const container = document.createElement('a');
@@ -3255,7 +3251,7 @@ function parseHeaderNode(HeaderNode) {
   };
 }
 
-function cardTemplate$3(nodeData, options = {}) {
+function cardTemplate$4(nodeData, options = {}) {
   const cardClasses = getCardClasses$1(nodeData).join(' ');
   const backgroundAccent = nodeData.backgroundColor === 'accent' ? 'kg-style-accent' : '';
   const buttonAccent = nodeData.buttonColor === 'accent' ? 'kg-style-accent' : '';
@@ -3364,7 +3360,7 @@ function renderHeaderNodeV2(dataset, options = {}) {
     };
     // return {element: document.createElement('div')}; // TODO
   }
-  const htmlString = cardTemplate$3(node, options);
+  const htmlString = cardTemplate$4(node, options);
   const element = document.createElement('div');
   element.innerHTML = htmlString?.trim();
   if (node.header === '') {
@@ -3643,7 +3639,7 @@ function renderProductNode(node, options = {}) {
   }
   const htmlString = options.target === 'email' ? emailCardTemplate({
     data: templateData
-  }) : cardTemplate$2({
+  }) : cardTemplate$3({
     data: templateData
   });
   const element = document.createElement('div');
@@ -3652,7 +3648,7 @@ function renderProductNode(node, options = {}) {
     element: element.firstElementChild
   };
 }
-function cardTemplate$2({
+function cardTemplate$3({
   data
 }) {
   return `
@@ -4721,7 +4717,7 @@ function signupParser(SignupNode) {
 
 // ref https://ghost.org/docs/themes/members#signup-forms
 
-function cardTemplate$1(nodeData) {
+function cardTemplate$2(nodeData) {
   const cardClasses = getCardClasses(nodeData).join(' ');
   const backgroundAccent = getAccentClass(nodeData); // don't apply accent style if there's a background image
   const buttonAccent = nodeData.buttonColor === 'accent' ? 'kg-style-accent' : '';
@@ -4806,7 +4802,7 @@ function renderSignupCardToDOM(dataset, options = {}) {
       element: document.createElement('div')
     }; // Return an empty element since we don't want to render the card in email
   }
-  const htmlString = cardTemplate$1(node);
+  const htmlString = cardTemplate$2(node);
   const element = document.createElement('div');
   element.innerHTML = htmlString?.trim();
   if (node.header === '') {
@@ -4994,14 +4990,14 @@ function renderCollectionNode(node, options = {}) {
   if (!renderData) {
     return renderEmptyContainer(document);
   }
-  const htmlString = cardTemplate(node, renderData);
+  const htmlString = cardTemplate$1(node, renderData);
   const element = document.createElement('div');
   element.innerHTML = htmlString?.trim();
   return {
     element: element.firstElementChild
   };
 }
-function cardTemplate(node, posts) {
+function cardTemplate$1(node, posts) {
   const {
     collection,
     postCount,
@@ -5684,6 +5680,138 @@ function $isZWNJNode(node) {
   return node instanceof ZWNJNode;
 }
 
+function renderPostComponentNode(node, options = {}) {
+  addCreateDocumentOption(options);
+  const document = options.createDocument();
+  if (!node.id || node.id.trim() === '' || !node.name || node.name.trim() === '') {
+    return renderEmptyContainer(document);
+  }
+  return cardTemplate(node, document);
+}
+function cardTemplate(node, document) {
+  const html = `<div class="kg-card kg-component-card" data-id="${node.id}" data-post-id="${node.post_id}" data-name="${node.name}">
+            <div class="kg-component-card-content">
+                ${node.image ? `<img src="${node.image}" alt="${node.title}" class="kg-component-card-image" />` : ''}
+                <div class="kg-component-card-text">
+                    <h3 class="kg-component-card-title">${node.title}</h3>
+                    ${node.excerpt ? `<p class="kg-component-card-excerpt">${node.excerpt}</p>` : ''}
+                </div>
+            </div>
+            <!-- Custom component would be rendered here based on options/props -->
+            <div class="kg-component-card-rendered">
+                ${node.options || ''}
+            </div>
+        </div>`;
+  const container = document.createElement('div');
+  container.innerHTML = html.trim();
+  return {
+    element: container.firstElementChild
+  };
+}
+
+function parsePostComponentNode(PostComponentNode) {
+  return {
+    div: nodeElem => {
+      const isKgChartCard = nodeElem.classList?.contains('kg-component-card');
+      if (nodeElem.tagName === 'DIV' && isKgChartCard) {
+        return {
+          conversion(domNode) {
+            const id = domNode.dataset.id;
+            const name = domNode.dataset.name;
+            const post_id = domNode.dataset.postId;
+            const title = domNode.querySelector('.kg-component-card-title')?.textContent || '';
+            const excerpt = domNode.querySelector('.kg-component-card-excerpt')?.textContent || '';
+            const image = domNode.querySelector('.kg-component-card-image')?.src || '';
+            const payload = {
+              id,
+              post_id,
+              name,
+              title,
+              excerpt,
+              image
+            };
+            const node = new PostComponentNode(payload);
+            return {
+              node
+            };
+          },
+          priority: 1
+        };
+      }
+      return null;
+    }
+  };
+}
+
+/* eslint-disable ghost/filenames/match-exported-class */
+const COMPONENT_NODE_TYPE = 'post-component';
+class PostComponentNode extends generateDecoratorNode({
+  nodeType: COMPONENT_NODE_TYPE,
+  properties: [{
+    name: 'id',
+    default: ''
+  }, {
+    name: 'post_id',
+    default: ''
+  }, {
+    name: 'name',
+    default: ''
+  }, {
+    name: 'title',
+    default: ''
+  }, {
+    name: 'excerpt',
+    default: ''
+  }, {
+    name: 'image',
+    default: '',
+    urlType: 'url'
+  }, {
+    name: 'props',
+    default: '{}'
+  }, {
+    name: 'options',
+    default: '{}'
+  }]
+}) {
+  /* @override */
+  exportJSON() {
+    const {
+      id,
+      post_id,
+      name,
+      title,
+      excerpt,
+      image,
+      options,
+      props
+    } = this;
+    return {
+      type: COMPONENT_NODE_TYPE,
+      id,
+      post_id,
+      name,
+      title,
+      excerpt,
+      image,
+      options,
+      props
+    };
+  }
+  static importDOM() {
+    return parsePostComponentNode(this);
+  }
+  exportDOM(options = {}) {
+    return renderPostComponentNode(this, options);
+  }
+}
+function $isPostComponentNode(node) {
+  return node instanceof PostComponentNode;
+}
+const $createPostComponentNode = dataset => {
+  return new PostComponentNode(dataset);
+};
+
 var linebreakSerializers = {
   import: {
     br: node => {
@@ -5751,5 +5879,5 @@ const DEFAULT_CONFIG = {
 // export convenience objects for use elsewhere
 const DEFAULT_NODES = [ExtendedTextNode, extendedTextNodeReplacement, ExtendedHeadingNode, extendedHeadingNodeReplacement, ExtendedQuoteNode, extendedQuoteNodeReplacement, CodeBlockNode, ImageNode, MarkdownNode, VideoNode, AudioNode, CalloutNode, CallToActionNode, AsideNode, HorizontalRuleNode, HtmlNode, FileNode, ToggleNode, ButtonNode, HeaderNode, BookmarkNode, PaywallNode, ProductNode, EmbedNode, EmailNode, GalleryNode, EmailCtaNode, SignupNode, CollectionNode, TKNode, AtLinkNode, AtLinkSearchNode, ZWNJNode];
 
-export { $createAsideNode, $createAtLinkNode, $createAtLinkSearchNode, $createAudioNode, $createBookmarkNode, $createButtonNode, $createCallToActionNode, $createCalloutNode, $createCodeBlockNode, $createCollectionNode, $createEmailCtaNode, $createEmailNode, $createEmbedNode, $createFileNode, $createGalleryNode, $createHeaderNode, $createHorizontalRuleNode, $createHtmlNode, $createImageNode, $createMarkdownNode, $createPaywallNode, $createProductNode, $createSignupNode, $createTKNode, $createToggleNode, $createVideoNode, $createZWNJNode, $isAsideNode, $isAtLinkNode, $isAtLinkSearchNode, $isAudioNode, $isBookmarkNode, $isButtonNode, $isCallToActionNode, $isCalloutNode, $isCodeBlockNode, $isCollectionNode, $isEmailCtaNode, $isEmailNode, $isEmbedNode, $isFileNode, $isGalleryNode, $isHeaderNode, $isHorizontalRuleNode, $isHtmlNode, $isImageNode, $isKoenigCard, $isMarkdownNode, $isPaywallNode, $isProductNode, $isSignupNode, $isTKNode, $isToggleNode, $isVideoNode, $isZWNJNode, AsideNode, AtLinkNode, AtLinkSearchNode, AudioNode, BookmarkNode, ButtonNode, CallToActionNode, CalloutNode, CodeBlockNode, CollectionNode, DEFAULT_CONFIG, DEFAULT_NODES, EmailCtaNode, EmailNode, EmbedNode, ExtendedHeadingNode, ExtendedQuoteNode, ExtendedTextNode, FileNode, GalleryNode, HeaderNode, HorizontalRuleNode, HtmlNode, ImageNode, KoenigDecoratorNode, MarkdownNode, PaywallNode, ProductNode, SignupNode, TKNode, ToggleNode, VideoNode, ZWNJNode, extendedHeadingNodeReplacement, extendedQuoteNodeReplacement, extendedTextNodeReplacement, serializers, utils };
+export { $createAsideNode, $createAtLinkNode, $createAtLinkSearchNode, $createAudioNode, $createBookmarkNode, $createButtonNode, $createCallToActionNode, $createCalloutNode, $createCodeBlockNode, $createCollectionNode, $createEmailCtaNode, $createEmailNode, $createEmbedNode, $createFileNode, $createGalleryNode, $createHeaderNode, $createHorizontalRuleNode, $createHtmlNode, $createImageNode, $createMarkdownNode, $createPaywallNode, $createPostComponentNode, $createProductNode, $createSignupNode, $createTKNode, $createToggleNode, $createVideoNode, $createZWNJNode, $isAsideNode, $isAtLinkNode, $isAtLinkSearchNode, $isAudioNode, $isBookmarkNode, $isButtonNode, $isCallToActionNode, $isCalloutNode, $isCodeBlockNode, $isCollectionNode, $isEmailCtaNode, $isEmailNode, $isEmbedNode, $isFileNode, $isGalleryNode, $isHeaderNode, $isHorizontalRuleNode, $isHtmlNode, $isImageNode, $isKoenigCard, $isMarkdownNode, $isPaywallNode, $isPostComponentNode, $isProductNode, $isSignupNode, $isTKNode, $isToggleNode, $isVideoNode, $isZWNJNode, AsideNode, AtLinkNode, AtLinkSearchNode, AudioNode, BookmarkNode, ButtonNode, CallToActionNode, CalloutNode, CodeBlockNode, CollectionNode, DEFAULT_CONFIG, DEFAULT_NODES, EmailCtaNode, EmailNode, EmbedNode, ExtendedHeadingNode, ExtendedQuoteNode, ExtendedTextNode, FileNode, GalleryNode, HeaderNode, HorizontalRuleNode, HtmlNode, ImageNode, KoenigDecoratorNode, MarkdownNode, PaywallNode, PostComponentNode, ProductNode, SignupNode, TKNode, ToggleNode, VideoNode, ZWNJNode, extendedHeadingNodeReplacement, extendedQuoteNodeReplacement, extendedTextNodeReplacement, serializers, utils };
 //# sourceMappingURL=kg-default-nodes.js.map

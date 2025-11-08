@@ -2,18 +2,34 @@
 const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const models = require('../../models');
+const logging = require('@tryghost/logging');
 
 const ALLOWED_INCLUDES = [
-    'posts'
+    //'posts'
 ];
 
 const messages = {
-    notFound: 'post component not found.'
+    notFound: 'social component not found.'
+};
+
+const addPublishedStatusFilter = (frame) => {
+    let filter = frame.options.filter;
+
+    if (filter && typeof filter === 'string') {
+        // Simple check for existing status filter
+        if (!filter.includes('status:')) {
+            filter = filter + '+status:published';
+        }
+    } else {
+        filter = 'status:published';
+    }
+        
+    frame.options.filter = filter;
 };
 
 /** @type {import('@tryghost/api-framework').Controller} */
 const controller = {
-    docName: 'postcomponents',
+    docName: 'socialcomponents',
 
     browse: {
         headers: {
@@ -37,8 +53,10 @@ const controller = {
         },
         permissions: true,
         async query(frame) {  
+            addPublishedStatusFilter(frame);
+            logging.info('Fetching social components with published status filter:', JSON.stringify(frame.options));
             // @ts-ignore
-            return await models.PostComponent.findPage({...frame.options, withRelated: ALLOWED_INCLUDES});
+            return await models.SocialComponent.findPage({...frame.options, withRelated: ALLOWED_INCLUDES});
         }
     },
     
@@ -52,7 +70,7 @@ const controller = {
         permissions: true,
         async query(frame) {
             // @ts-ignore
-            const entry = await models.PostComponent.findOne(frame.data, {...frame.options, withRelated: ALLOWED_INCLUDES});
+            const entry = await models.SocialComponent.findOne(frame.data, {...frame.options, withRelated: ALLOWED_INCLUDES});
             if (!entry) {
                 return Promise.reject(new errors.NotFoundError({
                     message: tpl(messages.notFound)

@@ -109,7 +109,7 @@ Post = ghostBookshelf.Model.extend({
         };
     },
 
-    relationships: ['tags', 'authors', 'mobiledoc_revisions', 'post_revisions', 'posts_meta', 'tiers', 'post_components'],
+    relationships: ['tags', 'authors', 'mobiledoc_revisions', 'post_revisions', 'posts_meta', 'tiers', 'social_post_components'],
     relationshipConfig: {
         tags: {
             editable: true
@@ -126,7 +126,7 @@ Post = ghostBookshelf.Model.extend({
         posts_meta: {
             editable: true
         },
-        post_components: {
+        social_post_components: {
             editable: true
         }
     },
@@ -137,7 +137,7 @@ Post = ghostBookshelf.Model.extend({
         tiers: 'products',
         authors: 'users',
         posts_meta: 'posts_meta',
-        post_components: 'post_components'
+        social_post_components: 'social_post_components'
     },
 
     relationsMeta: {
@@ -149,8 +149,8 @@ Post = ghostBookshelf.Model.extend({
             targetTableName: 'emails',
             foreignKey: 'post_id'
         },
-        post_components: {
-            targetTableName: 'post_components',
+        social_post_components: {
+            targetTableName: 'social_post_components',
             foreignKey: 'post_id'
         }
     },
@@ -381,8 +381,8 @@ Post = ghostBookshelf.Model.extend({
                 type: 'oneToMany',
                 joinFrom: 'post_id'
             },
-            post_components: {
-                tableName: 'post_components',
+            social_post_components: {
+                tableName: 'social_post_components',
                 type: 'oneToMany',
                 joinFrom: 'post_id'
             }
@@ -1171,8 +1171,8 @@ Post = ghostBookshelf.Model.extend({
         return this.hasMany('PostRevision', 'post_id');
     },
 
-    post_components() {
-        return this.hasMany('PostComponent', 'post_id');
+    social_post_components() {
+        return this.hasMany('SocialPostComponent', 'post_id');
     },
 
     posts_meta: function postsMeta() {
@@ -1457,7 +1457,7 @@ Post = ghostBookshelf.Model.extend({
             // @ts-ignore
             && _.intersection(_.without(ghostBookshelf.model('PostsMeta').prototype.permittedAttributes(), 'id', 'post_id'), options.columns).length)
         ) {
-            options.withRelated = _.union(['posts_meta', 'count.bookmarks', 'count.favors', 'count.forwards', 'count.comments', 'post_components'], options.withRelated || []);
+            options.withRelated = _.union(['posts_meta', 'count.bookmarks', 'count.favors', 'count.forwards', 'count.comments', 'social_post_components'], options.withRelated || []);
         }
 
         return options;

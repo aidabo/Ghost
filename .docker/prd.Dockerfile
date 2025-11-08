@@ -44,6 +44,8 @@ COPY --chown=node:node ghost/core/core/server/api/endpoints/users.js ${GHOST_INS
 COPY --chown=node:node ghost/core/core/server/api/endpoints/tags.js ${GHOST_INSTALL}/current/core/server/api/endpoints 
 COPY --chown=node:node ghost/core/core/server/api/endpoints/tags-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints 
 COPY --chown=node:node ghost/core/core/server/api/endpoints/utils/permissions.js ${GHOST_INSTALL}/current/core/server/api/endpoints 
+COPY --chown=node:node ghost/core/core/server/api/endpoints/pages.js ${GHOST_INSTALL}/current/core/server/api/endpoints
+COPY --chown=node:node ghost/core/core/server/api/endpoints/posts-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 
 # 4. Server endpoint Api added
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-bookmarks.js ${GHOST_INSTALL}/current/core/server/api/endpoints
@@ -56,8 +58,9 @@ COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comment-
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comments.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comment-report.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comments-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/post-components-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/post-components.js ${GHOST_INSTALL}/current/core/server/api/endpoints
+COPY --chown=node:node ghost/core/core/server/api/endpoints/social-components-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints
+COPY --chown=node:node ghost/core/core/server/api/endpoints/social-components.js ${GHOST_INSTALL}/current/core/server/api/endpoints
+COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-components.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 
 # 5. Migration script added
 ## 5.115
@@ -100,9 +103,13 @@ COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/202
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-04-add-social-public-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-05-add-social-post-approved.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-06-update-social-public-post-column-values.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-08-add-social-post-components-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-09-add-social-post-components-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-10-alter-social-posts-columns-not-null.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-01-add-social-components-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-02-add-social-components-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-03-add-social-post-components-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-04-add-social-post-components-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+
 
 # 6. Model files changed
 COPY --chown=node:node ghost/core/core/server/models/post.js ${GHOST_INSTALL}/current/core/server/models
@@ -120,7 +127,8 @@ COPY --chown=node:node ghost/core/core/server/models/social-groups.js ${GHOST_IN
 COPY --chown=node:node ghost/core/core/server/models/social-post-comment-like.js ${GHOST_INSTALL}/current/core/server/models
 COPY --chown=node:node ghost/core/core/server/models/social-post-comment-report.js ${GHOST_INSTALL}/current/core/server/models
 COPY --chown=node:node ghost/core/core/server/models/social-post-comments.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/post-components.js ${GHOST_INSTALL}/current/core/server/models
+COPY --chown=node:node ghost/core/core/server/models/social-components.js ${GHOST_INSTALL}/current/core/server/models
+COPY --chown=node:node ghost/core/core/server/models/social-post-components.js ${GHOST_INSTALL}/current/core/server/models
 
 # 8. Email templates changed
 COPY --chown=node:node ghost/core/core/server/services/mail/templates/invite-user.html ${GHOST_INSTALL}/current/core/server/services/mail/templates

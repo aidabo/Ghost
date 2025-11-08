@@ -10,29 +10,29 @@ const ROLES = [
 
 const PERMISSIONS = [
     {
-        name: 'Browse Post Components',
+        name: 'Browse Social Post Components',
         action: 'browse',
-        object: 'postcomponent'
+        object: 'socialpostcomponent'
     },
     {
-        name: 'Read Post Components',
+        name: 'Read Social Post Components',
         action: 'read',
-        object: 'postcomponent'
+        object: 'socialpostcomponent'
     },
     {
-        name: 'Add Post Components',
+        name: 'Add Social Post Components',
         action: 'add',
-        object: 'postcomponent'
+        object: 'socialpostcomponent'
     },
     {
-        name: 'Edit Post Components',
+        name: 'Edit Social Post Components',
         action: 'edit',
-        object: 'postcomponent'
+        object: 'socialpostcomponent'
     },
     {
-        name: 'Delete Post Components',
+        name: 'Delete Social Post Components',
         action: 'destroy',
-        object: 'postcomponent'
+        object: 'socialpostcomponent'
     }
 ];
 

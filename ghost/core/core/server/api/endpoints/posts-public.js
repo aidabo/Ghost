@@ -14,7 +14,8 @@ const allowedIncludes = [
     'count.bookmarks',
     'count.favors',
     'count.forwards',
-    'count.comments'
+    'count.comments',
+    'social_post_components'
 ];
 
 const messages = {

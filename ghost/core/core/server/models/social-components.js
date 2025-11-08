@@ -4,11 +4,10 @@ const _ = require('lodash');
 const ObjectId = require('bson-objectid').default;
 const ghostBookshelf = require('./base');
 const errors = require('@tryghost/errors');
-const models = require('./index');
 const logging = require('@tryghost/logging');
 
-const PostComponent = ghostBookshelf.Model.extend({
-    tableName: 'post_components',
+const SocialComponent = ghostBookshelf.Model.extend({
+    tableName: 'social_components',
 
     defaults() {
         return {
@@ -16,8 +15,8 @@ const PostComponent = ghostBookshelf.Model.extend({
         };
     },
 
-    posts() {
-        return this.belongsTo('Post');
+    user() {
+        return this.belongsTo('User', 'created_by');
     },
 
     initialize() {
@@ -29,33 +28,31 @@ const PostComponent = ghostBookshelf.Model.extend({
     async validateFields(model) {
         logging.info(JSON.stringify(model));
 
-        const componentName = model.get('name');
+        const type = model.get('type');
         const title = model.get('title');
-        const postId = model.get('post_id');
+        const status = model.get('status');
 
-        if (!componentName) {
-            throw new errors.ValidationError({message: 'name of component is required.'});
+        if (!type) {
+            throw new errors.ValidationError({message: 'type of component is required.'});
         }
 
         if (!title) {
             throw new errors.ValidationError({message: 'title is required.'});
         }
 
-        if (!postId) {
-            throw new errors.ValidationError({message: 'post_id is required.'});
-        }        
- 
-        // @ts-ignore
-        const post = await models.Post.findOne({id: postId, status: 'all'});
-        if (!post) {
-            throw new errors.NotFoundError({message: `Post id ${postId} not found.`});
-        }        
+        if (!status) {
+            throw new errors.ValidationError({message: 'status is required.'});
+        }
+
+        if (status && !['published', 'draft'].includes(status)) {
+            throw new errors.ValidationError({message: 'status must be either published or draft.'});
+        }
     }
 },{
 
 });
 
 module.exports = {
-    PostComponent: ghostBookshelf.model('PostComponent', PostComponent)
+    SocialComponent: ghostBookshelf.model('SocialComponent', SocialComponent)
 };
 

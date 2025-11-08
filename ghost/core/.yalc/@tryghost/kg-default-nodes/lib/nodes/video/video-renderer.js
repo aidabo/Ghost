@@ -117,7 +117,7 @@ export function getVideoType(filename) {
     };
   
     //S3 storage extension maybe is mp4-1 etc for the same filename. 
-    var keys = Object.keys(typeMap).filter(key => extension.indexOf(key) >= 0);
+    let keys = Object.keys(typeMap).filter(key => extension.indexOf(key) >= 0);
     if (keys && keys.length > 0) {
         return typeMap[keys[0]]; 
     } else {
@@ -136,7 +136,8 @@ export function cardTemplate({node, cardClasses}) {
     const maxDimension = Math.max(width, height);
     // const aspectRatio = width / height;
     // const containerStyle = `width:100%; max-width:${maxDimension}px; aspect-ratio: ${aspectRatio}; margin: '0 auto'`;
-    const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+    // eslint-disable-next-line no-confusing-arrow
+    const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b)); 
     const divisor = gcd(width, height);
     const aspectRatioStr = `${width / divisor} / ${height / divisor}`;
     const containerStyle = `width:100%; max-width:${maxDimension}px; aspect-ratio: ${aspectRatioStr};`;
@@ -161,11 +162,6 @@ export function cardTemplate({node, cardClasses}) {
                 >
                 <source src="${node.src}" type="${videoType}"></source>
                 <p class="vjs-no-js">
-                    To view this video please enable JavaScript, and consider upgrading to a
-                    web browser that
-                    <a href="https://videojs.com/html5-video-support/" target="_blank">
-                        supports HTML5 video
-                    </a>
                 </p>
                 </video>
 

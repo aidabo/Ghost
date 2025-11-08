@@ -1248,22 +1248,31 @@ module.exports = {
         created_at: {type: 'dateTime', nullable: false},
         updated_at: {type: 'dateTime', nullable: false}
     },
-    post_components: {
+    social_components: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
-        post_id: {type: 'string', maxlength: 24, nullable: false, unique: false, index: true, references: 'posts.id', cascadeDelete: true},
-        name: {type: 'string', maxlength: 60, nullable: false, index: true},
+        type: {type: 'string', maxlength: 60, nullable: false, index: true},
         title: {type: 'string', maxlength: 191, nullable: false},
         excerpt: {type: 'string', maxlength: 500, nullable: true}, 
         image: {type: 'string', maxlength: 500, nullable: true},
-        options: {type: 'text', maxlength: 1000000000, nullable: true},
-        props: {type: 'text', maxlength: 1000000000, nullable: true},
-        tag: {type: 'string', maxlength: 32, nullable: true, index: true},
+        attributes: {type: 'text', maxlength: 1000000000, nullable: true},
+        layout: {type: 'text', maxlength: 1000000000, nullable: true},        
         status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft', validations: {isIn: [['published', 'draft']]}},
+        published_at: {type: 'dateTime', nullable: true},
         created_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false},    
         updated_at: {type: 'dateTime', nullable: false},
         updated_by: {type: 'string', maxlength: 24, nullable: true}
+    },
+    social_post_components: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        post_id: {type: 'string', maxlength: 24, nullable: false, references: 'posts.id'},
+        component_id: {type: 'string', maxlength: 24, nullable: false, references: 'social_components.id'},
+        sort_order: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        '@@INDEXES@@': [
+            ['post_id','component_id']
+        ]
     }
+
     // 202504 add custom social tables end
 };
 

@@ -6,16 +6,17 @@ const models = require('../../models');
 const logging = require('@tryghost/logging');
 
 const ALLOWED_INCLUDES = [
-    'posts'
+    'posts',
+    'components'
 ];
 
 const messages = {
-    notFound: 'post component not found.'
+    notFound: 'social post component not found.'
 };
 
 /** @type {import('@tryghost/api-framework').Controller} */
 const controller = {
-    docName: 'postcomponents',
+    docName: 'socialpostcomponents',
 
     browse: {
         headers: {
@@ -40,7 +41,7 @@ const controller = {
         permissions: true,
         async query(frame) {  
             // @ts-ignore
-            return await models.PostComponent.findPage({...frame.options, withRelated: ALLOWED_INCLUDES});
+            return await models.SocialPostComponent.findPage({...frame.options, withRelated: ALLOWED_INCLUDES});
         }
     },
     
@@ -54,7 +55,7 @@ const controller = {
         permissions: true,
         async query(frame) {
             // @ts-ignore
-            const entry = await models.PostComponent.findOne(frame.data, {...frame.options, withRelated: ALLOWED_INCLUDES});
+            const entry = await models.SocialPostComponent.findOne(frame.data, {...frame.options, withRelated: ALLOWED_INCLUDES});
             if (!entry) {
                 return Promise.reject(new errors.NotFoundError({
                     message: tpl(messages.notFound)
@@ -72,15 +73,14 @@ const controller = {
             'transacting'
         ],
         data: [
-            'post_id',
-            'name', 
-            'title' 
+            'post_id', 
+            'component_id'
         ],
         permissions: true,
         async query(frame) {
             try {
                 // @ts-ignore
-                return await models.PostComponent.add(frame.data.postcomponents[0], frame.options);
+                return await models.SocialPostComponent.add(frame.data.socialpostcomponents[0], frame.options);
             } catch (err) {
                 logging.error(err);
                 throw err;
@@ -100,15 +100,14 @@ const controller = {
             'transacting'
         ],
         data: [
-            'post_id',
-            'name', 
-            'title' 
+            'post_id', 
+            'component_id'
         ],
         permissions: true,
         async query(frame) {
             try {
                 // @ts-ignore
-                return await models.PostComponent.edit(frame.data.postcomponents[0], frame.options);
+                return await models.SocialPostComponent.edit(frame.data.socialpostcomponents[0], frame.options);
             } catch (err) {
                 logging.error(err);
                 throw err;
@@ -123,7 +122,7 @@ const controller = {
         permissions: true,
         query(frame) {
             // @ts-ignore
-            return models.PostComponent.destroy({...frame.options, require: true});
+            return models.SocialPostComponent.destroy({...frame.options, require: true});
         }
     }
 };

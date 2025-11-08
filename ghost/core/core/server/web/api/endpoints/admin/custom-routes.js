@@ -67,12 +67,17 @@ module.exports = function customApiRoutes(router) {
     router.put('/social/comments/:id/status', mw.authAdminApi, http(api.socialCommentReports.edit));
     router.get('/social/comments/:id/new-replies', mw.authAdminApi, http(api.socialCommentReplies.browse));
 
-    // ## post components
-    router.get('/social/components', mw.authAdminApi, http(api.postComponents.browse));
-    router.get('/social/components/:id', mw.authAdminApi, http(api.postComponents.read));
-    router.post('/social/components', mw.authAdminApi, http(api.postComponents.add));
-    router.put('/social/components/:id', mw.authAdminApi, http(api.postComponents.edit));
-    router.del('/social/components/:id', mw.authAdminApi, http(api.postComponents.destroy));
+    router.get('/social/components', mw.authAdminApi, http(api.socialComponents.browse));
+    router.get('/social/components/:id', mw.authAdminApi, http(api.socialComponents.read));
+    router.post('/social/components', mw.authAdminApi, http(api.socialComponents.add));
+    router.put('/social/components/:id', mw.authAdminApi, http(api.socialComponents.edit));
+    router.del('/social/components/:id', mw.authAdminApi, http(api.socialComponents.destroy));
+
+    router.get('/social/postcomponents', mw.authAdminApi, http(api.socialPostComponents.browse));
+    router.get('/social/postcomponents/:id', mw.authAdminApi, http(api.socialPostComponents.read));
+    router.post('/social/postcomponents', mw.authAdminApi, http(api.socialPostComponents.add));
+    router.put('/social/postcomponents/:id', mw.authAdminApi, http(api.socialPostComponents.edit));
+    router.del('/social/postcomponents/:id', mw.authAdminApi, http(api.socialPostComponents.destroy));
 
     return router;
 };
