@@ -1169,7 +1169,7 @@ function renderVideoNode(node, options = {}) {
 
     const htmlString = options.target === 'email'
         ? emailCardTemplate$2({node, options, cardClasses})
-        : cardTemplate$7({node, cardClasses});
+        : cardTemplate$6({node, cardClasses});
 
     const element = document.createElement('div');
     element.innerHTML = htmlString.trim();
@@ -1213,7 +1213,7 @@ function getVideoType(filename) {
     //return typeMap[extension] || null;
 }
 
-function cardTemplate$7({node, cardClasses}) {
+function cardTemplate$6({node, cardClasses}) {
     const width = node.width;
     const height = node.height;
     const autoplayAttr = node.loop ? 'loop autoplay muted' : '';
@@ -1249,6 +1249,11 @@ function cardTemplate$7({node, cardClasses}) {
                 >
                 <source src="${node.src}" type="${videoType}"></source>
                 <p class="vjs-no-js">
+                    To view this video please enable JavaScript, and consider upgrading to a
+                    web browser that
+                    <a href="https://videojs.com/html5-video-support/" target="_blank">
+                        supports HTML5 video
+                    </a>
                 </p>
                 </video>
 
@@ -2225,7 +2230,7 @@ function parseToggleNode(ToggleNode) {
     };
 }
 
-function cardTemplate$6({node}) {
+function cardTemplate$5({node}) {
     return (
         `
         <div class="kg-card kg-toggle-card" data-kg-toggle-state="close">
@@ -2262,7 +2267,7 @@ function renderToggleNode(node, options = {}) {
 
     const htmlString = options.target === 'email'
         ? emailCardTemplate$1({node})
-        : cardTemplate$6({node});
+        : cardTemplate$5({node});
 
     const container = document.createElement('div');
     container.innerHTML = htmlString.trim();
@@ -2870,7 +2875,7 @@ function renderFileNode(node, options = {}) {
     if (options.target === 'email') {
         return emailTemplate$1(node, document, options);
     } else {
-        return cardTemplate$5(node, document);
+        return cardTemplate$4(node, document);
     }
 }
 
@@ -2921,7 +2926,7 @@ function emailTemplate$1(node, document, options) {
     return {element: container.firstElementChild};
 }
 
-function cardTemplate$5(node, document) {
+function cardTemplate$4(node, document) {
     const card = document.createElement('div');
     card.setAttribute('class', 'kg-card kg-file-card');
 
@@ -3251,7 +3256,7 @@ function parseHeaderNode(HeaderNode) {
     };
 }
 
-function cardTemplate$4(nodeData, options = {}) {
+function cardTemplate$3(nodeData, options = {}) {
     const cardClasses = getCardClasses$1(nodeData).join(' ');
 
     const backgroundAccent = nodeData.backgroundColor === 'accent' ? 'kg-style-accent' : '';
@@ -3372,7 +3377,7 @@ function renderHeaderNodeV2(dataset, options = {}) {
         // return {element: document.createElement('div')}; // TODO
     }
 
-    const htmlString = cardTemplate$4(node, options);
+    const htmlString = cardTemplate$3(node, options);
 
     const element = document.createElement('div');
     element.innerHTML = htmlString?.trim();
@@ -3620,7 +3625,7 @@ function renderProductNode(node, options = {}) {
 
     const htmlString = options.target === 'email'
         ? emailCardTemplate({data: templateData})
-        : cardTemplate$3({data: templateData});
+        : cardTemplate$2({data: templateData});
 
     const element = document.createElement('div');
     element.innerHTML = htmlString.trim();
@@ -3628,7 +3633,7 @@ function renderProductNode(node, options = {}) {
     return {element: element.firstElementChild};
 }
 
-function cardTemplate$3({data}) {
+function cardTemplate$2({data}) {
     return (
         `
         <div class="kg-card kg-product-card">
@@ -4710,7 +4715,7 @@ function signupParser(SignupNode) {
 
 // ref https://ghost.org/docs/themes/members#signup-forms
 
-function cardTemplate$2(nodeData) {
+function cardTemplate$1(nodeData) {
     const cardClasses = getCardClasses(nodeData).join(' ');
 
     const backgroundAccent = getAccentClass(nodeData); // don't apply accent style if there's a background image
@@ -4802,7 +4807,7 @@ function renderSignupCardToDOM(dataset, options = {}) {
         return {element: document.createElement('div')}; // Return an empty element since we don't want to render the card in email
     }
 
-    const htmlString = cardTemplate$2(node);
+    const htmlString = cardTemplate$1(node);
 
     const element = document.createElement('div');
     element.innerHTML = htmlString?.trim();
@@ -4958,7 +4963,7 @@ function renderCollectionNode(node, options = {}) {
         return renderEmptyContainer(document);
     }
 
-    const htmlString = cardTemplate$1(node, renderData);
+    const htmlString = cardTemplate(node, renderData);
 
     const element = document.createElement('div');
     element.innerHTML = htmlString?.trim();
@@ -4966,7 +4971,7 @@ function renderCollectionNode(node, options = {}) {
     return {element: element.firstElementChild};
 }
 
-function cardTemplate$1(node, posts) {
+function cardTemplate(node, posts) {
     const {collection, postCount, layout, columns, header} = node.getDataset();
 
     const cardClass = 'kg-card kg-collection-card kg-width-wide';
@@ -5726,122 +5731,6 @@ function $isZWNJNode(node) {
     return node instanceof ZWNJNode;
 }
 
-function renderPostComponentNode(node, options = {}) {
-    addCreateDocumentOption(options);
-    const document = options.createDocument();
-
-    if (!node.id || node.id.trim() === '' || !node.name || node.name.trim() === '') {
-        return renderEmptyContainer(document);
-    }
-
-    return cardTemplate(node, document);
-}
-
-function cardTemplate(node, document) {
-    const html = (
-        `<div class="kg-card kg-component-card" data-id="${node.id}" data-post-id="${node.post_id}" data-name="${node.name}">
-            <div class="kg-component-card-content">
-                ${node.image ? `<img src="${node.image}" alt="${node.title}" class="kg-component-card-image" />` : ''}
-                <div class="kg-component-card-text">
-                    <h3 class="kg-component-card-title">${node.title}</h3>
-                    ${node.excerpt ? `<p class="kg-component-card-excerpt">${node.excerpt}</p>` : ''}
-                </div>
-            </div>
-            <!-- Custom component would be rendered here based on options/props -->
-            <div class="kg-component-card-rendered">
-                ${node.options || ''}
-            </div>
-        </div>`
-    );
-
-    const container = document.createElement('div');
-    container.innerHTML = html.trim();
-
-    return {element: container.firstElementChild};
-}
-
-function parsePostComponentNode(PostComponentNode) {
-    return {
-        div: (nodeElem) => {
-            const isKgChartCard = nodeElem.classList?.contains('kg-component-card');
-            if (nodeElem.tagName === 'DIV' && isKgChartCard) {
-                return {
-                    conversion(domNode) {
-                        const id = domNode.dataset.id;
-                        const name = domNode.dataset.name;
-                        const post_id = domNode.dataset.postId;
-                        const title = domNode.querySelector('.kg-component-card-title')?.textContent || '';
-                        const excerpt = domNode.querySelector('.kg-component-card-excerpt')?.textContent || '';
-                        const image = domNode.querySelector('.kg-component-card-image')?.src || '';
-                        const payload = {
-                            id,
-                            post_id,
-                            name,
-                            title,
-                            excerpt,
-                            image,
-                        };
-
-                        const node = new PostComponentNode(payload);
-                        return {node};
-                    },
-                    priority: 1
-                };
-            }
-            return null;
-        }
-    };
-}
-
-/* eslint-disable ghost/filenames/match-exported-class */
-
-const COMPONENT_NODE_TYPE = 'post-component';
-
-class PostComponentNode extends generateDecoratorNode({nodeType: COMPONENT_NODE_TYPE,
-    properties: [
-        {name: 'id', default: ''},
-        {name: 'post_id', default: ''},
-        {name: 'name', default: ''},
-        {name: 'title', default: ''},
-        {name: 'excerpt', default: ''},
-        {name: 'image', default: '', urlType: 'url'},
-        {name: 'props', default: '{}'},
-        {name: 'options', default: '{}'},
-    ]}
-) {
-    /* @override */
-    exportJSON() {
-        const {id, post_id, name, title, excerpt, image, options, props} = this;
-        return {
-            type: COMPONENT_NODE_TYPE,
-            id,
-            post_id,
-            name,
-            title,
-            excerpt,
-            image,
-            options,
-            props
-        };
-    }
-
-    static importDOM() {
-        return parsePostComponentNode(this);
-    }
-
-    exportDOM(options = {}) {
-        return renderPostComponentNode(this, options);
-    }
-}
-
-function $isPostComponentNode(node) {
-    return node instanceof PostComponentNode;
-}
-
-const $createPostComponentNode = (dataset) => {
-    return new PostComponentNode(dataset);
-};
-
 var linebreakSerializers = {
     import: {
         br: (node) => {
@@ -5972,7 +5861,6 @@ exports.$createHtmlNode = $createHtmlNode;
 exports.$createImageNode = $createImageNode;
 exports.$createMarkdownNode = $createMarkdownNode;
 exports.$createPaywallNode = $createPaywallNode;
-exports.$createPostComponentNode = $createPostComponentNode;
 exports.$createProductNode = $createProductNode;
 exports.$createSignupNode = $createSignupNode;
 exports.$createTKNode = $createTKNode;
@@ -6001,7 +5889,6 @@ exports.$isImageNode = $isImageNode;
 exports.$isKoenigCard = $isKoenigCard;
 exports.$isMarkdownNode = $isMarkdownNode;
 exports.$isPaywallNode = $isPaywallNode;
-exports.$isPostComponentNode = $isPostComponentNode;
 exports.$isProductNode = $isProductNode;
 exports.$isSignupNode = $isSignupNode;
 exports.$isTKNode = $isTKNode;
@@ -6035,7 +5922,6 @@ exports.ImageNode = ImageNode;
 exports.KoenigDecoratorNode = KoenigDecoratorNode;
 exports.MarkdownNode = MarkdownNode;
 exports.PaywallNode = PaywallNode;
-exports.PostComponentNode = PostComponentNode;
 exports.ProductNode = ProductNode;
 exports.SignupNode = SignupNode;
 exports.TKNode = TKNode;

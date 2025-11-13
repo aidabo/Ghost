@@ -28,8 +28,6 @@ import * as tk from './nodes/TKNode';
 import * as atLink from './nodes/at-link/index.js';
 import * as zwnj from './nodes/zwnj/ZWNJNode.js';
 
-import * as component from './nodes/postcomponent/PostComponentNode.js';
-
 import linebreakSerializers from './serializers/linebreak';
 import paragraphSerializers from './serializers/paragraph';
 
@@ -64,8 +62,6 @@ export * from './nodes/ExtendedQuoteNode';
 export * from './nodes/TKNode';
 export * from './nodes/at-link/index.js';
 export * from './nodes/zwnj/ZWNJNode';
-
-export * from './nodes/postcomponent/PostComponentNode.js';
 
 // export utility functions that are useful in other packages or tests
 import * as visibilityUtils from './utils/visibility';
