@@ -1282,15 +1282,13 @@ Post = ghostBookshelf.Model.extend({
     },
 
     defaultFilters: function defaultFilters(options) {
-        // if (options.context && options.context.internal) {
-        //     return null;
-        // }
+        if (options.context && options.context.internal) {
+            return null;
+        }
 
         // return options.context && options.context.public ? 'type:post' : 'type:post+status:published';
 
-        let filter = options.context && options.context.internal ?
-            null : options.context && options.context.public ? 
-                'type:post' : 'type:post+status:published';
+        let filter = options.context && options.context.public ? 'type:post' : 'type:post+status:published';
         
         //default filter to get posts not in groups
         if (!/\bgroup_id:/.test(options.filter || '')) {
@@ -1410,6 +1408,9 @@ Post = ghostBookshelf.Model.extend({
 
     validateGroupPostOnFetch: function validateGroupPostOnFetch(options) {
         logging.info('validateGroupPostOnFetch', JSON.stringify(options));
+        if (options.context?.internal){
+            return;
+        }
 
         // Matches group_id:'684fe613ac7a254f8909f8d4' or group_id:684fe613ac7a254f8909f8d4
         let filter = options.filter;

@@ -39,6 +39,7 @@ module.exports = [
                 'comment_id',
                 'tiers',
 
+                // customized appended fields
                 'group_id',
                 'public_post',
                 'related_date',
@@ -99,6 +100,7 @@ module.exports = [
                 'comment_id',
                 'tiers',
 
+                // customized appended fields
                 'group_id',
                 'public_post',
                 'related_date',

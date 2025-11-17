@@ -162,6 +162,9 @@ COPY --chown=node:node ghost/core/core/boot.js ${GHOST_INSTALL}/current/core
 # 14 Social-comments service folder added
 COPY --chown=node:node ghost/core/core/server/services/social-comments ${GHOST_INSTALL}/current/core/server/services/social-comments
 
+# 15 Schedule URL for group post
+COPY --chown=node:node ghost/core/core/server/adapters/scheduling/post-scheduling/PostScheduler.js ${GHOST_INSTALL}/current/core/server/adapters/scheduling/post-scheduling
+
 # Install dependencies as node user
 RUN set -eux; \
     cd ${GHOST_INSTALL}/current && \
