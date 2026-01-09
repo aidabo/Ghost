@@ -77,7 +77,8 @@ const EDITABLE_SETTINGS = [
     'heading_font',
     'blocked_email_domains',
     'captcha_enabled',
-    'require_email_mfa'
+    'require_email_mfa',
+    'my_config'
 ];
 
 module.exports = {
