@@ -1,7 +1,7 @@
 const models = require('../../models');
 const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
-const {mapQuery} = require('@tryghost/mongo-utils');
+const { mapQuery } = require('@tryghost/mongo-utils');
 const postsPublicService = require('../../services/posts-public');
 const getPostServiceInstance = require('../../services/posts/posts-service');
 const postsService = getPostServiceInstance();
@@ -15,7 +15,7 @@ const allowedIncludes = [
     'count.favors',
     'count.forwards',
     'count.comments',
-    'social_post_components'
+    'social_post_components',
 ];
 
 const messages = {

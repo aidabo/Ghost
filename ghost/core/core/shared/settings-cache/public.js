@@ -49,5 +49,6 @@ module.exports = {
     support_email_address: 'support_email_address',
     editor_default_email_recipients: 'editor_default_email_recipients',
     captcha_enabled: 'captcha_enabled',
-    labs: 'labs'
+    labs: 'labs',
+    my_config: 'my_config'
 };

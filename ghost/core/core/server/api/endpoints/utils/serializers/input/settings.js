@@ -2,7 +2,7 @@ const _ = require('lodash');
 const url = require('./utils/url');
 const localUtils = require('../../index');
 const settingsCache = require('../../../../../../shared/settings-cache');
-const {WRITABLE_KEYS_ALLOWLIST} = require('../../../../../../shared/labs');
+const { WRITABLE_KEYS_ALLOWLIST } = require('../../../../../../shared/labs');
 
 const EDITABLE_SETTINGS = [
     'title',
@@ -85,7 +85,7 @@ module.exports = {
     edit(apiConfig, frame) {
         // CASE: allow shorthand syntax where a single key and value are passed to edit instead of object and options
         if (_.isString(frame.data)) {
-            frame.data = {settings: [{key: frame.data, value: frame.options}]};
+            frame.data = { settings: [{ key: frame.data, value: frame.options }] };
         }
 
         const settings = settingsCache.getAll();

@@ -61,6 +61,7 @@ const _ = require('lodash');
  * @property {string|null} editor_default_email_recipients - Default email recipients for editor
  * @property {boolean|null} captcha_enabled - Whether captcha is enabled
  * @property {string|null} labs - JSON string of enabled labs features
+ * @property {string|null} my_config - JSON string of enabled config menu items features
  * @property {never} [x] - Prevent accessing undefined properties
  */
 
@@ -69,7 +70,7 @@ class CacheManager {
      * @prop {Object} options
      * @prop {Object} options.publicSettings - key/value pairs of settings which are publicly accessible
      */
-    constructor({publicSettings}) {
+    constructor({ publicSettings }) {
         // settingsCache holds cached settings, keyed by setting.key, contains the JSON version of the model
         this.settingsCache;
         this.settingsOverrides = {};
@@ -111,7 +112,7 @@ class CacheManager {
         let override;
         if (this.settingsOverrides && Object.keys(this.settingsOverrides).includes(key)) {
             // Wrap the override value in an object in case it's a boolean
-            override = {value: this.settingsOverrides[key]};
+            override = { value: this.settingsOverrides[key] };
         }
 
         const cacheEntry = this.settingsCache.get(key);
@@ -208,7 +209,7 @@ class CacheManager {
         const all = {};
 
         keys.forEach((key) => {
-            all[key] = _.cloneDeep(this.get(key, {resolve: false}));
+            all[key] = _.cloneDeep(this.get(key, { resolve: false }));
         });
 
         return all;
