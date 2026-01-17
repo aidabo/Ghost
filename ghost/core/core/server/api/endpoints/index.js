@@ -258,6 +258,10 @@ module.exports = {
         return apiFramework.pipeline(require('./social-post-components'), localUtils);
     },
 
+    get socialUserLogs() {
+        return apiFramework.pipeline(require('./social-user-logs'), localUtils);
+    },
+
     //custom end
 
     /**

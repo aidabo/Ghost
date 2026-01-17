@@ -1,5 +1,5 @@
 const api = require('../../../../api').endpoints;
-const {http} = require('@tryghost/api-framework');
+const { http } = require('@tryghost/api-framework');
 const mw = require('./middleware');
 
 /**
@@ -44,7 +44,7 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/members', mw.authAdminApi, http(api.socialGroupMembers.add));
     router.put('/social/members/:id', mw.authAdminApi, http(api.socialGroupMembers.edit));
     router.del('/social/members/:id', mw.authAdminApi, http(api.socialGroupMembers.destroy));
-    
+
     // ## Tags
     router.get('/tags/all/count', mw.authAdminApi, http(api.tags.count));
 
@@ -55,7 +55,7 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/comments/post', mw.authAdminApi, http(api.socialComments.add));
     router.get('/social/comments/:id', mw.authAdminApi, http(api.socialComments.read));
     router.put('/social/comments/:id', mw.authAdminApi, http(api.socialComments.edit));
-    
+
     router.post('/social/comments/:id/like', mw.authAdminApi, http(api.socialComments.like));
     router.post('/social/comments/:id/unlike', mw.authAdminApi, http(api.socialComments.unlike));
     router.post('/social/comments/:id/report', mw.authAdminApi, http(api.socialComments.report));
@@ -78,6 +78,13 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/postcomponents', mw.authAdminApi, http(api.socialPostComponents.add));
     router.put('/social/postcomponents/:id', mw.authAdminApi, http(api.socialPostComponents.edit));
     router.del('/social/postcomponents/:id', mw.authAdminApi, http(api.socialPostComponents.destroy));
+
+    // ## lambda logs
+    router.get('/social/userlogs', mw.authAdminApi, http(api.socialUserLogs.browse));
+    router.get('/social/userlogs/:id', mw.authAdminApi, http(api.socialUserLogs.read));
+    router.post('/social/userlogs', mw.authAdminApi, http(api.socialUserLogs.add));
+    router.put('/social/userlogs/:id', mw.authAdminApi, http(api.socialUserLogs.edit));
+    router.del('/social/userlogs/:id', mw.authAdminApi, http(api.socialUserLogs.destroy));
 
     return router;
 };
