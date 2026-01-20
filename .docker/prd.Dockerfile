@@ -61,6 +61,7 @@ COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comments
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-components-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-components.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-components.js ${GHOST_INSTALL}/current/core/server/api/endpoints
+COPY --chown=node:node ghost/core/core/server/api/endpoints/social-user-logs.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 
 # 5. Migration script added
 ## 5.115
@@ -95,6 +96,7 @@ COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/202
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-07-12-00-00-00-add-social-tag-count-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-08-08-00-00-01-update-social-comments-enabled-to-all.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-08-17-12-00-00-add-social-comments-column.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
+
 ## 5.116
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116 ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-01-add-social-related-date-for-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
@@ -104,12 +106,14 @@ COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/202
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-05-add-social-post-approved.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-06-update-social-public-post-column-values.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-10-alter-social-posts-columns-not-null.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-01-add-social-components-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-02-add-social-components-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-03-add-social-post-components-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-04-add-social-post-components-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-11-30-00-00-00-add-social-components-source-column.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2026-01-09-10-01-01-add-social-my-config-setting.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2026-01-17-00-00-00-add-social-user-logs-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2026-01-17-00-00-01-add-social-user-logs-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 
 # 6. Model files changed
 COPY --chown=node:node ghost/core/core/server/models/post.js ${GHOST_INSTALL}/current/core/server/models
@@ -129,6 +133,7 @@ COPY --chown=node:node ghost/core/core/server/models/social-post-comment-report.
 COPY --chown=node:node ghost/core/core/server/models/social-post-comments.js ${GHOST_INSTALL}/current/core/server/models
 COPY --chown=node:node ghost/core/core/server/models/social-components.js ${GHOST_INSTALL}/current/core/server/models
 COPY --chown=node:node ghost/core/core/server/models/social-post-components.js ${GHOST_INSTALL}/current/core/server/models
+COPY --chown=node:node ghost/core/core/server/models/social-user-logs.js ${GHOST_INSTALL}/current/core/server/models
 
 # 8. Email templates changed
 COPY --chown=node:node ghost/core/core/server/services/mail/templates/invite-user.html ${GHOST_INSTALL}/current/core/server/services/mail/templates
@@ -162,19 +167,22 @@ COPY --chown=node:node ghost/core/core/boot.js ${GHOST_INSTALL}/current/core
 # 14 Social-comments service folder added
 COPY --chown=node:node ghost/core/core/server/services/social-comments ${GHOST_INSTALL}/current/core/server/services/social-comments
 
-# 15 Schedule URL for group post
+# 15 Schedule URL changed for group post
 COPY --chown=node:node ghost/core/core/server/adapters/scheduling/post-scheduling/PostScheduler.js ${GHOST_INSTALL}/current/core/server/adapters/scheduling/post-scheduling
+
+# 16 settings of custom added my_config
+COPY --chown=node:node ghost/core/core/server/api/endpoints/utils/serializers/input/settings.js ${GHOST_INSTALL}/current/core/server/api/endpoints/utils/serializers/input/settings.js
 
 # Install dependencies as node user
 RUN set -eux; \
     cd ${GHOST_INSTALL}/current && \
-  	# Reinstall
-	rm -rf node_modules; \
-	gosu node yarn --production --force; \
-	gosu node yarn cache clean; \
-	gosu node npm cache clean --force; \
-	npm cache clean --force; \
-	rm -rv /tmp/yarn*;
+    # Reinstall
+    rm -rf node_modules; \
+    gosu node yarn --production --force; \
+    gosu node yarn cache clean; \
+    gosu node npm cache clean --force; \
+    npm cache clean --force; \
+    rm -rv /tmp/yarn*;
 
 WORKDIR $GHOST_INSTALL
 VOLUME $GHOST_CONTENT
