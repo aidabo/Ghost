@@ -23,7 +23,7 @@ const addPublishedStatusFilter = (frame) => {
     } else {
         filter = 'status:published';
     }
-        
+
     frame.options.filter = filter;
 };
 
@@ -52,16 +52,16 @@ const controller = {
             }
         },
         permissions: true,
-        async query(frame) {  
+        async query(frame) {
             addPublishedStatusFilter(frame);
             logging.info('Fetching social components with published status filter:', JSON.stringify(frame.options));
             // @ts-ignore
-            return await models.SocialComponent.findPage({...frame.options, withRelated: ALLOWED_INCLUDES});
+            return await models.SocialComponent.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
         }
     },
-    
+
     read: {
-        headers: {cacheInvalidate: false},
+        headers: { cacheInvalidate: false },
         options: [
             'filter',
             'include'
@@ -69,14 +69,15 @@ const controller = {
         data: ['id'],
         permissions: true,
         async query(frame) {
+            addPublishedStatusFilter(frame);
             // @ts-ignore
-            const entry = await models.SocialComponent.findOne(frame.data, {...frame.options, withRelated: ALLOWED_INCLUDES});
+            const entry = await models.SocialComponent.findOne(frame.data, { ...frame.options, withRelated: ALLOWED_INCLUDES });
             if (!entry) {
                 return Promise.reject(new errors.NotFoundError({
                     message: tpl(messages.notFound)
                 }));
             }
-            return entry;                
+            return entry;
         }
     }
 };
