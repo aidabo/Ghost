@@ -8,6 +8,39 @@ const messages = {
     tagNotFound: 'Tag not found.'
 };
 
+const appendGroupFilter = async (frame) => {
+    const groupId = frame.options?.group_id;
+    if (!groupId) {
+        return;
+    }
+
+    const userId = frame.options?.context?.user;
+    // @ts-ignore
+    const group = await models.SocialGroup.findOne({id: groupId});
+    if (!group) {
+        throw new errors.NotFoundError({
+            message: `Group not found: ${groupId}.`
+        });
+    }
+
+    // public groups are readable without user auth
+    if (group.get('type') !== 'public') {
+        if (!userId) {
+            throw new errors.NoPermissionError({
+                message: `No login user authentication, can not read tags in this group: ${groupId}.`
+            });
+        }
+
+        // @ts-ignore
+        const allowed = await models.SocialGroup.canAccessGroup(group, userId, 'read');
+        if (!allowed) {
+            throw new errors.NoPermissionError({
+                message: `You are not allowed to read tags in this group: ${groupId}, user: ${userId}.`
+            });
+        }
+    }
+};
+
 /** @type {import('@tryghost/api-framework').Controller} */
 const controller = {
     docName: 'tags',
@@ -19,6 +52,7 @@ const controller = {
         options: [
             'include',
             'filter',
+            'group_id',
             'fields',
             'limit',
             'order',
@@ -33,7 +67,8 @@ const controller = {
             }
         },
         permissions: true,
-        query(frame) {
+        async query(frame) {
+            await appendGroupFilter(frame);
             return models.Tag.findPage(frame.options);
         }
     },
@@ -45,6 +80,7 @@ const controller = {
         options: [
             'include',
             'filter',
+            'group_id',
             'fields',
             'debug'
         ],
@@ -61,7 +97,8 @@ const controller = {
             }
         },
         permissions: true,
-        query(frame) {
+        async query(frame) {
+            await appendGroupFilter(frame);
             return models.Tag.findOne(frame.data, frame.options)
                 .then((model) => {
                     if (!model) {

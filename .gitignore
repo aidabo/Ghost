@@ -180,3 +180,6 @@ temp*.sql
 # Docker Yarn Cache
 .yarncache
 .yarncachecopy
+
+/ghost/core/content.origin/
+ghost/core/core/shared/config/env/config.development.json 

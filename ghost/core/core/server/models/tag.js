@@ -159,8 +159,9 @@ Tag = ghostBookshelf.Model.extend({
         // allowlists for the `options` hash argument on methods, by method name.
         // these are the only options that can be passed to Bookshelf / Knex.
         const validOptions = {
-            findAll: ['columns'],
-            findOne: ['columns', 'visibility'],
+            findAll: ['columns', 'group_id'],
+            findOne: ['columns', 'visibility', 'group_id'],
+            findPage: ['group_id'],
             destroy: ['destroyAll']
         };
 
@@ -180,6 +181,10 @@ Tag = ghostBookshelf.Model.extend({
                         .leftOuterJoin('posts_tags', 'posts.id', 'posts_tags.post_id')
                         .whereRaw('posts_tags.tag_id = tags.id')
                         .as('count__posts');
+
+                    if (options.group_id) {
+                        qb.andWhere('posts.group_id', '=', options.group_id);
+                    }
 
                     if (options.context && options.context.public) {
                         // @TODO use the filter behavior for posts

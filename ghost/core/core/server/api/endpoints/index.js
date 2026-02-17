@@ -262,6 +262,10 @@ module.exports = {
         return apiFramework.pipeline(require('./social-user-logs'), localUtils);
     },
 
+    get socialGallery() {
+        return apiFramework.pipeline(require('./social-gallery'), localUtils);
+    },
+
     //custom end
 
     /**

@@ -5,11 +5,144 @@ const models = require('../../models');
 const logging = require('@tryghost/logging');
 
 const ALLOWED_INCLUDES = [
-    //'posts'
+    'tag',
+    'user',
+    'group'
 ];
 
 const messages = {
-    notFound: 'social component not found.'
+    notFound: 'social component not found.',
+    noPermission: 'You are not allowed to access this social component.'
+};
+
+const TAG_ID_REGEX = /^[a-f0-9]{24}$/;
+
+const resolveTagId = async (tagValue) => {
+    if (typeof tagValue !== 'string') {
+        return null;
+    }
+
+    const normalizedTag = tagValue.trim();
+    if (!normalizedTag) {
+        return null;
+    }
+
+    if (TAG_ID_REGEX.test(normalizedTag)) {
+        return normalizedTag;
+    }
+
+    // @ts-ignore
+    const bySlug = await models.Tag.findOne({slug: normalizedTag}, {columns: ['id']});
+    if (bySlug) {
+        return bySlug.get('id');
+    }
+
+    // @ts-ignore
+    const byName = await models.Tag.findOne({name: normalizedTag}, {columns: ['id']});
+    if (byName) {
+        return byName.get('id');
+    }
+
+    return null;
+};
+
+const appendTagFilter = async (frame) => {
+    const tag = frame.options?.tag;
+    if (!tag) {
+        return;
+    }
+
+    const tagId = await resolveTagId(tag);
+    const filterTag = tagId || tag;
+
+    if (!/\btag:/.test(frame.options.filter || '')) {
+        frame.options.filter = frame.options.filter ? `${frame.options.filter}+tag:${filterTag}` : `tag:${filterTag}`;
+    }
+
+    delete frame.options.tag;
+};
+
+const appendGroupFilter = (frame) => {
+    const groupId = frame.options?.group_id;
+    if (!groupId) {
+        return;
+    }
+
+    if (!/\bgroup_id:/.test(frame.options.filter || '')) {
+        frame.options.filter = frame.options.filter ? `${frame.options.filter}+group_id:${groupId}` : `group_id:${groupId}`;
+    }
+
+    delete frame.options.group_id;
+};
+
+const appendDefaultPublicBrowseScopeFilter = async (frame) => {
+    // @ts-ignore
+    const publicGroups = await models.SocialGroup.findAll({
+        filter: 'type:public',
+        columns: ['id']
+    });
+
+    const publicGroupIds = (publicGroups?.models || [])
+        .map(group => group.get('id'))
+        .filter(Boolean);
+
+    const publicScopeFilter = publicGroupIds.length > 0
+        ? `(group_id:null,group_id:[${publicGroupIds.join(',')}])`
+        : 'group_id:null';
+
+    frame.options.filter = frame.options.filter
+        ? `${frame.options.filter}+${publicScopeFilter}`
+        : publicScopeFilter;
+};
+
+const isPublicGroup = async (groupId) => {
+    if (!groupId) {
+        return false;
+    }
+
+    // @ts-ignore
+    const group = await models.SocialGroup.findOne({id: groupId});
+    if (!group) {
+        return false;
+    }
+
+    return group.get('type') === 'public';
+};
+
+const enforcePublicBrowseScope = async (frame) => {
+    const groupId = frame.options?.group_id;
+
+    if (groupId) {
+        const allowed = await isPublicGroup(groupId);
+        if (!allowed) {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.noPermission)
+            });
+        }
+
+        appendGroupFilter(frame);
+        return;
+    }
+
+    // Public browsing scope without explicit group_id:
+    // include pages with no group plus pages that belong to public groups.
+    await appendDefaultPublicBrowseScopeFilter(frame);
+};
+
+const appendPublicGroupFilterIfRequested = async (frame) => {
+    const groupId = frame.options?.group_id;
+    if (!groupId) {
+        return;
+    }
+
+    const allowed = await isPublicGroup(groupId);
+    if (!allowed) {
+        throw new errors.NoPermissionError({
+            message: tpl(messages.noPermission)
+        });
+    }
+
+    appendGroupFilter(frame);
 };
 
 const addPublishedStatusFilter = (frame) => {
@@ -38,6 +171,8 @@ const controller = {
         options: [
             'include',
             'filter',
+            'tag',
+            'group_id',
             'fields',
             'collection',
             'formats',
@@ -53,6 +188,8 @@ const controller = {
         },
         permissions: true,
         async query(frame) {
+            await appendTagFilter(frame);
+            await enforcePublicBrowseScope(frame);
             addPublishedStatusFilter(frame);
             logging.info('Fetching social components with published status filter:', JSON.stringify(frame.options));
             // @ts-ignore
@@ -64,11 +201,13 @@ const controller = {
         headers: { cacheInvalidate: false },
         options: [
             'filter',
-            'include'
+            'include',
+            'group_id'
         ],
         data: ['id'],
         permissions: true,
         async query(frame) {
+            await appendPublicGroupFilterIfRequested(frame);
             addPublishedStatusFilter(frame);
             // @ts-ignore
             const entry = await models.SocialComponent.findOne(frame.data, { ...frame.options, withRelated: ALLOWED_INCLUDES });
@@ -77,10 +216,20 @@ const controller = {
                     message: tpl(messages.notFound)
                 }));
             }
+
+            // Content API is public: group-scoped pages are only readable when group is public.
+            if (entry.get('group_id')) {
+                const allowed = await isPublicGroup(entry.get('group_id'));
+                if (!allowed) {
+                    throw new errors.NoPermissionError({
+                        message: tpl(messages.noPermission)
+                    });
+                }
+            }
+
             return entry;
         }
     }
 };
 
 module.exports = controller;
-

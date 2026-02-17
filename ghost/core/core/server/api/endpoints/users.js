@@ -7,19 +7,20 @@ const auth = require('../../services/auth');
 const apiMail = require('./index').mail;
 const apiSettings = require('./index').settings;
 const UsersService = require('../../services/Users');
-const userService = new UsersService({dbBackup, models, auth, apiMail, apiSettings});
+const userService = new UsersService({ dbBackup, models, auth, apiMail, apiSettings });
 const ALLOWED_INCLUDES = [
-    'count.posts', 
-    'permissions', 
-    'roles', 
-    'roles.permissions', 
-    'count.followed', 
-    'count.follow', 
+    'count.posts',
+    'permissions',
+    'roles',
+    'roles.permissions',
+    'count.followed',
+    'count.follow',
     'count.groups',
-    'count.inactive_groups', 
-    'group_members', 
-    'group_members.role', 
-    'group_members.group', 
+    'count.inactive_groups',
+    'count.pages',
+    'group_members',
+    'group_members.role',
+    'group_members.group',
     'group_members.group.count.members',
     'group_members.group.count.posts'
 ];
@@ -34,7 +35,7 @@ function permissionOnlySelf(frame) {
     const targetId = getTargetId(frame);
     const userId = frame.user.id;
     if (targetId !== userId) {
-        return Promise.reject(new errors.NoPermissionError({message: tpl(messages.noPermissionToAction)}));
+        return Promise.reject(new errors.NoPermissionError({ message: tpl(messages.noPermissionToAction) }));
     }
     return Promise.resolve();
 }
@@ -44,10 +45,10 @@ function getTargetId(frame) {
 }
 
 async function fetchOrCreatePersonalToken(userId) {
-    const token = await models.ApiKey.findOne({user_id: userId}, {});
+    const token = await models.ApiKey.findOne({ user_id: userId }, {});
 
     if (!token) {
-        const newToken = await models.ApiKey.add({user_id: userId, type: 'admin'});
+        const newToken = await models.ApiKey.add({ user_id: userId, type: 'admin' });
         return newToken;
     }
 
@@ -94,7 +95,8 @@ function orderByCount(options) {
             .replace('posts', 'count__posts')
             .replace('followed', 'count__followed')
             .replace('follow', 'count__follow')
-            .replace('groups', 'count__groups');
+            .replace('groups', 'count__groups')
+            .replace('pages', 'count__pages');
     }
 }
 
@@ -236,9 +238,9 @@ const controller = {
         validation: {
             docName: 'password',
             data: {
-                newPassword: {required: true},
-                ne2Password: {required: true},
-                user_id: {required: true}
+                newPassword: { required: true },
+                ne2Password: { required: true },
+                user_id: { required: true }
             }
         },
         permissions: {
@@ -259,7 +261,7 @@ const controller = {
             cacheInvalidate: false
         },
         permissions(frame) {
-            return models.Role.findOne({name: 'Owner'})
+            return models.Role.findOne({ name: 'Owner' })
                 .then((ownerRole) => {
                     return permissionsService.canThis(frame.options.context).assign.role(ownerRole);
                 });
@@ -308,7 +310,7 @@ const controller = {
         query(frame) {
             const targetId = getTargetId(frame);
             return fetchOrCreatePersonalToken(targetId).then((model) => {
-                return models.ApiKey.refreshSecret(model.toJSON(), Object.assign({}, {id: model.id}));
+                return models.ApiKey.refreshSecret(model.toJSON(), Object.assign({}, { id: model.id }));
             });
         }
     }

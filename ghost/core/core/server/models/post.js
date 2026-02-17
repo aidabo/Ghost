@@ -44,6 +44,34 @@ const messages = {
     invalidLexicalStructureHelp: 'https://ghost.org/docs/publishing/'
 };
 
+const extractGroupIdsFromFilter = (filter) => {
+    if (!filter || typeof filter !== 'string') {
+        return [];
+    }
+
+    const ids = new Set();
+
+    // group_id:[id1,id2]
+    const listMatch = filter.match(/group_id:\[([^\]]+)\]/);
+    if (listMatch && listMatch[1]) {
+        listMatch[1]
+            .split(',')
+            .map(id => id.trim().replace(/^['"]|['"]$/g, ''))
+            .filter(Boolean)
+            .forEach(id => ids.add(id));
+    }
+
+    // group_id:id OR group_id:'id'
+    const singleMatches = filter.matchAll(/group_id:'?([a-f0-9]+)'?/g);
+    for (const match of singleMatches) {
+        if (match[1]) {
+            ids.add(match[1]);
+        }
+    }
+
+    return [...ids];
+};
+
 const MOBILEDOC_REVISIONS_COUNT = 10;
 const POST_REVISIONS_COUNT = 25;
 const POST_REVISIONS_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
@@ -1406,36 +1434,46 @@ Post = ghostBookshelf.Model.extend({
         return options;
     },
 
-    validateGroupPostOnFetch: function validateGroupPostOnFetch(options) {
+    validateGroupPostOnFetch: async function validateGroupPostOnFetch(options) {
         logging.info('validateGroupPostOnFetch', JSON.stringify(options));
         if (options.context?.internal){
             return;
         }
 
-        // Matches group_id:'684fe613ac7a254f8909f8d4' or group_id:684fe613ac7a254f8909f8d4
-        let filter = options.filter;
-        const match = filter?.match(/group_id:'?([a-f0-9]+)'?/);
-        if (match) {
-            const groupId = match[1];
+        const groupIds = extractGroupIdsFromFilter(options.filter);
+        if (!groupIds.length) {
+            return;
+        }
+
+        const user = options.context?.user;
+
+        for (const groupId of groupIds) {
             // @ts-ignore
-            return models.SocialGroup.findOne({id: groupId})
-                .then((group) => {
-                    const user = options.context.user;
-                    if (!user) {
-                        throw new errors.NoPermissionError({
-                            message: `No login user authentication, can not read posts in this group: ${groupId}.`
-                        });
-                    }
-                    // @ts-ignore
-                    return models.SocialGroup.canAccessGroup(group, user, 'read')
-                        .then((allowed) => {
-                            if (!allowed) {
-                                throw new errors.NoPermissionError({
-                                    message: `You are not allowed to read posts in this group: ${groupId}, user: ${user}.`
-                                });
-                            }
-                        });
+            const group = await models.SocialGroup.findOne({id: groupId});
+            if (!group) {
+                throw new errors.NotFoundError({
+                    message: `Group not found: ${groupId}.`
                 });
+            }
+
+            // public groups are readable without user auth
+            if (group.get('type') === 'public') {
+                continue;
+            }
+
+            if (!user) {
+                throw new errors.NoPermissionError({
+                    message: `No login user authentication, can not read posts in this group: ${groupId}.`
+                });
+            }
+
+            // @ts-ignore
+            const allowed = await models.SocialGroup.canAccessGroup(group, user, 'read');
+            if (!allowed) {
+                throw new errors.NoPermissionError({
+                    message: `You are not allowed to read posts in this group: ${groupId}, user: ${user}.`
+                });
+            }
         }
     },
 

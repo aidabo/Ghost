@@ -31,147 +31,22 @@ RUN set -eux; \
 # Set permissions
 RUN chown -R node:node ${GHOST_CONTENT}
 
-# 1. App package outside of core which is changed 
+# Simplified COPY section (grouped by directory)
 COPY --chown=node:node .docker/components/tryghost-api-framework-5.116.2.tgz ${GHOST_INSTALL}/current/core/components
-
-# 2. Table's schema changed
 COPY --chown=node:node ghost/core/core/server/data/schema/schema.js ${GHOST_INSTALL}/current/core/server/data/schema
-
-# 3. Server endpoint Api changed
-COPY --chown=node:node ghost/core/core/server/api/endpoints/index.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/posts.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/users.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/tags.js ${GHOST_INSTALL}/current/core/server/api/endpoints 
-COPY --chown=node:node ghost/core/core/server/api/endpoints/tags-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints 
-COPY --chown=node:node ghost/core/core/server/api/endpoints/utils/permissions.js ${GHOST_INSTALL}/current/core/server/api/endpoints 
-COPY --chown=node:node ghost/core/core/server/api/endpoints/pages.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/posts-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-
-# 4. Server endpoint Api added
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-bookmarks.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-favors.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-follows.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-forwards.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-group-members.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-groups.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comment-replies.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comments.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comment-report.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-comments-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-components-public.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-components.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-post-components.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/core/core/server/api/endpoints/social-user-logs.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-
-# 5. Migration script added
-## 5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-16-00-00-drop-social-tables.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-17-00-10-add-social-groups-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-17-00-11-add-social-groups-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-18-00-00-add-social-group-column-to-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-18-00-01-add-social-index-group-to-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-20-00-00-add-social-group-admin-role.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-20-00-00-add-social-group-owner-role.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-20-00-01-add-social-group-member-role.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-00-add-social-follows-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-01-add-social-follows-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-02-add-social-bookmarks-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-03-add-social-bookmarks-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-04-add-social-favors-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-05-add-social-favors-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-06-add-social-forwards-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-07-add-social-forwards-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-12-add-social-groups-members-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-13-add-social-groups-members-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-17-add-social-post-comments-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-00-18-add-social-post-comments-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-01-19-add-social-post-comments-like-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-01-20-add-social-post-comments-like-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-01-21-add-social-post-comments-report-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-04-01-21-01-22-add-social-post-comments-report-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-06-15-15-00-00-add-social-groups-count-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-06-22-00-00-00-add-social-tag-count-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-06-26-00-00-00-add-social-group-trash-for-administrator.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-06-26-01-00-00-add-social-group-column-of-image.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-07-12-00-00-00-add-social-tag-count-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-08-08-00-00-01-update-social-comments-enabled-to-all.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115/2025-08-17-12-00-00-add-social-comments-column.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
-
-## 5.116
+COPY --chown=node:node ghost/core/core/server/api/endpoints ${GHOST_INSTALL}/current/core/server/api/endpoints
+COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115 ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116 ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-01-add-social-related-date-for-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-02-add-social-related-events-to-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-03-add-social-comment-closed-column-for-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-04-add-social-public-post.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-05-add-social-post-approved.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-06-update-social-public-post-column-values.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-25-00-00-10-alter-social-posts-columns-not-null.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-01-add-social-components-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-02-add-social-components-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-03-add-social-post-components-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-08-30-00-00-04-add-social-post-components-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2025-11-30-00-00-00-add-social-components-source-column.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2026-01-09-10-01-01-add-social-my-config-setting.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2026-01-17-00-00-00-add-social-user-logs-table.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116/2026-01-17-00-00-01-add-social-user-logs-permissions.js ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
-
-# 6. Model files changed
-COPY --chown=node:node ghost/core/core/server/models/post.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/user.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/tag.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/tag-public.js ${GHOST_INSTALL}/current/core/server/models
-
-# 7. Model files added
-COPY --chown=node:node ghost/core/core/server/models/social-bookmark.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/social-favor.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/social-follow.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/social-forward.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/social-group-members.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/social-groups.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/social-post-comment-like.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/social-post-comment-report.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/social-post-comments.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/social-components.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/social-post-components.js ${GHOST_INSTALL}/current/core/server/models
-COPY --chown=node:node ghost/core/core/server/models/social-user-logs.js ${GHOST_INSTALL}/current/core/server/models
-
-# 8. Email templates changed
-COPY --chown=node:node ghost/core/core/server/services/mail/templates/invite-user.html ${GHOST_INSTALL}/current/core/server/services/mail/templates
-COPY --chown=node:node ghost/core/core/server/services/mail/templates/invite-user-by-api-key.html ${GHOST_INSTALL}/current/core/server/services/mail/templates
-COPY --chown=node:node ghost/core/core/server/services/mail/templates/raw/invite-user.html ${GHOST_INSTALL}/current/core/server/services/mail/templates
-COPY --chown=node:node ghost/core/core/server/services/mail/templates/raw/reset-password.html ${GHOST_INSTALL}/current/core/server/services/mail/templates
-COPY --chown=node:node ghost/core/core/server/services/mail/templates/raw/test.html ${GHOST_INSTALL}/current/core/server/services/mail/templates
-COPY --chown=node:node ghost/core/core/server/services/mail/templates/raw/welcome.html ${GHOST_INSTALL}/current/core/server/services/mail/templates
-COPY --chown=node:node ghost/core/core/server/services/mail/templates/reset-password.html ${GHOST_INSTALL}/current/core/server/services/mail/templates
-COPY --chown=node:node ghost/core/core/server/services/mail/templates/test.html ${GHOST_INSTALL}/current/core/server/services/mail/templates
-COPY --chown=node:node ghost/core/core/server/services/mail/templates/welcome.html ${GHOST_INSTALL}/current/core/server/services/mail/templates
-
-# 9. config.js changed
+COPY --chown=node:node ghost/core/core/server/models ${GHOST_INSTALL}/current/core/server/models
+COPY --chown=node:node ghost/core/core/server/services/mail/templates ${GHOST_INSTALL}/current/core/server/services/mail/templates
 COPY --chown=node:node ghost/core/core/server/services/url/config.js ${GHOST_INSTALL}/current/core/server/services/url
-
-# 10. Web route admin changed
-COPY --chown=node:node ghost/core/core/server/web/api/endpoints/admin/custom-routes.js ${GHOST_INSTALL}/current/core/server/web/api/endpoints/admin
-COPY --chown=node:node ghost/core/core/server/web/api/endpoints/admin/middleware.js ${GHOST_INSTALL}/current/core/server/web/api/endpoints/admin
-COPY --chown=node:node ghost/core/core/server/web/api/endpoints/admin/routes.js ${GHOST_INSTALL}/current/core/server/web/api/endpoints/admin
-
-# 11. Web route content changed
-COPY --chown=node:node ghost/core/core/server/web/api/endpoints/content/routes.js ${GHOST_INSTALL}/current/core/server/web/api/endpoints/content
-COPY --chown=node:node ghost/core/core/server/web/api/endpoints/content/custom-routes.js ${GHOST_INSTALL}/current/core/server/web/api/endpoints/content
-
-# 12. overrides.js changed
+COPY --chown=node:node ghost/core/core/server/web/api/endpoints/admin ${GHOST_INSTALL}/current/core/server/web/api/endpoints/admin
+COPY --chown=node:node ghost/core/core/server/web/api/endpoints/content ${GHOST_INSTALL}/current/core/server/web/api/endpoints/content
 COPY --chown=node:node ghost/core/core/shared/config/overrides.json ${GHOST_INSTALL}/current/core/shared/config/overrides.json
-
-# 13 boot.js changed, adding social-comments.init()
 COPY --chown=node:node ghost/core/core/boot.js ${GHOST_INSTALL}/current/core
-
-# 14 Social-comments service folder added
 COPY --chown=node:node ghost/core/core/server/services/social-comments ${GHOST_INSTALL}/current/core/server/services/social-comments
-
-# 15 Schedule URL changed for group post
 COPY --chown=node:node ghost/core/core/server/adapters/scheduling/post-scheduling/PostScheduler.js ${GHOST_INSTALL}/current/core/server/adapters/scheduling/post-scheduling
-
-# 16 settings of custom added my_config
-COPY --chown=node:node ghost/core/core/server/api/endpoints/utils/serializers/input/settings.js ${GHOST_INSTALL}/current/core/server/api/endpoints/utils/serializers/input/settings.js
+COPY --chown=node:node ghost/core/core/server/lib/lexical.js ${GHOST_INSTALL}/current/core/server/lib
 
 # Install dependencies as node user
 RUN set -eux; \

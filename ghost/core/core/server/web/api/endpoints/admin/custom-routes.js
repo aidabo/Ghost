@@ -86,5 +86,15 @@ module.exports = function customApiRoutes(router) {
     router.put('/social/userlogs/:id', mw.authAdminApi, http(api.socialUserLogs.edit));
     router.del('/social/userlogs/:id', mw.authAdminApi, http(api.socialUserLogs.destroy));
 
+    // ## gallery
+    router.get('/social/gallery/user', mw.authAdminApi, http(api.socialGallery.user));
+    router.get('/social/gallery/user/', mw.authAdminApi, http(api.socialGallery.user));
+    router.get('/social/gallery/group', mw.authAdminApi, http(api.socialGallery.group));
+    router.get('/social/gallery/group/', mw.authAdminApi, http(api.socialGallery.group));
+    router.get('/social/gallery/group/:id', mw.authAdminApi, http(api.socialGallery.group));
+    router.get('/social/gallery/group/:id/', mw.authAdminApi, http(api.socialGallery.group));
+    router.post('/social/gallery/sync-tags', mw.authAdminApi, http(api.socialGallery.syncTags));
+    router.post('/social/gallery/sync-tags/', mw.authAdminApi, http(api.socialGallery.syncTags));
+
     return router;
 };

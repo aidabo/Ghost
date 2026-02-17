@@ -1,11 +1,18 @@
 const {combineTransactionalMigrations, addPermissionWithRoles} = require('../../utils');
 
-const ROLES = [
+const DEFAULT_ROLES = [
     'Admin Integration',
     'Administrator',
     'Author',
     'Editor',
     'Contributor'
+];
+
+const WRITE_ROLES = [
+    'Admin Integration',
+    'Administrator',
+    'Editor',
+    'Super Editor'
 ];
 
 const PERMISSIONS = [
@@ -36,5 +43,9 @@ const PERMISSIONS = [
     }
 ];
 
-module.exports = combineTransactionalMigrations(...PERMISSIONS.map(p => addPermissionWithRoles(p, ROLES)));
-
+module.exports = combineTransactionalMigrations(
+    ...PERMISSIONS.map((permission) => {
+        const roles = ['add', 'edit', 'destroy'].includes(permission.action) ? WRITE_ROLES : DEFAULT_ROLES;
+        return addPermissionWithRoles(permission, roles);
+    })
+);

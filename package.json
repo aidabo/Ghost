@@ -24,10 +24,10 @@
     "build": "nx run-many -t build",
     "build:clean": "nx reset && rimraf -g 'ghost/*/build' && rimraf -g 'ghost/*/tsconfig.tsbuildinfo'",
     "clean:hard": "node ./.github/scripts/clean.js",
-    "dev:debug": "DEBUG_COLORS=true DEBUG=@tryghost*,ghost:* yarn dev",
+    "dev:debug": "NX_DAEMON=false DEBUG_COLORS=true DEBUG=@tryghost*,ghost:* node --trace-warnings .github/scripts/dev.js",
     "dev:admin": "node .github/scripts/dev.js --admin",
     "dev:ghost": "node .github/scripts/dev.js --ghost",
-    "dev": "node --trace-warnings .github/scripts/dev.js",
+    "dev": "NX_DAEMON=false node --trace-warnings .github/scripts/dev.js",
     "fix": "yarn cache clean && rimraf -g '**/node_modules' && yarn && yarn nx reset",
     "knex-migrator": "yarn workspace ghost run knex-migrator",
     "setup": "yarn && git submodule update --init && nx run-many -t build:ts && NODE_ENV=development node .github/scripts/setup.js",
@@ -61,7 +61,7 @@
     "tb:local:stop": "docker stop tinybird-local && docker rm tinybird-local",
     "tbf:install": "curl https://tinybird.co | sh",
     "tbf": "tb local start && cd ghost/core/core/server/data/tinybird && tb dev",
-    "docker:next:build": "docker build . -f .docker/prd.Dockerfile -t ghost:5.116.2-alpine-next-r2 --no-cache"
+    "docker:next:build": "docker build . -f .docker/prd.Dockerfile -t ghost:5.116.2-alpine-next-r3 --no-cache"
   },
   "resolutions": {
     "@tryghost/errors": "1.3.5",

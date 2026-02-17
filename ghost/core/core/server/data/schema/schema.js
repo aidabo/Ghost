@@ -137,6 +137,7 @@ module.exports = {
         id: { type: 'string', maxlength: 24, nullable: false, primary: true },
         name: { type: 'string', maxlength: 191, nullable: false },
         slug: { type: 'string', maxlength: 191, nullable: false, unique: true },
+        media_folder_alias: { type: 'string', maxlength: 32, nullable: true, unique: true },
         password: { type: 'string', maxlength: 60, nullable: false },
         email: { type: 'string', maxlength: 191, nullable: false, unique: true, validations: { isEmail: true } },
         profile_image: { type: 'string', maxlength: 2000, nullable: true },
@@ -1198,6 +1199,7 @@ module.exports = {
         }, /// e.g., waitapproval active, archived
         max_members: { type: 'integer', nullable: false, unsigned: true, defaultTo: 100 },
         group_image: { type: 'string', maxlength: 2000, nullable: true },
+        media_folder_alias: { type: 'string', maxlength: 32, nullable: true, unique: true, index: true },
         require_approval: { type: 'boolean', nullable: true, defaultTo: false }, // ← new
         optional_settings: { type: 'json', nullable: true, defaultTo: {} }, // ← new
         approved_at: { type: 'dateTime', nullable: true },
@@ -1256,11 +1258,13 @@ module.exports = {
         id: { type: 'string', maxlength: 24, nullable: false, primary: true },
         type: { type: 'string', maxlength: 60, nullable: false, index: true },
         title: { type: 'string', maxlength: 191, nullable: false },
+        tag: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'tags.id', setNullDelete: true },
         excerpt: { type: 'string', maxlength: 500, nullable: true },
         image: { type: 'string', maxlength: 500, nullable: true },
         attributes: { type: 'text', maxlength: 1000000000, nullable: true },
         layout: { type: 'text', maxlength: 1000000000, nullable: true },
         source: { type: 'text', maxlength: 1000000000, nullable: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true, index: true },
         status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft', validations: { isIn: [['published', 'draft']] } },
         published_at: { type: 'dateTime', nullable: true },
         created_at: { type: 'dateTime', nullable: false },
@@ -1287,7 +1291,24 @@ module.exports = {
         updated_at: { type: 'dateTime', nullable: true }
     },
 
+    social_media_assets: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        storage_key: { type: 'string', maxlength: 2000, nullable: false, unique: true, index: true },
+        storage_url: { type: 'string', maxlength: 2000, nullable: false },
+        asset_type: { type: 'string', maxlength: 50, nullable: false, index: true },
+        owner_scope: { type: 'string', maxlength: 20, nullable: false, index: true },
+        user_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'users.id', cascadeDelete: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true },
+        tag_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'tags.id', setNullDelete: true },
+        tag_slug: { type: 'string', maxlength: 191, nullable: true, index: true },
+        created_at: { type: 'dateTime', nullable: false },
+        updated_at: { type: 'dateTime', nullable: true },
+        '@@INDEXES@@': [
+            ['owner_scope', 'user_id', 'created_at'],
+            ['owner_scope', 'group_id', 'created_at']
+        ]
+    },
+
 
     // 202601 add custom social tables end
 };
-
