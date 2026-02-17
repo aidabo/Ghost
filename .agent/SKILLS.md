@@ -548,3 +548,25 @@ Body:
 - Migration hardening update (same file):
 - `2026-02-17-00-00-02-add-super-editor-social-permissions.js` now grants by querying existing permission rows and skipping missing names, with support for both spaced and legacy no-space permission names.
 - This avoids migration aborts when one permission name differs across environments.
+
+### Social Media Assets MySQL Key Length Fix (2026-02-17)
+
+- Problem:
+- Migration creating `social_media_assets` failed on MySQL/InnoDB with:
+- `ER_TOO_LONG_KEY` / `Specified key was too long; max key length is 3072 bytes`
+- Cause:
+- `storage_key` was defined as `varchar(2000)` with both `unique` and `index`.
+- Under `utf8mb4`, this exceeds index key-length limits.
+
+- Updated migration:
+- `ghost/core/core/server/data/migrations/versions/5.116/2026-02-13-00-00-00-add-social-media-assets-table.js`
+- Changed `storage_key` spec:
+- from: `maxlength: 2000, unique: true, index: true`
+- to: `maxlength: 2000` (no DB unique/index constraints)
+
+- Updated schema definition:
+- `ghost/core/core/server/data/schema/schema.js`
+- Changed `social_media_assets.storage_key` to non-indexed, non-unique field for consistency with migration/runtime.
+
+- Note:
+- App-level upsert logic still matches by exact `storage_key` (`where({storage_key})`) and remains functional.

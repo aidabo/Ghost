@@ -2,7 +2,9 @@ const {addTable} = require('../../utils');
 
 module.exports = addTable('social_media_assets', {
     id: {type: 'string', maxlength: 24, nullable: false, primary: true},
-    storage_key: {type: 'string', maxlength: 2000, nullable: false, unique: true, index: true},
+    // NOTE: MySQL/InnoDB (utf8mb4) cannot create unique/full indexes on very long varchar(2000).
+    // Keep storage_key as non-indexed text identifier; application upsert still matches by exact key.
+    storage_key: {type: 'string', maxlength: 2000, nullable: false},
     storage_url: {type: 'string', maxlength: 2000, nullable: false},
     asset_type: {type: 'string', maxlength: 50, nullable: false, index: true},
     owner_scope: {type: 'string', maxlength: 20, nullable: false, index: true},
