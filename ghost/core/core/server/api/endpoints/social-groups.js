@@ -110,7 +110,8 @@ const controller = {
             'creator_id',
             'group_name',
             'type',
-            'status'
+            'status',
+            'optional_settings'
         ],
         permissions: true,
         async query(frame) {
@@ -144,7 +145,8 @@ const controller = {
             'creator_id',
             'group_name',
             'type',
-            'status'
+            'status',
+            'optional_settings'
         ],
         permissions: true,
         async query(frame) {
@@ -188,4 +190,3 @@ const controller = {
 };
 
 module.exports = controller;
-

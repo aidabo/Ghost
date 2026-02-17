@@ -22,6 +22,34 @@ const SocialGroup = ghostBookshelf.Model.extend({
         };
     },
 
+    format(attrs) {
+        const formatted = ghostBookshelf.Model.prototype.format.call(this, attrs);
+
+        if (
+            Object.prototype.hasOwnProperty.call(formatted, 'optional_settings') &&
+            formatted.optional_settings &&
+            typeof formatted.optional_settings !== 'string'
+        ) {
+            formatted.optional_settings = JSON.stringify(formatted.optional_settings);
+        }
+
+        return formatted;
+    },
+
+    parse() {
+        const attrs = ghostBookshelf.Model.prototype.parse.apply(this, arguments);
+
+        if (typeof attrs.optional_settings === 'string') {
+            try {
+                attrs.optional_settings = JSON.parse(attrs.optional_settings);
+            } catch (err) {
+                // keep original string when legacy value is not JSON
+            }
+        }
+
+        return attrs;
+    },
+
     owner() {
         return this.belongsTo('User', 'creator_id');
     },

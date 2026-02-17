@@ -475,3 +475,76 @@ Body:
 - API proxy for content read:
 - `apps/host/src/app/api/pages/[pageid]/route.ts`
 - Forwards optional `group_id` to content API for group-aware view auth.
+
+### Group Event Menu Setting Storage (new)
+
+- Backend storage location:
+- `social_groups.optional_settings` (JSON)
+- Group event menu key:
+- `optional_settings.groupEventSetting`
+
+- API update support:
+- Updated endpoint whitelist in:
+- `ghost/core/core/server/api/endpoints/social-groups.js`
+- Added `optional_settings` to `add.data` and `edit.data` allowed fields.
+
+- Purpose:
+- Allow frontend settings panel to persist group-specific dynamic menubar menus per group (instead of using global `settings.my_config`).
+
+### Group Event Setting Backfill Migration (new)
+
+- Migration file:
+- `ghost/core/core/server/data/migrations/versions/5.116/2026-02-17-00-00-00-backfill-social-group-event-setting.js`
+
+- Behavior:
+- Iterates all `social_groups` rows.
+- Ensures `optional_settings` is object-like JSON.
+- If `optional_settings.groupEventSetting` is missing or not an array, initializes it to `[]`.
+
+- Purpose:
+- Normalize existing groups so frontend group event menu editor can safely read/write `groupEventSetting` without null/missing-key edge cases.
+
+### Social Group optional_settings JSON Serialization Fix (2026-02-17)
+
+- Updated model:
+- `ghost/core/core/server/models/social-groups.js`
+
+- Change:
+- Added `format()`/`parse()` handling for `optional_settings`.
+- On write: object values are serialized with `JSON.stringify`.
+- On read: JSON strings are parsed back to object when valid.
+
+- Purpose:
+- Fix SQL error when saving group event menu settings (`optional_settings.groupEventSetting`) where MySQL interpreted object literals as field expressions.
+- Keep API behavior stable for frontend by exposing `optional_settings` as object after read.
+
+### Super Editor Social Group Permissions Fix (2026-02-17)
+
+- Added migration:
+- `ghost/core/core/server/data/migrations/versions/5.116/2026-02-17-00-00-01-add-super-editor-social-group-permissions.js`
+
+- Grants role `Super Editor` the following existing permissions:
+- `Browse/Read/Add/Edit/Delete SocialGroups`
+- `Count SocialGroups`
+- `Browse/Read/Add/Edit/Delete SocialGroupMembers`
+
+- Purpose:
+- Fix `403 NoPermissionError` for super editor users when opening group panel flows that call `/ghost/api/admin/social/groups/...` and related group-member/group-count APIs.
+
+### Super Editor Social Permissions Catch-up (2026-02-17)
+
+- Added migration:
+- `ghost/core/core/server/data/migrations/versions/5.116/2026-02-17-00-00-02-add-super-editor-social-permissions.js`
+
+- Grants role `Super Editor` all existing social permission names introduced by social permission migrations in `5.115`/`5.116`, including:
+- Social follows/bookmarks/favors/forwards
+- Social groups + social group members + group count
+- Social post comments + likes + reports
+- Social components + social post components
+- Social user logs
+
+- Purpose:
+- Ensure legacy databases and mixed migration histories consistently allow `Super Editor` to access social APIs (including social components) without 403 permission errors.
+- Migration hardening update (same file):
+- `2026-02-17-00-00-02-add-super-editor-social-permissions.js` now grants by querying existing permission rows and skipping missing names, with support for both spaced and legacy no-space permission names.
+- This avoids migration aborts when one permission name differs across environments.
