@@ -1,5 +1,44 @@
 # SKILLS Change Log
 
+Date: 2026-03-04
+Scope: social-ai chats/usages backend API normalization and usage authorization
+
+## Change Log (Codex changes)
+- Added backend usage endpoint controller:
+- `ghost/core/core/server/api/endpoints/social-ai-usages.js`
+- Registered endpoint in:
+- `ghost/core/core/server/api/endpoints/index.js`
+- `ghost/core/core/server/web/api/endpoints/admin/custom-routes.js`
+- Exposed routes:
+- `GET /ghost/api/admin/social/ai/usages`
+- `GET /ghost/api/admin/social/ai/usages/:id`
+
+- Normalized Ghost API output format for AI endpoints:
+- Chat browse now returns Ghost-style:
+- `{ socialaichats: [...], meta: { pagination: ... } }`
+- Usage browse now returns Ghost-style:
+- `{ socialaiusages: [...], meta: { pagination: ... } }`
+- Removed previous double-nested response wrappers causing:
+- `socialaichats[].socialaichats[]`
+- `socialaiusages[].socialaiusages[]`
+
+- Added role-aware user filter behavior for usage browse:
+- Default (no `group_id`): filter by current authenticated user from `context.user`.
+- Group mode (`group_id` present): filter by group with group access checks.
+- Optional `user_id` query override allowed only when:
+- same user as requester, or
+- requester has admin role (`Owner` / `Administrator` / `Admin`), or
+- request runs in integration context.
+
+- Added usage browse pagination support:
+- accepts `page` and `limit`
+- returns `meta.pagination` with `page`, `limit`, `pages`, `total`, `next`, `prev`
+
+- Added usage row detail mapping fields:
+- `prompt_tokens`, `completion_tokens`, `total_tokens`
+- `cost_usd_micros`, `amount_usd`, `currency`, `created_at`
+- plus grouped total summary (`group_totals`) for token/amount aggregation.
+
 Date: 2026-02-16
 Scope: social-components content API public scope fix
 
@@ -570,3 +609,245 @@ Body:
 
 - Note:
 - App-level upsert logic still matches by exact `storage_key` (`where({storage_key})`) and remains functional.
+
+### AI Chat History Persistence APIs (2026-02-20)
+
+- Added admin social endpoint:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+
+- Added admin routes:
+- `GET /ghost/api/admin/social/ai/chats`
+- `GET /ghost/api/admin/social/ai/chats/:id`
+- `POST /ghost/api/admin/social/ai/chats`
+- Registered in:
+- `ghost/core/core/server/web/api/endpoints/admin/custom-routes.js`
+
+- Added DB tables:
+- `social_ai_conversations`
+- `social_ai_messages`
+- `social_ai_usages`
+- Files:
+- `ghost/core/core/server/data/migrations/versions/5.116/2026-02-20-00-00-00-add-social-ai-chat-tables.js`
+- `ghost/core/core/server/data/migrations/versions/5.116/2026-02-20-00-00-01-add-social-ai-chat-messages-table.js`
+- `ghost/core/core/server/data/migrations/versions/5.116/2026-02-20-00-00-02-add-social-ai-chat-usages-table.js`
+- Schema synced in:
+- `ghost/core/core/server/data/schema/schema.js`
+
+- Added permissions:
+- `Browse Social AI Chats` (`browse:socialaichat`)
+- `Read Social AI Chats` (`read:socialaichat`)
+- `Add Social AI Chats` (`add:socialaichat`)
+- Migration:
+- `ghost/core/core/server/data/migrations/versions/5.116/2026-02-20-00-00-03-add-social-ai-chat-permissions.js`
+- Super Editor grant migration:
+- `ghost/core/core/server/data/migrations/versions/5.116/2026-02-20-00-00-04-add-super-editor-social-ai-chat-permissions.js`
+
+- API payload sample (save one user/assistant turn):
+```json
+{
+  "socialaichats": [
+    {
+      "conversation_id": "c_123",
+      "user_id": "698da1257b364dc985006308",
+      "group_id": "698dd7e128b5675e5cdec4fe",
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "response_mode": "auto",
+      "visibility": "private",
+      "user_message": "hello",
+      "assistant_message": "hi",
+      "prompt_tokens": 120,
+      "completion_tokens": 40,
+      "total_tokens": 160,
+      "cost_usd_micros": 0,
+      "currency": "USD"
+    }
+  ]
+}
+```
+
+- API caller notes:
+- Endpoint uses admin API cookie auth (`mw.authAdminApi`) and user-scoped access checks.
+- Non-admin callers can only read/write their own `user_id` conversation history.
+
+### AI Chat Auth Fallback (2026-02-20)
+
+- Updated:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+
+- Change:
+- AI chat history endpoint now accepts trusted `context.integration` calls (Admin API key JWT auth) in addition to session-user auth.
+- For integration context:
+- `user_id` is required in query/body and used as target scope.
+
+- Purpose:
+- Avoid `403 Authorization failed` when frontend API route cannot pass Ghost session cookies to backend.
+- Allow server-to-server calls from Next API routes using `Authorization: Ghost <JWT>`.
+
+### AI History 403 + Attachment 1210 Hotfix (2026-02-20)
+
+- Updated endpoint:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+- Set controller `permissions` to `false` for `browse/read/add` while keeping admin auth middleware on routes.
+- Purpose: avoid permission-table block (`403`) for authenticated admin/jwt access before/without permission migration application.
+
+
+### AI History Group Access Enforcement (2026-02-20)
+
+- Updated endpoint:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+
+- Added strict group checks for group-scoped history/cost paths:
+- `browse`: validates `group_id` read access
+- `read`: validates conversation group read access
+- `add`: validates `group_id` write access before persisting messages/usage
+
+- Enforcement method:
+- Uses `SocialGroup.canAccessGroup(group, userId, "read"/"write")` with admin bypass only for actual admin users.
+- No-group scope continues to work without group check.
+
+
+### AI Chat MySQL Datetime + Conversation ID Fix (2026-02-20)
+
+- Updated endpoint:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+
+- Fixes:
+- Convert timestamps to MySQL DATETIME format (`YYYY-MM-DD HH:mm:ss`) before insert/update for:
+  - `social_ai_conversations.created_at/updated_at`
+  - `social_ai_messages.created_at`
+  - `social_ai_usages.created_at`
+- Prevents `Incorrect datetime value ...Z` runtime errors on strict MySQL modes.
+
+
+### AI History Browse Meta Count Extension (2026-02-20)
+
+- Updated endpoint:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+
+- Browse response now includes:
+- `meta.count` (returned rows)
+- `meta.total_count` (all matched rows before limit)
+- `meta.limit`
+
+- Purpose:
+- enable frontend history count display and load-more behavior while keeping newest-first ordering (`updated_at desc`).
+
+
+### AI History Provider Filter Support (2026-02-20)
+
+- Updated endpoint:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+
+- Browse now accepts optional `provider` option/query and applies DB filter on `social_ai_conversations.provider`.
+- Meta (`count`, `total_count`, `limit`) is returned for the filtered set.
+
+
+### AI Message Storage Simplification: One Row Per Turn (2026-02-20)
+
+- Updated endpoint:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+
+- Change:
+- `social_ai_messages` now stores one row per chat turn with:
+  - `role = "turn"`
+  - `content = { user: string, assistant: string }` JSON string
+
+- Read compatibility:
+- `read` formatter now expands `turn` rows back into UI-friendly message sequence (`user` then `assistant`).
+- Legacy rows (`role=user/assistant`) are still supported.
+
+- Conversation update behavior:
+- conversation `title` now remains stable after first insert (no overwrite on later turns).
+
+
+### AI Message Format Strict Mode (2026-02-20)
+
+- Updated endpoint:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+
+- Change:
+- Removed legacy compatibility branch for old `role=user/assistant` rows.
+- Read formatter now strictly parses only `role="turn"` rows with JSON content `{ user, assistant }`.
+
+- Note:
+- This is aligned with cleanup of prior test data in AI tables.
+
+
+### AI Table Model Consistency Update (2026-02-20)
+
+- Added Ghost model files for AI tables:
+- `ghost/core/core/server/models/social-ai-conversations.js`
+- `ghost/core/core/server/models/social-ai-messages.js`
+- `ghost/core/core/server/models/social-ai-usages.js`
+
+- Endpoint consistency update:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+- Now resolves table names from model definitions (`SocialAiConversation/SocialAiMessage/SocialAiUsage`) instead of hardcoded table string literals.
+
+- Purpose:
+- Align with existing Ghost model-layer conventions used by other `social_*` features and reduce schema/table-name drift risk.
+
+
+### AI Model Existence Validation Update (2026-02-20)
+
+- Updated:
+- `ghost/core/core/server/models/social-ai-conversations.js`
+- `ghost/core/core/server/models/social-ai-messages.js`
+- `ghost/core/core/server/models/social-ai-usages.js`
+
+- Validation behavior added:
+- `user_id` must reference an existing row in `users`.
+- `group_id` (if provided) must reference an existing row in `social_groups`.
+- `conversation_id` in messages/usages must reference an existing row in `social_ai_conversations`.
+
+- Purpose:
+- Keep model-layer validation consistent with Ghost conventions and catch invalid references before persistence.
+
+
+### AI Conversation Title Upgrade Logic (2026-02-20)
+
+- Updated endpoint:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+
+- Changes:
+- Added server-side title normalizer/fallback using `provider + first user message` (word-safe 60 chars).
+- On conversation update, if existing title is blank or provider-only, title is upgraded when a better message title is available.
+
+- Purpose:
+- Avoid history rows showing only provider name (e.g. `deepseek`) when first meaningful user text is available later.
+
+
+### AI Conversation Title Format Simplification (2026-03-03)
+
+- Updated endpoint:
+- `ghost/core/core/server/api/endpoints/social-ai-chats.js`
+
+- Changes:
+- title normalizer now stores message-only title (no provider prefix), fallback `New chat` when message is empty.
+- existing-conversation upgrade keeps replacing blank/provider-only legacy titles with normalized message title.
+
+- Purpose:
+- align frontend history UI request to show clean message titles while provider stays as internal filter flag.
+
+### AI Usage Endpoint Added (2026-03-03)
+
+- Added new admin social usage endpoint:
+- `ghost/core/core/server/api/endpoints/social-ai-usages.js`
+
+- Added admin routes:
+- `GET /ghost/api/admin/social/ai/usages`
+- `GET /ghost/api/admin/social/ai/usages/:id`
+- Registered in:
+- `ghost/core/core/server/web/api/endpoints/admin/custom-routes.js`
+- `ghost/core/core/server/api/endpoints/index.js`
+
+- Behavior:
+- returns row-level usage records from `social_ai_usages` with filters:
+  - `group_id`, `user_id`, `provider`, `period_start`, `period_end`, `limit`
+- returns `group_totals` aggregation and `meta` (`count`, `total_count`, `limit`)
+- enforces auth/group access similarly to social AI chats endpoint patterns
+
+- Frontend proxy alignment:
+- updated `01-jibunsee-react/apps/host/src/app/api/ai/usage/route.ts` to pass-through `user_id` to Ghost usage endpoint
+- updated `SiteAssistantPanel.tsx` usage request to include `user_id`

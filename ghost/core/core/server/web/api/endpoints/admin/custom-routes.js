@@ -96,5 +96,14 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/gallery/sync-tags', mw.authAdminApi, http(api.socialGallery.syncTags));
     router.post('/social/gallery/sync-tags/', mw.authAdminApi, http(api.socialGallery.syncTags));
 
+    // ## ai chats
+    router.get('/social/ai/chats', mw.authAdminApi, http(api.socialAiChats.browse));
+    router.get('/social/ai/chats/:id', mw.authAdminApi, http(api.socialAiChats.read));
+    router.post('/social/ai/chats', mw.authAdminApi, http(api.socialAiChats.add));
+
+    // ## ai usages
+    router.get('/social/ai/usages', mw.authAdminApi, http(api.socialAiUsages.browse));
+    router.get('/social/ai/usages/:id', mw.authAdminApi, http(api.socialAiUsages.read));
+
     return router;
 };

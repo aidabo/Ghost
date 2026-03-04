@@ -1310,6 +1310,53 @@ module.exports = {
         ]
     },
 
+    social_ai_conversations: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        user_id: { type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true },
+        title: { type: 'string', maxlength: 500, nullable: true },
+        provider: { type: 'string', maxlength: 50, nullable: true, index: true },
+        model: { type: 'string', maxlength: 191, nullable: true },
+        response_mode: { type: 'string', maxlength: 50, nullable: true },
+        visibility: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'private', index: true },
+        created_at: { type: 'dateTime', nullable: false, index: true },
+        updated_at: { type: 'dateTime', nullable: false, index: true },
+        '@@INDEXES@@': [
+            ['user_id', 'group_id', 'updated_at']
+        ]
+    },
+
+    social_ai_messages: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        conversation_id: { type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_ai_conversations.id', cascadeDelete: true },
+        user_id: { type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true },
+        role: { type: 'string', maxlength: 20, nullable: false, index: true },
+        content: { type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: false },
+        created_at: { type: 'dateTime', nullable: false, index: true },
+        '@@INDEXES@@': [
+            ['conversation_id', 'created_at']
+        ]
+    },
+
+    social_ai_usages: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        conversation_id: { type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_ai_conversations.id', cascadeDelete: true },
+        user_id: { type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true },
+        provider: { type: 'string', maxlength: 50, nullable: true, index: true },
+        model: { type: 'string', maxlength: 191, nullable: true },
+        prompt_tokens: { type: 'integer', nullable: false, unsigned: true, defaultTo: 0 },
+        completion_tokens: { type: 'integer', nullable: false, unsigned: true, defaultTo: 0 },
+        total_tokens: { type: 'integer', nullable: false, unsigned: true, defaultTo: 0 },
+        cost_usd_micros: { type: 'bigInteger', nullable: false, unsigned: true, defaultTo: 0 },
+        currency: { type: 'string', maxlength: 10, nullable: false, defaultTo: 'USD' },
+        created_at: { type: 'dateTime', nullable: false, index: true },
+        '@@INDEXES@@': [
+            ['user_id', 'group_id', 'created_at'],
+            ['provider', 'model', 'created_at']
+        ]
+    },
+
 
     // 202601 add custom social tables end
 };

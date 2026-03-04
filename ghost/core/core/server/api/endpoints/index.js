@@ -266,6 +266,14 @@ module.exports = {
         return apiFramework.pipeline(require('./social-gallery'), localUtils);
     },
 
+    get socialAiChats() {
+        return apiFramework.pipeline(require('./social-ai-chats'), localUtils);
+    },
+
+    get socialAiUsages() {
+        return apiFramework.pipeline(require('./social-ai-usages'), localUtils);
+    },
+
     //custom end
 
     /**
