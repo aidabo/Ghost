@@ -257,6 +257,7 @@ const controller = {
                 cost_usd_micros: Number(row.cost_usd_micros || 0),
                 amount_usd: Number(row.cost_usd_micros || 0) / 1000000,
                 currency: row.currency || 'USD',
+                usage_source: row.usage_source || null,
                 created_at: row.created_at
             }));
 
@@ -336,6 +337,7 @@ const controller = {
                 cost_usd_micros: Number(usage.cost_usd_micros || 0),
                 amount_usd: Number(usage.cost_usd_micros || 0) / 1000000,
                 currency: usage.currency || 'USD',
+                usage_source: usage.usage_source || null,
                 created_at: usage.created_at
             };
         }

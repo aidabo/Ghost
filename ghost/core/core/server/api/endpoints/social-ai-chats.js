@@ -381,7 +381,8 @@ const controller = {
             'completion_tokens',
             'total_tokens',
             'cost_usd_micros',
-            'currency'
+            'currency',
+            'usage_source'
         ],
         permissions: false,
         async query(frame) {
@@ -425,6 +426,7 @@ const controller = {
             const totalTokens = Number(payload.total_tokens || (promptTokens + completionTokens));
             const costUsdMicros = Number(payload.cost_usd_micros || 0);
             const currency = String(payload.currency || 'USD').toUpperCase();
+            const usageSource = String(payload.usage_source || 'finish').trim().toLowerCase();
 
             const now = new Date();
             const nowSql = formatMySqlDateTime(now);
@@ -517,6 +519,7 @@ const controller = {
                         total_tokens: totalTokens,
                         cost_usd_micros: costUsdMicros,
                         currency,
+                        usage_source: usageSource,
                         created_at: nowSql
                     });
                 }

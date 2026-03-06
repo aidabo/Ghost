@@ -1350,6 +1350,7 @@ module.exports = {
         total_tokens: { type: 'integer', nullable: false, unsigned: true, defaultTo: 0 },
         cost_usd_micros: { type: 'bigInteger', nullable: false, unsigned: true, defaultTo: 0 },
         currency: { type: 'string', maxlength: 10, nullable: false, defaultTo: 'USD' },
+        usage_source: { type: 'string', maxlength: 32, nullable: true, index: true },
         created_at: { type: 'dateTime', nullable: false, index: true },
         '@@INDEXES@@': [
             ['user_id', 'group_id', 'created_at'],
