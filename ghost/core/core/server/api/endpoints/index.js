@@ -274,6 +274,14 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-usages'), localUtils);
     },
 
+    get socialAiReminders() {
+        return apiFramework.pipeline(require('./social-ai-reminders'), localUtils);
+    },
+
+    get socialAiReminderEvents() {
+        return apiFramework.pipeline(require('./social-ai-reminder-events'), localUtils);
+    },
+
     //custom end
 
     /**

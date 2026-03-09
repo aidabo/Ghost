@@ -1,5 +1,30 @@
 # SKILLS Change Log
 
+Date: 2026-03-08
+Scope: AI reminder persistence and realtime tool execution path
+
+## Change Log (Codex changes)
+- Added AI reminder persistence support in Ghost backend:
+  - Added reminders table migration: `ghost/core/core/server/data/migrations/versions/5.116/2026-03-08-00-00-04-add-social-ai-reminders-table.js`
+  - Added reminders recurrence migration: `ghost/core/core/server/data/migrations/versions/5.116/2026-03-08-00-00-05-add-social-ai-reminders-recurrence-columns.js`
+  - Added reminder-events table migration: `ghost/core/core/server/data/migrations/versions/5.116/2026-03-08-00-00-06-add-social-ai-reminder-events-table.js`
+  - Added/updated models for reminder/event persistence:
+    - `ghost/core/core/server/models/social-ai-reminders.js`
+    - `ghost/core/core/server/models/social-ai-reminder-events.js`
+- Added/updated Ghost admin endpoints for reminders and events:
+  - `ghost/core/core/server/api/endpoints/social-ai-reminders.js`
+  - `ghost/core/core/server/api/endpoints/social-ai-reminder-events.js`
+- Registered reminder routes in custom admin API router:
+  - `GET /ghost/api/admin/social/ai/reminders`
+  - `GET /ghost/api/admin/social/ai/reminders/:id`
+  - `POST /ghost/api/admin/social/ai/reminders`
+  - `PUT /ghost/api/admin/social/ai/reminders/:id`
+  - `GET /ghost/api/admin/social/ai/reminder-events`
+  - `POST /ghost/api/admin/social/ai/reminder-events`
+  - Updated in `ghost/core/core/server/web/api/endpoints/admin/custom-routes.js`
+- Updated host-side realtime reminder tool execution to always call persisted API endpoints:
+  - `01-jibunsee-react/apps/host/src/hooks/ai/useRealtimeVoice.ts` now supports `today_reminders` and `acknowledge_reminder` tool calls and routes all tool calls through `/api/ai/reminders`.
+
 Date: 2026-03-04
 Scope: social-ai chats/usages backend API normalization and usage authorization
 

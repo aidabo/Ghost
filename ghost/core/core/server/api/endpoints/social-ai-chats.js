@@ -382,7 +382,8 @@ const controller = {
             'total_tokens',
             'cost_usd_micros',
             'currency',
-            'usage_source'
+            'usage_source',
+            'manual_title'
         ],
         permissions: false,
         async query(frame) {
@@ -418,6 +419,7 @@ const controller = {
             const model = payload.model || null;
             const responseMode = payload.response_mode || null;
             const title = payload.title || null;
+            const manualTitle = Boolean(payload.manual_title);
             const userMessage = typeof payload.user_message === 'string' ? payload.user_message : '';
             const assistantMessage = typeof payload.assistant_message === 'string' ? payload.assistant_message : '';
 
@@ -476,12 +478,16 @@ const controller = {
                     const existingTitle = String(existingConversation.title || '').trim();
                     const existingProvider = String(existingConversation.provider || provider || '').trim();
                     const shouldUpgradeTitle = !existingTitle || existingTitle === existingProvider;
+                    const hasIncomingTitle = String(title || '').trim().length > 0;
+                    const nextTitle = (manualTitle && hasIncomingTitle)
+                        ? String(title).trim()
+                        : (shouldUpgradeTitle ? normalizedTitle : existingTitle);
 
                     await trx(CONVERSATIONS_TABLE)
                         .where({ id: conversationId })
                         .update({
                             group_id: hasGroupId ? groupId : existingConversation.group_id,
-                            title: shouldUpgradeTitle ? normalizedTitle : existingTitle,
+                            title: nextTitle,
                             provider: provider || existingConversation.provider,
                             model: model || existingConversation.model,
                             response_mode: responseMode || existingConversation.response_mode,
@@ -542,6 +548,74 @@ const controller = {
                 updated_at: conversation.updated_at,
                 saved_message_ids: messageIds
             };
+        }
+    },
+
+    destroy: {
+        statusCode: 204,
+        headers: { cacheInvalidate: false },
+        options: [
+            'group_id',
+            'user_id'
+        ],
+        data: ['id'],
+        permissions: false,
+        async query(frame) {
+            const knex = models.Base.knex;
+            const currentUserId = getCurrentUserId(frame);
+            const currentIntegrationId = getCurrentIntegrationId(frame);
+            if (!currentUserId && !currentIntegrationId) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.userRequired)
+                });
+            }
+
+            const conversationId = String(frame.data?.id || '').trim();
+            if (!conversationId) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.conversationIdRequired)
+                });
+            }
+
+            const targetUserId = await resolveTargetUserId({
+                ...frame,
+                data: {
+                    ...frame.data,
+                    user_id: frame.options?.user_id || frame.data?.user_id || currentUserId
+                }
+            });
+
+            const conversation = await knex(CONVERSATIONS_TABLE)
+                .where({ id: conversationId })
+                .first();
+
+            if (!conversation) {
+                throw new errors.NotFoundError({
+                    message: tpl(messages.notFound)
+                });
+            }
+
+            if (targetUserId && conversation.user_id !== targetUserId) {
+                const isAllowed = Boolean(currentIntegrationId) || await isAdminUser(currentUserId);
+                if (!isAllowed) {
+                    throw new errors.NoPermissionError({
+                        message: tpl(messages.noPermission)
+                    });
+                }
+            }
+
+            await assertGroupAccess({
+                frame,
+                groupId: conversation.group_id || frame.options?.group_id || null,
+                targetUserId: conversation.user_id,
+                permission: 'write'
+            });
+
+            await knex(CONVERSATIONS_TABLE)
+                .where({ id: conversationId })
+                .del();
+
+            return null;
         }
     }
 };

@@ -100,10 +100,19 @@ module.exports = function customApiRoutes(router) {
     router.get('/social/ai/chats', mw.authAdminApi, http(api.socialAiChats.browse));
     router.get('/social/ai/chats/:id', mw.authAdminApi, http(api.socialAiChats.read));
     router.post('/social/ai/chats', mw.authAdminApi, http(api.socialAiChats.add));
+    router.delete('/social/ai/chats/:id', mw.authAdminApi, http(api.socialAiChats.destroy));
 
     // ## ai usages
     router.get('/social/ai/usages', mw.authAdminApi, http(api.socialAiUsages.browse));
     router.get('/social/ai/usages/:id', mw.authAdminApi, http(api.socialAiUsages.read));
+
+    // ## ai reminders
+    router.get('/social/ai/reminders', mw.authAdminApi, http(api.socialAiReminders.browse));
+    router.get('/social/ai/reminders/:id', mw.authAdminApi, http(api.socialAiReminders.read));
+    router.post('/social/ai/reminders', mw.authAdminApi, http(api.socialAiReminders.add));
+    router.put('/social/ai/reminders/:id', mw.authAdminApi, http(api.socialAiReminders.edit));
+    router.get('/social/ai/reminder-events', mw.authAdminApi, http(api.socialAiReminderEvents.browse));
+    router.post('/social/ai/reminder-events', mw.authAdminApi, http(api.socialAiReminderEvents.add));
 
     return router;
 };
