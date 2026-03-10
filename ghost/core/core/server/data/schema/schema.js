@@ -1358,6 +1358,66 @@ module.exports = {
         ]
     },
 
+    social_ai_devices: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        user_id: { type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true },
+        device_type: { type: 'string', maxlength: 24, nullable: false, index: true },
+        device_key: { type: 'string', maxlength: 2000, nullable: false, index: true },
+        locale: { type: 'string', maxlength: 16, nullable: true },
+        timezone: { type: 'string', maxlength: 64, nullable: true },
+        push_subscription: { type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true },
+        enabled: { type: 'bool', nullable: false, defaultTo: true, index: true },
+        created_at: { type: 'dateTime', nullable: false, index: true },
+        updated_at: { type: 'dateTime', nullable: false, index: true },
+        '@@INDEXES@@': [
+            ['user_id', 'enabled'],
+            ['group_id', 'enabled', 'updated_at']
+        ]
+    },
+
+    social_ai_sms_logs: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        user_id: { type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true },
+        phone_hash: { type: 'string', maxlength: 128, nullable: false },
+        phone_last4: { type: 'string', maxlength: 8, nullable: true },
+        message: { type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true },
+        message_category: { type: 'string', maxlength: 32, nullable: true },
+        provider: { type: 'string', maxlength: 32, nullable: false, index: true },
+        message_id: { type: 'string', maxlength: 128, nullable: true },
+        status: { type: 'string', maxlength: 24, nullable: false, index: true },
+        error: { type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true },
+        region: { type: 'string', maxlength: 64, nullable: true },
+        sender_id: { type: 'string', maxlength: 128, nullable: true },
+        sms_type: { type: 'string', maxlength: 32, nullable: true },
+        created_at: { type: 'dateTime', nullable: false, index: true },
+        updated_at: { type: 'dateTime', nullable: false, index: true },
+        '@@INDEXES@@': [
+            ['user_id', 'created_at'],
+            ['status', 'created_at'],
+            ['provider', 'created_at']
+        ]
+    },
+
+    social_ai_user_phones: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        user_id: { type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true },
+        phone_e164: { type: 'string', maxlength: 32, nullable: false },
+        phone_hash: { type: 'string', maxlength: 128, nullable: false },
+        phone_last4: { type: 'string', maxlength: 8, nullable: true },
+        status: { type: 'string', maxlength: 24, nullable: false, defaultTo: 'pending', index: true },
+        verification_code_hash: { type: 'string', maxlength: 128, nullable: true },
+        code_expires_at: { type: 'dateTime', nullable: true },
+        verified_at: { type: 'dateTime', nullable: true },
+        created_at: { type: 'dateTime', nullable: false, index: true },
+        updated_at: { type: 'dateTime', nullable: false, index: true },
+        '@@INDEXES@@': [
+            ['user_id', 'phone_hash'],
+            ['status', 'updated_at']
+        ]
+    },
+
 
     // 202601 add custom social tables end
 };

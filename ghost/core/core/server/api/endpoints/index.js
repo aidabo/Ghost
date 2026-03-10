@@ -282,6 +282,22 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-reminder-events'), localUtils);
     },
 
+    get socialAiReminderDispatch() {
+        return apiFramework.pipeline(require('./social-ai-reminder-dispatch'), localUtils);
+    },
+
+    get socialAiDevices() {
+        return apiFramework.pipeline(require('./social-ai-devices'), localUtils);
+    },
+
+    get socialAiSmsLogs() {
+        return apiFramework.pipeline(require('./social-ai-sms-logs'), localUtils);
+    },
+
+    get socialAiUserPhones() {
+        return apiFramework.pipeline(require('./social-ai-user-phones'), localUtils);
+    },
+
     //custom end
 
     /**
