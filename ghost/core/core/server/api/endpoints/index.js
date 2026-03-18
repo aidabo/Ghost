@@ -298,6 +298,10 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-user-phones'), localUtils);
     },
 
+    get socialAiAgentSettings() {
+        return apiFramework.pipeline(require('./social-ai-agent-settings'), localUtils);
+    },
+
     //custom end
 
     /**

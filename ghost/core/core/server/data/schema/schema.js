@@ -1418,6 +1418,14 @@ module.exports = {
         ]
     },
 
+    social_ai_agent_settings: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        user_id: { type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true, unique: true },
+        settings_json: { type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: false },
+        created_at: { type: 'dateTime', nullable: false, index: true },
+        updated_at: { type: 'dateTime', nullable: false, index: true }
+    },
+
 
     // 202601 add custom social tables end
 };

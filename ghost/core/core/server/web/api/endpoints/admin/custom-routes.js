@@ -123,6 +123,10 @@ module.exports = function customApiRoutes(router) {
     router.get('/social/ai/user-phones', mw.authAdminApi, http(api.socialAiUserPhones.browse));
     router.post('/social/ai/user-phones', mw.authAdminApi, http(api.socialAiUserPhones.add));
     router.put('/social/ai/user-phones', mw.authAdminApi, http(api.socialAiUserPhones.edit));
+    router.get('/social/ai/agent-settings', mw.authAdminApi, http(api.socialAiAgentSettings.browse));
+    router.get('/social/ai/agent-settings/:id', mw.authAdminApi, http(api.socialAiAgentSettings.read));
+    router.post('/social/ai/agent-settings', mw.authAdminApi, http(api.socialAiAgentSettings.add));
+    router.put('/social/ai/agent-settings/:id', mw.authAdminApi, http(api.socialAiAgentSettings.edit));
 
     return router;
 };
