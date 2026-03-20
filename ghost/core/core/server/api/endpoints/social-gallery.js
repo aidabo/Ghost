@@ -120,7 +120,7 @@ const parseType = (value) => {
 };
 
 const getExtension = (item) => {
-    const name = String(item?.name || '').toLowerCase();
+    const name = String(item?.name || item?.key || item?.path || item?.url || '').toLowerCase();
     const idx = name.lastIndexOf('.');
     if (idx < 0 || idx === name.length - 1) {
         return '';
@@ -128,30 +128,41 @@ const getExtension = (item) => {
     return name.substring(idx + 1);
 };
 
+const getMimeType = (item) => {
+    return String(
+        item?.mimeType ||
+        item?.contentType ||
+        item?.mimetype ||
+        item?.type ||
+        ''
+    ).toLowerCase().split(';')[0].trim();
+};
+
 const matchType = (item, type) => {
     if (type === TYPE_ALL) {
         return true;
     }
 
+    const resolved = resolveGalleryItemType(item);
+    return resolved === type;
+};
+
+const resolveGalleryItemType = (item) => {
+    const declaredType = String(item?.asset_type || item?.type || '').toLowerCase().trim();
+    if ([TYPE_IMAGE, TYPE_VIDEO, TYPE_AUDIO, TYPE_FILE].includes(declaredType)) {
+        return declaredType;
+    }
+
+    const mime = getMimeType(item);
+    if (mime.startsWith('image/')) return TYPE_IMAGE;
+    if (mime.startsWith('video/')) return TYPE_VIDEO;
+    if (mime.startsWith('audio/')) return TYPE_AUDIO;
+
     const ext = getExtension(item);
-    const image = typeExtensions[TYPE_IMAGE].has(ext);
-    const video = typeExtensions[TYPE_VIDEO].has(ext);
-    const audio = typeExtensions[TYPE_AUDIO].has(ext);
-
-    if (type === TYPE_IMAGE) {
-        return image;
-    }
-
-    if (type === TYPE_VIDEO) {
-        return video;
-    }
-
-    if (type === TYPE_AUDIO) {
-        return audio;
-    }
-
-    // TYPE_FILE: anything not image/video/audio
-    return !(image || video || audio);
+    if (typeExtensions[TYPE_IMAGE].has(ext)) return TYPE_IMAGE;
+    if (typeExtensions[TYPE_VIDEO].has(ext)) return TYPE_VIDEO;
+    if (typeExtensions[TYPE_AUDIO].has(ext)) return TYPE_AUDIO;
+    return TYPE_FILE;
 };
 
 const assertListSupported = (store) => {
@@ -362,7 +373,13 @@ const attachCategoryInfo = async (items) => {
             ? await knex('social_media_assets as sma')
                 .leftJoin('tags as t', 'sma.tag_id', 't.id')
                 .whereIn('sma.storage_key', keys)
-                .select('sma.storage_key as storage_key', 'sma.tag_slug as asset_tag_slug', 't.name as tag_name', 't.slug as tag_slug')
+                .select(
+                    'sma.storage_key as storage_key',
+                    'sma.tag_slug as asset_tag_slug',
+                    'sma.asset_type as asset_type',
+                    't.name as tag_name',
+                    't.slug as tag_slug'
+                )
             : [];
     } catch (err) {
         if (err?.code !== 'ER_NO_SUCH_TABLE' && err?.code !== 'SQLITE_ERROR') {
@@ -384,6 +401,11 @@ const attachCategoryInfo = async (items) => {
         }
         return {
             ...item,
+            asset_type: row?.asset_type || null,
+            type: resolveGalleryItemType({
+                ...item,
+                asset_type: row?.asset_type || null
+            }),
             category: row?.tag_name || null,
             category_slug: categorySlug || null
         };
@@ -415,22 +437,55 @@ const attachCategoryInfo = async (items) => {
 };
 
 const listByPrefix = async (store, prefix, limit, nextCursor, type) => {
-    const result = await store.list({
-        prefix,
-        limit,
-        next_cursor: nextCursor
-    });
+    const scanBatchLimit = Math.max(Math.min(limit, 200), 60);
+    const maxScanBatches = 20;
 
-    const typedItems = (result.items || []).filter(item => matchType(item, type));
-    const items = await attachCategoryInfo(typedItems);
+    let cursor = nextCursor || null;
+    let lastPrefix = prefix;
+    let listedCount = 0;
+    let batchCount = 0;
+    let scanResult = null;
+    const collected = [];
+
+    do {
+        scanResult = await store.list({
+            prefix,
+            limit: scanBatchLimit,
+            next_cursor: cursor
+        });
+
+        batchCount += 1;
+        lastPrefix = scanResult.prefix || prefix;
+        listedCount += scanResult.count || (scanResult.items || []).length || 0;
+
+        const enrichedItems = await attachCategoryInfo(scanResult.items || []);
+        const typedItems = (enrichedItems || []).filter(item => matchType(item, type));
+        collected.push(...typedItems);
+
+        cursor = scanResult.nextCursor || null;
+        if (collected.length >= limit) {
+            break;
+        }
+    } while (cursor && batchCount < maxScanBatches);
+
+    const items = collected
+        .sort((a, b) => {
+            const ta = new Date(a?.lastModified || 0).getTime() || 0;
+            const tb = new Date(b?.lastModified || 0).getTime() || 0;
+            if (tb !== ta) {
+                return tb - ta;
+            }
+            return String(b?.key || '').localeCompare(String(a?.key || ''));
+        })
+        .slice(0, limit);
 
     return {
         data: items,
         meta: {
-            prefix: result.prefix || prefix,
+            prefix: lastPrefix,
             count: items.length,
-            listed_count: result.count || 0,
-            next_cursor: result.nextCursor || null
+            listed_count: listedCount,
+            next_cursor: cursor || null
         }
     };
 };
@@ -475,7 +530,14 @@ const controller = {
         options: [
             'limit',
             'next_cursor',
-            'type'
+            'type',
+            'include',
+            'page',
+            'limit',
+            'fields',
+            'filter',
+            'order',
+            'debug'
         ],
         permissions: false,
         async query(frame) {
@@ -515,7 +577,14 @@ const controller = {
             'limit',
             'next_cursor',
             'type',
-            'group_id'
+            'group_id',
+            'include',
+            'page',
+            'limit',
+            'fields',
+            'filter',
+            'order',
+            'debug'
         ],
         data: [
             'id'

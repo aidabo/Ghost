@@ -4,6 +4,23 @@ const storage = require('../../adapters/storage');
 const models = require('../../models');
 const socialMediaAssets = require('./utils/social-media-assets');
 
+const resolveUploadedMediaAssetType = (file) => {
+    const mime = String(file?.mimetype || file?.type || '').toLowerCase().split(';')[0].trim();
+    if (mime.startsWith('audio/')) {
+        return 'audio';
+    }
+    if (mime.startsWith('video/')) {
+        return 'video';
+    }
+
+    const name = String(file?.originalname || file?.name || '').toLowerCase();
+    const ext = path.extname(name).replace('.', '');
+    if (['mp3', 'wav', 'ogg', 'm4a', 'weba'].includes(ext)) {
+        return 'audio';
+    }
+    return 'video';
+};
+
 const resolveUploadTargetDir = async (store, frame) => {
     if (typeof store.getTargetDir !== 'function') {
         return {targetDir: null, userId: null, groupId: null, tag: null};
@@ -90,11 +107,12 @@ const controller = {
 
             const filePath = await mediaStore.save(frame.files.file[0], targetDir || undefined);
 
+            const mediaType = resolveUploadedMediaAssetType(frame.files.file[0]);
             await socialMediaAssets.upsertAsset({
                 knex: models.Base.knex,
                 store: mediaStore,
                 url: filePath,
-                assetType: 'media',
+                assetType: mediaType,
                 userId: uploadContext.userId,
                 groupId: uploadContext.groupId,
                 tag: uploadContext.tag
