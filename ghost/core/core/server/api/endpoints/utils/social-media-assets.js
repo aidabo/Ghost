@@ -69,6 +69,7 @@ const upsertAsset = async ({
     store,
     url,
     assetType,
+    originalFilename,
     userId,
     groupId,
     tag
@@ -89,6 +90,7 @@ const upsertAsset = async ({
         const payload = {
             storage_key: storageKey,
             storage_url: url,
+            original_filename: String(originalFilename || '').trim() || null,
             asset_type: assetType,
             owner_scope: ownerScope,
             user_id: userId || null,

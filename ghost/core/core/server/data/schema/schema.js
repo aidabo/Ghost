@@ -1296,6 +1296,7 @@ module.exports = {
         // Keep non-indexed because MySQL/InnoDB key length limits are exceeded for utf8mb4 varchar(2000).
         storage_key: { type: 'string', maxlength: 2000, nullable: false },
         storage_url: { type: 'string', maxlength: 2000, nullable: false },
+        original_filename: { type: 'string', maxlength: 1000, nullable: true },
         asset_type: { type: 'string', maxlength: 50, nullable: false, index: true },
         owner_scope: { type: 'string', maxlength: 20, nullable: false, index: true },
         user_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'users.id', cascadeDelete: true },

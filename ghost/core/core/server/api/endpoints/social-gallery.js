@@ -1,9 +1,11 @@
 const path = require('path');
 const tpl = require('@tryghost/tpl');
+const logging = require('@tryghost/logging');
 const errors = require('@tryghost/errors');
 const ObjectId = require('bson-objectid').default;
 const storage = require('../../adapters/storage');
 const models = require('../../models');
+const socialMediaAssets = require('./utils/social-media-assets');
 
 const messages = {
     userRequired: 'No login user authentication, can not read gallery in this scope.',
@@ -13,7 +15,16 @@ const messages = {
     storageNoList: 'Configured storage adapter does not support gallery listing.',
     postIdRequired: '`post_id` is required.',
     postNotFound: 'Post not found: {postId}.',
-    invalidMode: 'Invalid mode value. Allowed: primary.'
+    invalidMode: 'Invalid mode value. Allowed: primary.',
+    storageNoPresign: 'Configured storage adapter does not support presigned uploads.',
+    filenameRequired: '`filename` is required.',
+    contentTypeRequired: '`content_type` is required.',
+    originalFilenameRequired: '`original_filename` is required.',
+    invalidContentLength: '`content_length` must be a positive number when provided.',
+    storageKeyRequired: '`storage_key` is required.',
+    storageUrlRequired: '`storage_url` is required.',
+    presignFailed: 'Failed to create presigned upload URL for "{filename}".',
+    finalizeFailed: 'Failed to finalize uploaded gallery asset for key "{storageKey}".'
 };
 
 const TYPE_ALL = 'all';
@@ -119,6 +130,43 @@ const parseType = (value) => {
     return TYPE_ALL;
 };
 
+const parseOrderBy = (value) => {
+    const normalized = String(value || 'created_at:desc').trim().toLowerCase();
+    const [fieldRaw, directionRaw] = normalized.split(':');
+    const field = fieldRaw === 'updated_at' ? 'updated_at' : 'created_at';
+    const direction = directionRaw === 'asc' ? 'asc' : 'desc';
+    return { field, direction };
+};
+
+const parseDbNextCursor = (value) => {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+        return null;
+    }
+
+    const separatorIndex = normalized.indexOf('__');
+    if (separatorIndex <= 0) {
+        return null;
+    }
+
+    const createdAt = normalized.slice(0, separatorIndex);
+    const id = normalized.slice(separatorIndex + 2);
+    if (!createdAt || !id) {
+        return null;
+    }
+
+    return { createdAt, id };
+};
+
+const buildDbNextCursor = (item) => {
+    const createdAt = String(item?.created_at || '').trim();
+    const id = String(item?.id || '').trim();
+    if (!createdAt || !id) {
+        return null;
+    }
+    return `${createdAt}__${id}`;
+};
+
 const getExtension = (item) => {
     const name = String(item?.name || item?.key || item?.path || item?.url || '').toLowerCase();
     const idx = name.lastIndexOf('.');
@@ -163,6 +211,46 @@ const resolveGalleryItemType = (item) => {
     if (typeExtensions[TYPE_VIDEO].has(ext)) return TYPE_VIDEO;
     if (typeExtensions[TYPE_AUDIO].has(ext)) return TYPE_AUDIO;
     return TYPE_FILE;
+};
+
+const resolveUploadedAssetType = ({ filename, contentType }) => {
+    const mime = String(contentType || '').toLowerCase().split(';')[0].trim();
+    if (mime.startsWith('image/')) return TYPE_IMAGE;
+    if (mime.startsWith('video/')) return TYPE_VIDEO;
+    if (mime.startsWith('audio/')) return TYPE_AUDIO;
+
+    const ext = getExtension({ name: filename });
+    if (typeExtensions[TYPE_IMAGE].has(ext)) return TYPE_IMAGE;
+    if (typeExtensions[TYPE_VIDEO].has(ext)) return TYPE_VIDEO;
+    if (typeExtensions[TYPE_AUDIO].has(ext)) return TYPE_AUDIO;
+    return TYPE_FILE;
+};
+
+const wrapStorageError = (message, context, err) => {
+    if (err instanceof errors.GhostError) {
+        throw err;
+    }
+
+    throw new errors.InternalServerError({
+        message: tpl(message, context),
+        err,
+        context: err?.message || undefined
+    });
+};
+
+const sanitizeFileName = (value) => {
+    const raw = String(value || '').trim();
+    const base = path.basename(raw).replace(/[^\w.\-()+\u3040-\u30ff\u3400-\u9fff]/g, '_');
+    return base || 'upload.bin';
+};
+
+const buildUniqueStorageKey = (targetDir, filename) => {
+    const parsed = path.posix.parse(String(filename || '').trim() || 'upload.bin');
+    const baseName = String(parsed.name || 'upload').trim() || 'upload';
+    const ext = String(parsed.ext || '').trim();
+    const suffix = ObjectId().toHexString().slice(-8);
+    const uniqueName = `${baseName}-${suffix}${ext}`;
+    return path.posix.join(targetDir || '', uniqueName).replace(/^\/+/, '');
 };
 
 const assertListSupported = (store) => {
@@ -375,8 +463,11 @@ const attachCategoryInfo = async (items) => {
                 .whereIn('sma.storage_key', keys)
                 .select(
                     'sma.storage_key as storage_key',
+                    'sma.original_filename as original_filename',
                     'sma.tag_slug as asset_tag_slug',
                     'sma.asset_type as asset_type',
+                    'sma.created_at as created_at',
+                    'sma.updated_at as updated_at',
                     't.name as tag_name',
                     't.slug as tag_slug'
                 )
@@ -401,7 +492,10 @@ const attachCategoryInfo = async (items) => {
         }
         return {
             ...item,
+            original_filename: row?.original_filename || null,
             asset_type: row?.asset_type || null,
+            created_at: row?.created_at || null,
+            updated_at: row?.updated_at || null,
             type: resolveGalleryItemType({
                 ...item,
                 asset_type: row?.asset_type || null
@@ -470,11 +564,18 @@ const listByPrefix = async (store, prefix, limit, nextCursor, type) => {
 
     const items = collected
         .sort((a, b) => {
-            const ta = new Date(a?.lastModified || 0).getTime() || 0;
-            const tb = new Date(b?.lastModified || 0).getTime() || 0;
-            if (tb !== ta) {
-                return tb - ta;
+            const createdA = new Date(a?.created_at || a?.lastModified || 0).getTime() || 0;
+            const createdB = new Date(b?.created_at || b?.lastModified || 0).getTime() || 0;
+            if (createdB !== createdA) {
+                return createdB - createdA;
             }
+
+            const updatedA = new Date(a?.updated_at || a?.lastModified || 0).getTime() || 0;
+            const updatedB = new Date(b?.updated_at || b?.lastModified || 0).getTime() || 0;
+            if (updatedB !== updatedA) {
+                return updatedB - updatedA;
+            }
+
             return String(b?.key || '').localeCompare(String(a?.key || ''));
         })
         .slice(0, limit);
@@ -486,6 +587,81 @@ const listByPrefix = async (store, prefix, limit, nextCursor, type) => {
             count: items.length,
             listed_count: listedCount,
             next_cursor: cursor || null
+        }
+    };
+};
+
+const listByAssetTable = async ({ scope, userId, groupId, limit, nextCursor, type, orderBy }) => {
+    const knex = models.Base.knex;
+    const cursor = parseDbNextCursor(nextCursor);
+    const sortField = orderBy?.field === 'updated_at' ? 'updated_at' : 'created_at';
+    const sortDirection = orderBy?.direction === 'asc' ? 'asc' : 'desc';
+
+    let query = knex('social_media_assets as sma')
+        .leftJoin('tags as t', 'sma.tag_id', 't.id')
+        .select(
+            'sma.id as id',
+            'sma.storage_key as key',
+            'sma.storage_url as url',
+            'sma.storage_key as path',
+            'sma.original_filename as original_filename',
+            'sma.asset_type as asset_type',
+            'sma.created_at as created_at',
+            'sma.updated_at as updated_at',
+            't.name as tag_name',
+            't.slug as tag_slug'
+        )
+        .where('sma.owner_scope', scope)
+        .limit(limit + 1)
+        .orderBy(`sma.${sortField}`, sortDirection)
+        .orderBy('sma.id', sortDirection);
+
+    if (scope === 'group') {
+        query = query.andWhere('sma.group_id', groupId);
+    } else {
+        query = query.andWhere('sma.user_id', userId).whereNull('sma.group_id');
+    }
+
+    if (type !== TYPE_ALL) {
+        query = query.andWhere('sma.asset_type', type);
+    }
+
+    if (cursor) {
+        query = query.andWhere(function () {
+            this.where(`sma.${sortField}`, sortDirection === 'asc' ? '>' : '<', cursor.createdAt)
+                .orWhere(function () {
+                    this.where(`sma.${sortField}`, '=', cursor.createdAt)
+                        .andWhere('sma.id', sortDirection === 'asc' ? '>' : '<', cursor.id);
+                });
+        });
+    }
+
+    const rows = await query;
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+
+    const items = pageRows.map((row) => ({
+        key: row.key,
+        url: row.url,
+        path: row.path,
+        name: String(row.original_filename || '').trim() || String(row.key || '').split('/').filter(Boolean).pop() || null,
+        type: resolveGalleryItemType({
+            asset_type: row.asset_type
+        }),
+        asset_type: row.asset_type || null,
+        category: row.tag_name || null,
+        category_slug: row.tag_slug || null,
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null,
+        lastModified: row.updated_at || row.created_at || null
+    }));
+
+    return {
+        data: items,
+        meta: {
+            count: items.length,
+            listed_count: items.length,
+            next_cursor: hasMore ? buildDbNextCursor(pageRows[pageRows.length - 1]) : null
         }
     };
 };
@@ -519,6 +695,96 @@ const resolveGroupAndCheckRead = async (frame, groupId) => {
     return group;
 };
 
+const resolveUploadContext = async (frame) => {
+    const mediaStore = storage.getStorage('media');
+    const userId = frame.options?.context?.user;
+    const groupId = getFrameValue(frame, 'group_id');
+    const tag = await socialMediaAssets.resolveTag(models.Base.knex, frame);
+
+    logging.info('[social-gallery] resolveUploadContext: start', {
+        userId: userId || null,
+        groupId: groupId || null,
+        hasTag: Boolean(tag),
+        hasGetTargetDir: typeof mediaStore?.getTargetDir === 'function'
+    });
+
+    if (typeof mediaStore.getTargetDir !== 'function') {
+        logging.info('[social-gallery] resolveUploadContext: media store has no getTargetDir');
+        return { mediaStore, targetDir: null, userId: userId || null, groupId: groupId || null, tag };
+    }
+
+    const root = mediaStore.pathPrefix || mediaStore.storagePath || '';
+    logging.info('[social-gallery] resolveUploadContext: storage root resolved', {
+        root
+    });
+
+    if (groupId) {
+        if (!userId) {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.userRequired)
+            });
+        }
+
+        // @ts-ignore
+        const group = await models.SocialGroup.findOne({ id: groupId });
+        if (!group) {
+            throw new errors.NotFoundError({
+                message: tpl(messages.groupNotFound, { groupId })
+            });
+        }
+
+        // @ts-ignore
+        const allowed = await models.SocialGroup.canAccessGroup(group, userId, 'write');
+        if (!allowed) {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.noPermission, { groupId, user: userId })
+            });
+        }
+
+        // @ts-ignore
+        logging.info('[social-gallery] resolveUploadContext: before group alias', {
+            groupId,
+            userId
+        });
+        const groupAlias = await models.SocialGroup.ensureMediaFolderAlias(groupId);
+        logging.info('[social-gallery] resolveUploadContext: group alias resolved', {
+            groupId,
+            groupAlias
+        });
+        const baseDir = path.posix.join(root, 'gallery', 'groups', groupAlias);
+        return {
+            mediaStore,
+            targetDir: mediaStore.getTargetDir(baseDir),
+            userId,
+            groupId,
+            tag
+        };
+    }
+
+    if (!userId) {
+        throw new errors.NoPermissionError({
+            message: tpl(messages.userRequired)
+        });
+    }
+
+    logging.info('[social-gallery] resolveUploadContext: before user alias', {
+        userId
+    });
+    const userAlias = await models.User.ensureMediaFolderAlias(userId);
+    logging.info('[social-gallery] resolveUploadContext: user alias resolved', {
+        userId,
+        userAlias
+    });
+    const baseDir = path.posix.join(root, 'gallery', 'users', userAlias);
+    return {
+        mediaStore,
+        targetDir: mediaStore.getTargetDir(baseDir),
+        userId,
+        groupId: null,
+        tag
+    };
+};
+
 /** @type {import('@tryghost/api-framework').Controller} */
 const controller = {
     docName: 'socialgallery',
@@ -548,22 +814,26 @@ const controller = {
                 });
             }
 
-            const mediaStore = storage.getStorage('media');
-            assertListSupported(mediaStore);
-
-            const root = mediaStore.pathPrefix || mediaStore.storagePath || '';
             const limit = parseLimit(frame.options?.limit);
             const nextCursor = frame.options?.next_cursor || null;
             const type = parseType(frame.options?.type);
+            const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
 
             const userAlias = await models.User.ensureMediaFolderAlias(userId);
-            const prefix = path.posix.join(root, 'gallery', 'users', userAlias);
-
-            const listed = await listByPrefix(mediaStore, prefix, limit, nextCursor, type);
+            const listed = await listByAssetTable({
+                scope: 'user',
+                userId,
+                groupId: null,
+                limit,
+                nextCursor,
+                type,
+                orderBy
+            });
             listed.meta.scope = 'user';
             listed.meta.alias = userAlias;
             listed.meta.user_id = userId;
             listed.meta.type = type;
+            listed.meta.orderby = `${orderBy.field}:${orderBy.direction}`;
 
             return listed;
         }
@@ -599,26 +869,205 @@ const controller = {
             }
 
             const group = await resolveGroupAndCheckRead(frame, groupId);
-            const mediaStore = storage.getStorage('media');
-            assertListSupported(mediaStore);
-
-            const root = mediaStore.pathPrefix || mediaStore.storagePath || '';
             const limit = parseLimit(frame.options?.limit);
             const nextCursor = frame.options?.next_cursor || null;
             const type = parseType(frame.options?.type);
+            const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
 
             // @ts-ignore
             const groupAlias = await models.SocialGroup.ensureMediaFolderAlias(groupId);
-            const prefix = path.posix.join(root, 'gallery', 'groups', groupAlias);
-            const listed = await listByPrefix(mediaStore, prefix, limit, nextCursor, type);
+            const listed = await listByAssetTable({
+                scope: 'group',
+                userId: null,
+                groupId,
+                limit,
+                nextCursor,
+                type,
+                orderBy
+            });
 
             listed.meta.scope = 'group';
             listed.meta.alias = groupAlias;
             listed.meta.group_id = groupId;
             listed.meta.group_type = group.get('type');
             listed.meta.type = type;
+            listed.meta.orderby = `${orderBy.field}:${orderBy.direction}`;
 
             return listed;
+        }
+    },
+
+    presign: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'group_id',
+            'tag',
+            'tag_slug',
+            'tag_id',
+            'filename',
+            'content_type',
+            'content_length',
+            'original_filename'
+        ],
+        permissions: false,
+        async query(frame) {
+            const filename = sanitizeFileName(getFrameValue(frame, 'filename'));
+            const originalFilename = sanitizeFileName(getFrameValue(frame, 'original_filename') || filename);
+            const contentType = String(getFrameValue(frame, 'content_type') || '').trim();
+            const contentLengthRaw = getFrameValue(frame, 'content_length');
+            const contentLength = contentLengthRaw == null ? null : Number(contentLengthRaw);
+
+            if (!filename) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.filenameRequired)
+                });
+            }
+            if (!contentType) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.contentTypeRequired)
+                });
+            }
+            if (!originalFilename) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.originalFilenameRequired)
+                });
+            }
+            if (contentLengthRaw != null && (!Number.isFinite(contentLength) || contentLength <= 0)) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.invalidContentLength)
+                });
+            }
+
+            logging.info('[social-gallery] presign stage: before resolveUploadContext', {
+                filename,
+                originalFilename,
+                contentType,
+                contentLength: Number.isFinite(contentLength) ? contentLength : null,
+                userId: frame.options?.context?.user || null,
+                groupId: getFrameValue(frame, 'group_id') || null
+            });
+            const uploadContext = await resolveUploadContext(frame);
+            const mediaStore = uploadContext.mediaStore;
+            if (typeof mediaStore.getPresignedPutUrl !== 'function') {
+                throw new errors.ValidationError({
+                    message: tpl(messages.storageNoPresign)
+                });
+            }
+
+            const uniqueKey = buildUniqueStorageKey(uploadContext.targetDir || '', filename);
+            logging.info('[social-gallery] presign stage: unique key resolved', {
+                filename,
+                uniqueKey,
+                targetDir: uploadContext.targetDir || null,
+                ownerScope: uploadContext.groupId ? 'group' : 'user',
+                userId: uploadContext.userId || null,
+                groupId: uploadContext.groupId || null
+            });
+            let presigned;
+            try {
+                presigned = await mediaStore.getPresignedPutUrl({
+                    key: uniqueKey,
+                    contentType,
+                    expiresInSeconds: 900
+                });
+            } catch (err) {
+                wrapStorageError(messages.presignFailed, { filename }, err);
+            }
+            logging.info('[social-gallery] presign stage: presigned url created', {
+                filename,
+                storageKey: presigned?.key || null,
+                storageUrl: presigned?.url || null
+            });
+
+            return {
+                data: [{
+                    upload_url: presigned.uploadUrl,
+                    storage_url: presigned.url,
+                    storage_key: presigned.key,
+                    headers: presigned.headers || {},
+                    original_filename: originalFilename,
+                    asset_type: resolveUploadedAssetType({ filename, contentType }),
+                    owner_scope: uploadContext.groupId ? 'group' : 'user',
+                    user_id: uploadContext.userId || null,
+                    group_id: uploadContext.groupId || null,
+                    category: uploadContext.tag?.name || null,
+                    category_slug: uploadContext.tag?.slug || null,
+                    content_type: contentType,
+                    content_length: Number.isFinite(contentLength) ? contentLength : null
+                }]
+            };
+        }
+    },
+
+    finalize: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'group_id',
+            'tag',
+            'tag_slug',
+            'tag_id',
+            'storage_key',
+            'storage_url',
+            'asset_type',
+            'original_filename'
+        ],
+        permissions: false,
+        async query(frame) {
+            const storageKey = String(getFrameValue(frame, 'storage_key') || '').trim();
+            const storageUrl = String(getFrameValue(frame, 'storage_url') || '').trim();
+            const requestedAssetType = String(getFrameValue(frame, 'asset_type') || '').trim().toLowerCase();
+            const originalFilename = sanitizeFileName(getFrameValue(frame, 'original_filename'));
+
+            if (!storageKey) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.storageKeyRequired)
+                });
+            }
+            if (!storageUrl) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.storageUrlRequired)
+                });
+            }
+
+            const uploadContext = await resolveUploadContext(frame);
+            const assetType = [TYPE_IMAGE, TYPE_VIDEO, TYPE_AUDIO, TYPE_FILE].includes(requestedAssetType)
+                ? requestedAssetType
+                : inferAssetTypeByKey(storageKey);
+
+            let assetId;
+            try {
+                assetId = await socialMediaAssets.upsertAsset({
+                    knex: models.Base.knex,
+                    store: uploadContext.mediaStore,
+                    url: storageUrl,
+                    assetType,
+                    originalFilename,
+                    userId: uploadContext.userId,
+                    groupId: uploadContext.groupId,
+                    tag: uploadContext.tag
+                });
+            } catch (err) {
+                wrapStorageError(messages.finalizeFailed, { storageKey }, err);
+            }
+
+            return {
+                data: [{
+                    id: assetId,
+                    storage_key: storageKey,
+                    storage_url: storageUrl,
+                    original_filename: originalFilename || null,
+                    asset_type: assetType,
+                    owner_scope: uploadContext.groupId ? 'group' : 'user',
+                    user_id: uploadContext.userId || null,
+                    group_id: uploadContext.groupId || null,
+                    category: uploadContext.tag?.name || null,
+                    category_slug: uploadContext.tag?.slug || null
+                }]
+            };
         }
     },
 
