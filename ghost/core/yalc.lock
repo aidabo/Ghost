@@ -2,7 +2,7 @@
   "version": "v1",
   "packages": {
     "@tryghost/admin-api-schema": {
-      "signature": "2b95d3196d958c57dc20cfaf7825a395",
+      "signature": "8636e2d3d4b380bba7273d7572270401",
       "file": true,
       "replaced": "4.5.5"
     },
@@ -12,9 +12,13 @@
       "replaced": "1.3.5"
     },
     "@tryghost/kg-default-nodes": {
-      "signature": "7239f8643c3d2a0ea0ccd25edacaa562",
+      "signature": "0148c284e2d63694d88a844b76847021",
       "file": true,
       "replaced": "1.4.5"
+    },
+    "@tryghost/user-events": {
+      "signature": "116bb450b7bbd1e1158f7b48c238cf40",
+      "file": true
     }
   }
 }

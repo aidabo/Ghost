@@ -1,4 +1,5 @@
 const _ = require('lodash');
+const crypto = require('crypto');
 const validator = require('@tryghost/validator');
 const ObjectId = require('bson-objectid').default;
 const ghostBookshelf = require('./base');
@@ -7,11 +8,11 @@ const limitService = require('../services/limits');
 const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const security = require('@tryghost/security');
-const {pipeline} = require('@tryghost/promise');
+const { pipeline } = require('@tryghost/promise');
 const validatePassword = require('../lib/validate-password');
 const permissions = require('../services/permissions');
 const urlUtils = require('../../shared/url-utils');
-const {setIsRoles} = require('./role-utils');
+const { setIsRoles } = require('./role-utils');
 const activeStates = ['active', 'warn-1', 'warn-2', 'warn-3', 'warn-4'];
 const ASSIGNABLE_ROLES = ['Administrator', 'Super Editor', 'Editor', 'Author', 'Contributor'];
 
@@ -77,7 +78,7 @@ User = ghostBookshelf.Model.extend({
     },
 
     format(options) {
-        if (options.website && 
+        if (options.website &&
             !validator.isURL(options.website, {
                 require_protocol: true,
                 protocols: ['http', 'https']
@@ -207,7 +208,7 @@ User = ghostBookshelf.Model.extend({
         // If the user's email is set & has changed & we are not importing
         if (self.hasChanged('email') && self.get('email') && !options.importing) {
             tasks.push((function lookUpGravatar() {
-                const {gravatar} = require('../lib/image');
+                const { gravatar } = require('../lib/image');
 
                 return gravatar.lookup({
                     email: self.get('email')
@@ -230,9 +231,23 @@ User = ghostBookshelf.Model.extend({
                         shortSlug: !self.get('slug')
                     })
                     .then(function then(slug) {
-                        self.set({slug: slug});
+                        self.set({ slug: slug });
                     });
             })());
+        }
+
+        if (!this.get('media_folder_alias')) {
+            tasks.push((function generateMediaFolderAlias() {
+                return User.generateMediaFolderAlias({
+                    transacting: options.transacting
+                }).then((alias) => {
+                    self.set('media_folder_alias', alias);
+                });
+            })());
+        } else if (!/^u_[a-f0-9]{12}$/.test(this.get('media_folder_alias'))) {
+            throw new errors.ValidationError({
+                message: 'media_folder_alias must match u_<12 hex chars>.'
+            });
         }
 
         /**
@@ -329,7 +344,7 @@ User = ghostBookshelf.Model.extend({
     },
 
     updateLastSeen: function updateLastSeen() {
-        this.set({last_seen: new Date()});
+        this.set({ last_seen: new Date() });
         return this.save();
     },
 
@@ -391,13 +406,63 @@ User = ghostBookshelf.Model.extend({
             'count__posts',
             'count__followed',
             'count__follow',
-            'count__groups'
+            'count__groups',
+            'count__pages'
         ];
 
         return [...attributes, ...counts];
     }
 
 }, {
+    generateMediaFolderAlias: async function generateMediaFolderAlias(options = {}) {
+        const knex = options.transacting || ghostBookshelf.knex;
+
+        for (let i = 0; i < 8; i++) {
+            const alias = `u_${crypto.randomBytes(6).toString('hex')}`;
+            const exists = await knex('users')
+                .where('media_folder_alias', alias)
+                .first('id');
+
+            if (!exists) {
+                return alias;
+            }
+        }
+
+        throw new errors.InternalServerError({
+            message: 'Unable to generate unique media folder alias.'
+        });
+    },
+
+    ensureMediaFolderAlias: async function ensureMediaFolderAlias(userId, options = {}) {
+        if (!userId) {
+            return null;
+        }
+
+        const user = await this.findOne({ id: userId, status: 'all' }, options);
+        if (!user) {
+            return null;
+        }
+
+        const existing = user.get('media_folder_alias');
+        if (existing) {
+            return existing;
+        }
+
+        const alias = await this.generateMediaFolderAlias({
+            transacting: options.transacting
+        });
+
+        await user.save({
+            media_folder_alias: alias
+        }, {
+            patch: true,
+            method: 'update',
+            transacting: options.transacting
+        });
+
+        return alias;
+    },
+
     orderDefaultOptions: function orderDefaultOptions() {
         return {
             last_seen: 'DESC',
@@ -497,6 +562,14 @@ User = ghostBookshelf.Model.extend({
                         .whereRaw('social_group_members.user_id = users.id and social_group_members.status <> ?', 'active')
                         .as('count__inactive_groups');
                 });
+            },
+            pages(modelOrCollection, options) {
+                modelOrCollection.query('columns', 'users.*', (qb) => {
+                    qb.count('social_components.id')
+                        .from('social_components')
+                        .whereRaw('social_components.created_by = users.id')
+                        .as('count__pages');
+                });
             }
         };
     },
@@ -525,7 +598,7 @@ User = ghostBookshelf.Model.extend({
         }
 
         delete data.role;
-        data = Object.assign({}, {status: 'all'}, data || {});
+        data = Object.assign({}, { status: 'all' }, data || {});
 
         status = data.status;
         delete data.status;
@@ -547,7 +620,7 @@ User = ghostBookshelf.Model.extend({
         if (status === 'active') {
             query.query('whereIn', 'status', activeStates);
         } else if (status !== 'all') {
-            query.query('where', {status: status});
+            query.query('where', { status: status });
         }
 
         return query.fetch(options);
@@ -578,7 +651,7 @@ User = ghostBookshelf.Model.extend({
         } else if (type === 'recommendation-received') {
             filter += '+recommendation_notifications:true';
         }
-        const updatedOptions = Object.assign({}, options, {filter, withRelated: ['roles']});
+        const updatedOptions = Object.assign({}, options, { filter, withRelated: ['roles'] });
         return this.findAll(updatedOptions).then((users) => {
             return users.toJSON().filter((user) => {
                 return user?.roles?.some((role) => {
@@ -646,7 +719,7 @@ User = ghostBookshelf.Model.extend({
                         return ghostBookshelf.model('Role').findOne({
                             name: roleId
                         });
-                    } else if (ObjectId.isValid(roleId)){
+                    } else if (ObjectId.isValid(roleId)) {
                         return ghostBookshelf.model('Role').findOne({
                             id: roleId
                         });
@@ -668,11 +741,11 @@ User = ghostBookshelf.Model.extend({
                         );
                     } else if (roleToAssign) {
                         // assign all other roles
-                        return user.roles().updatePivot({role_id: roleToAssign.id});
+                        return user.roles().updatePivot({ role_id: roleToAssign.id });
                     }
                 }).then(() => {
                     options.status = 'all';
-                    return self.findOne({id: user.id}, options);
+                    return self.findOne({ id: user.id }, options);
                 }).then((model) => {
                     model._changed = user._changed;
                     return model;
@@ -711,7 +784,7 @@ User = ghostBookshelf.Model.extend({
         }
 
         function getAuthorRole() {
-            return ghostBookshelf.model('Role').findOne({name: 'Author'}, {transacting: options.transacting})
+            return ghostBookshelf.model('Role').findOne({ name: 'Author' }, { transacting: options.transacting })
                 .then(function then(authorRole) {
                     return [authorRole.get('id')];
                 });
@@ -763,12 +836,12 @@ User = ghostBookshelf.Model.extend({
             })
             .then(function then() {
                 // find and return the added user
-                return self.findOne({id: userData.id, status: 'all'}, options);
+                return self.findOne({ id: userData.id, status: 'all' }, options);
             });
     },
 
     destroy: function destroy(unfilteredOptions) {
-        const options = this.filterOptions(unfilteredOptions, 'destroy', {extraAllowedProperties: ['id']});
+        const options = this.filterOptions(unfilteredOptions, 'destroy', { extraAllowedProperties: ['id'] });
 
         const destroyUser = () => {
             return ghostBookshelf.Model.destroy.call(this, options);
@@ -891,7 +964,7 @@ User = ghostBookshelf.Model.extend({
         const self = this;
         const userModel = userModelOrId;
         let origArgs;
-        const {isOwner, isEitherEditor} = setIsRoles(loadedPermissions);
+        const { isOwner, isEitherEditor } = setIsRoles(loadedPermissions);
 
         // If we passed in a model without its related roles, we need to fetch it again
         if (typeof userModelOrId === 'object' && !(typeof userModelOrId.related('roles') === 'object')) {
@@ -906,7 +979,7 @@ User = ghostBookshelf.Model.extend({
             return this.findOne({
                 id: userModelOrId,
                 status: 'all'
-            }, {withRelated: ['roles']}).then(function then(foundUserModel) {
+            }, { withRelated: ['roles'] }).then(function then(foundUserModel) {
                 if (!foundUserModel) {
                     throw new errors.NotFoundError({
                         message: tpl(messages.userNotFound)
@@ -1064,12 +1137,12 @@ User = ghostBookshelf.Model.extend({
                     });
                 }
 
-                return self.isPasswordCorrect({plainPassword: object.password, hashedPassword: user.get('password')})
+                return self.isPasswordCorrect({ plainPassword: object.password, hashedPassword: user.get('password') })
                     .then(() => {
                         return user.updateLastSeen();
                     })
                     .then(() => {
-                        user.set({status: 'active'});
+                        user.set({ status: 'active' });
                         return user.save();
                     });
             })
@@ -1125,7 +1198,7 @@ User = ghostBookshelf.Model.extend({
         options.require = true;
         options.withRelated = ['sessions'];
 
-        const user = await this.forge({id: userId}).fetch(options);
+        const user = await this.forge({ id: userId }).fetch(options);
 
         if (isLoggedInUser) {
             await this.isPasswordCorrect({
@@ -1134,7 +1207,7 @@ User = ghostBookshelf.Model.extend({
             });
         }
 
-        const updatedUser = await user.save({password: newPassword});
+        const updatedUser = await user.save({ password: newPassword });
 
         const sessions = user.related('sessions');
         for (const session of sessions) {
@@ -1152,8 +1225,8 @@ User = ghostBookshelf.Model.extend({
         let contextUser;
 
         return Promise.all([
-            ghostBookshelf.model('Role').findOne({name: 'Owner'}),
-            User.findOne({id: options.context.user}, {withRelated: ['roles']})
+            ghostBookshelf.model('Role').findOne({ name: 'Owner' }),
+            User.findOne({ id: options.context.user }, { withRelated: ['roles'] })
         ])
             .then((results) => {
                 ownerRole = results[0];
@@ -1168,8 +1241,8 @@ User = ghostBookshelf.Model.extend({
                 }
 
                 return Promise.all([
-                    ghostBookshelf.model('Role').findOne({name: 'Administrator'}),
-                    User.findOne({id: object.id}, {withRelated: ['roles']})
+                    ghostBookshelf.model('Role').findOne({ name: 'Administrator' }),
+                    User.findOne({ id: object.id }, { withRelated: ['roles'] })
                 ]);
             })
             .then((results) => {
@@ -1182,7 +1255,7 @@ User = ghostBookshelf.Model.extend({
                     }));
                 }
 
-                const {roles: currentRoles, status} = user.toJSON(options);
+                const { roles: currentRoles, status } = user.toJSON(options);
 
                 if (!currentRoles.some(role => role.id === adminRole.id)) {
                     return Promise.reject(new errors.ValidationError({
@@ -1198,15 +1271,15 @@ User = ghostBookshelf.Model.extend({
 
                 // convert owner to admin
                 return Promise.all([
-                    contextUser.roles().updatePivot({role_id: adminRole.id}),
-                    user.roles().updatePivot({role_id: ownerRole.id}),
+                    contextUser.roles().updatePivot({ role_id: adminRole.id }),
+                    user.roles().updatePivot({ role_id: ownerRole.id }),
                     user.id
                 ]);
             })
             .then((results) => {
                 return Users.forge()
                     .query('whereIn', 'id', [contextUser.id, results[2]])
-                    .fetch({withRelated: ['roles']});
+                    .fetch({ withRelated: ['roles'] });
             });
     },
 

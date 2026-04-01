@@ -1,5 +1,5 @@
 const api = require('../../../../api').endpoints;
-const {http} = require('@tryghost/api-framework');
+const { http } = require('@tryghost/api-framework');
 const mw = require('./middleware');
 
 /**
@@ -44,9 +44,93 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/members', mw.authAdminApi, http(api.socialGroupMembers.add));
     router.put('/social/members/:id', mw.authAdminApi, http(api.socialGroupMembers.edit));
     router.del('/social/members/:id', mw.authAdminApi, http(api.socialGroupMembers.destroy));
-    
+
     // ## Tags
     router.get('/tags/all/count', mw.authAdminApi, http(api.tags.count));
+
+    // ## social comments
+    router.get('/social/comments/post/:post_id', mw.authAdminApi, http(api.socialComments.browse));
+    router.get('/social/comments/:id/replies', mw.authAdminApi, http(api.socialComments.replies));
+
+    router.post('/social/comments/post', mw.authAdminApi, http(api.socialComments.add));
+    router.get('/social/comments/:id', mw.authAdminApi, http(api.socialComments.read));
+    router.put('/social/comments/:id', mw.authAdminApi, http(api.socialComments.edit));
+
+    router.post('/social/comments/:id/like', mw.authAdminApi, http(api.socialComments.like));
+    router.post('/social/comments/:id/unlike', mw.authAdminApi, http(api.socialComments.unlike));
+    router.post('/social/comments/:id/report', mw.authAdminApi, http(api.socialComments.report));
+
+    router.get('/social/comments/counts/:ids', mw.authAdminApi, http(api.socialComments.counts));
+
+    // ## for Admin user
+    router.get('/social/comments/status/:post_id', mw.authAdminApi, http(api.socialCommentReports.browse));
+    router.put('/social/comments/:id/status', mw.authAdminApi, http(api.socialCommentReports.edit));
+    router.get('/social/comments/:id/new-replies', mw.authAdminApi, http(api.socialCommentReplies.browse));
+
+    router.get('/social/components', mw.authAdminApi, http(api.socialComponents.browse));
+    router.get('/social/components/:id', mw.authAdminApi, http(api.socialComponents.read));
+    router.post('/social/components', mw.authAdminApi, http(api.socialComponents.add));
+    router.put('/social/components/:id', mw.authAdminApi, http(api.socialComponents.edit));
+    router.del('/social/components/:id', mw.authAdminApi, http(api.socialComponents.destroy));
+
+    router.get('/social/postcomponents', mw.authAdminApi, http(api.socialPostComponents.browse));
+    router.get('/social/postcomponents/:id', mw.authAdminApi, http(api.socialPostComponents.read));
+    router.post('/social/postcomponents', mw.authAdminApi, http(api.socialPostComponents.add));
+    router.put('/social/postcomponents/:id', mw.authAdminApi, http(api.socialPostComponents.edit));
+    router.del('/social/postcomponents/:id', mw.authAdminApi, http(api.socialPostComponents.destroy));
+
+    // ## lambda logs
+    router.get('/social/userlogs', mw.authAdminApi, http(api.socialUserLogs.browse));
+    router.get('/social/userlogs/:id', mw.authAdminApi, http(api.socialUserLogs.read));
+    router.post('/social/userlogs', mw.authAdminApi, http(api.socialUserLogs.add));
+    router.put('/social/userlogs/:id', mw.authAdminApi, http(api.socialUserLogs.edit));
+    router.del('/social/userlogs/:id', mw.authAdminApi, http(api.socialUserLogs.destroy));
+
+    // ## gallery
+    router.get('/social/gallery/user', mw.authAdminApi, http(api.socialGallery.user));
+    router.get('/social/gallery/user/', mw.authAdminApi, http(api.socialGallery.user));
+    router.get('/social/gallery/group', mw.authAdminApi, http(api.socialGallery.group));
+    router.get('/social/gallery/group/', mw.authAdminApi, http(api.socialGallery.group));
+    router.get('/social/gallery/group/:id', mw.authAdminApi, http(api.socialGallery.group));
+    router.get('/social/gallery/group/:id/', mw.authAdminApi, http(api.socialGallery.group));
+    router.post('/social/gallery/presign', mw.authAdminApi, http(api.socialGallery.presign));
+    router.post('/social/gallery/presign/', mw.authAdminApi, http(api.socialGallery.presign));
+    router.post('/social/gallery/finalize', mw.authAdminApi, http(api.socialGallery.finalize));
+    router.post('/social/gallery/finalize/', mw.authAdminApi, http(api.socialGallery.finalize));
+    router.post('/social/gallery/sync-tags', mw.authAdminApi, http(api.socialGallery.syncTags));
+    router.post('/social/gallery/sync-tags/', mw.authAdminApi, http(api.socialGallery.syncTags));
+
+    // ## ai chats
+    router.get('/social/ai/chats', mw.authAdminApi, http(api.socialAiChats.browse));
+    router.get('/social/ai/chats/:id', mw.authAdminApi, http(api.socialAiChats.read));
+    router.post('/social/ai/chats', mw.authAdminApi, http(api.socialAiChats.add));
+    router.delete('/social/ai/chats/:id', mw.authAdminApi, http(api.socialAiChats.destroy));
+    router.get('/social/ai/devices', mw.authAdminApi, http(api.socialAiDevices.browse));
+    router.post('/social/ai/devices', mw.authAdminApi, http(api.socialAiDevices.add));
+    router.put('/social/ai/devices/:id', mw.authAdminApi, http(api.socialAiDevices.edit));
+    router.delete('/social/ai/devices/:id', mw.authAdminApi, http(api.socialAiDevices.destroy));
+    router.get('/social/ai/sms-logs', mw.authAdminApi, http(api.socialAiSmsLogs.browse));
+    router.post('/social/ai/sms-logs', mw.authAdminApi, http(api.socialAiSmsLogs.add));
+
+    // ## ai usages
+    router.get('/social/ai/usages', mw.authAdminApi, http(api.socialAiUsages.browse));
+    router.get('/social/ai/usages/:id', mw.authAdminApi, http(api.socialAiUsages.read));
+
+    // ## ai reminders
+    router.get('/social/ai/reminders', mw.authAdminApi, http(api.socialAiReminders.browse));
+    router.get('/social/ai/reminders/:id', mw.authAdminApi, http(api.socialAiReminders.read));
+    router.post('/social/ai/reminders', mw.authAdminApi, http(api.socialAiReminders.add));
+    router.put('/social/ai/reminders/:id', mw.authAdminApi, http(api.socialAiReminders.edit));
+    router.get('/social/ai/reminder-events', mw.authAdminApi, http(api.socialAiReminderEvents.browse));
+    router.post('/social/ai/reminder-events', mw.authAdminApi, http(api.socialAiReminderEvents.add));
+    router.get('/social/ai/reminders/dispatch', mw.authAdminApi, http(api.socialAiReminderDispatch.browse));
+    router.get('/social/ai/user-phones', mw.authAdminApi, http(api.socialAiUserPhones.browse));
+    router.post('/social/ai/user-phones', mw.authAdminApi, http(api.socialAiUserPhones.add));
+    router.put('/social/ai/user-phones', mw.authAdminApi, http(api.socialAiUserPhones.edit));
+    router.get('/social/ai/agent-settings', mw.authAdminApi, http(api.socialAiAgentSettings.browse));
+    router.get('/social/ai/agent-settings/:id', mw.authAdminApi, http(api.socialAiAgentSettings.read));
+    router.post('/social/ai/agent-settings', mw.authAdminApi, http(api.socialAiAgentSettings.add));
+    router.put('/social/ai/agent-settings/:id', mw.authAdminApi, http(api.socialAiAgentSettings.edit));
 
     return router;
 };

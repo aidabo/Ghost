@@ -100,6 +100,7 @@ debug('app flags loaded');
 
 debug('loading commands');
 let commands = [];
+const useNxDaemon = process.env.NX_DAEMON !== 'false';
 
 const COMMAND_GHOST = {
     name: 'ghost',
@@ -131,7 +132,9 @@ const COMMAND_BROWSERTESTS = {
 
 const COMMAND_TYPESCRIPT = {
     name: 'ts',
-    command: `while [ 1 ]; do nx watch --projects=${tsPackages} -- nx run \\$NX_PROJECT_NAME:build:ts; done`,
+    command: useNxDaemon
+        ? `while [ 1 ]; do nx watch --projects=${tsPackages} -- nx run \\$NX_PROJECT_NAME:build:ts; done`
+        : `nx run-many --projects=${tsPackages} --targets=build:ts --watch --parallel=1`,
     cwd: path.resolve(__dirname, '../../'),
     prefixColor: 'cyan',
     env: {}
@@ -141,7 +144,9 @@ const adminXApps = '@tryghost/admin-x-demo,@tryghost/admin-x-settings,@tryghost/
 
 const COMMANDS_ADMINX = [{
     name: 'adminXDeps',
-    command: 'while [ 1 ]; do nx watch --projects=apps/admin-x-design-system,apps/admin-x-framework,apps/shade,apps/stats -- nx run \\$NX_PROJECT_NAME:build; done',
+    command: useNxDaemon
+        ? 'while [ 1 ]; do nx watch --projects=apps/admin-x-design-system,apps/admin-x-framework,apps/shade,apps/stats -- nx run \\$NX_PROJECT_NAME:build; done'
+        : 'nx run-many --projects=apps/admin-x-design-system,apps/admin-x-framework,apps/shade,apps/stats --targets=build --watch --parallel=1',
     cwd: path.resolve(__dirname, '../..'),
     prefixColor: '#C72AF7',
     env: {}
@@ -315,12 +320,16 @@ async function handleStripe() {
     }
     debug('at least one command provided');
 
-    debug('resetting nx');
-    process.env.NX_DISABLE_DB = "true";
-    await exec("yarn nx reset --onlyDaemon");
-    debug('nx reset');
-    await exec("yarn nx daemon --start");
-    debug('nx daemon started');
+    if (useNxDaemon) {
+        debug('resetting nx');
+        process.env.NX_DISABLE_DB = "true";
+        await exec("yarn nx reset --onlyDaemon");
+        debug('nx reset');
+        await exec("yarn nx daemon --start");
+        debug('nx daemon started');
+    } else {
+        debug('NX daemon disabled; skipping daemon startup/reset');
+    }
 
     console.log(`Running projects: ${commands.map(c => chalk.green(c.name)).join(', ')}`);
 

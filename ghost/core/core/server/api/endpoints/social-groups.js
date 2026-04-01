@@ -18,7 +18,8 @@ const ALLOWED_INCLUDES = [
     'members.role',
     'count.members',
     'count.posts',
-    'count.inactive_members'
+    'count.inactive_members',
+    'count.pages'
 ];
 
 const messages = {
@@ -52,26 +53,26 @@ const controller = {
             }
         },
         permissions: true,
-        async query(frame) {  
+        async query(frame) {
             // @ts-ignore
-            const allGroups = await models.SocialGroup.findPage({...frame.options, withRelated: ALLOWED_INCLUDES});
+            const allGroups = await models.SocialGroup.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
             //logging.info('allGroups', JSON.stringify(allGroups));
-            const userId = frame.options.context?.user;            
-            const allowedGroups = [];            
+            const userId = frame.options.context?.user;
+            const allowedGroups = [];
             for (const group of allGroups.data) {
                 // @ts-ignore
                 const canRead = await models.SocialGroup.canAccessGroup(group, userId, 'read');
                 if (canRead) {
                     allowedGroups.push(group);
                 }
-            }            
+            }
             allGroups.data = allowedGroups;
-            return allGroups;        
+            return allGroups;
         }
     },
-    
+
     read: {
-        headers: {cacheInvalidate: false},
+        headers: { cacheInvalidate: false },
         options: [
             'filter',
             'include'
@@ -80,7 +81,7 @@ const controller = {
         permissions: true,
         async query(frame) {
             // @ts-ignore
-            const entry = await models.SocialGroup.findOne(frame.data, {...frame.options, withRelated: ALLOWED_INCLUDES});
+            const entry = await models.SocialGroup.findOne(frame.data, { ...frame.options, withRelated: ALLOWED_INCLUDES });
             if (!entry) {
                 return Promise.reject(new errors.NotFoundError({
                     message: tpl(messages.notFound)
@@ -91,25 +92,26 @@ const controller = {
             const canRead = await models.SocialGroup.canAccessGroup(entry, userId, 'read');
             if (!canRead) {
                 return Promise.reject(new errors.NoPermissionError({
-                    message: tpl(messages.notPermissionToReadGroup, {group: entry.id, user: userId})
+                    message: tpl(messages.notPermissionToReadGroup, { group: entry.id, user: userId })
                 }));
             }
-            return entry;                
+            return entry;
         }
     },
 
     add: {
         statusCode: 201,
-        headers: {cacheInvalidate: false},
+        headers: { cacheInvalidate: false },
         options: [
             'include',
             'transacting'
         ],
         data: [
-            'creator_id', 
-            'group_name', 
-            'type', 
-            'status'
+            'creator_id',
+            'group_name',
+            'type',
+            'status',
+            'optional_settings'
         ],
         permissions: true,
         async query(frame) {
@@ -126,11 +128,11 @@ const controller = {
                 throw err;
             }
         }
-    }, 
+    },
 
     edit: {
         statusCode: 200,
-        headers: {cacheInvalidate: false},
+        headers: { cacheInvalidate: false },
         options: [
             'filter',
             'include',
@@ -140,10 +142,11 @@ const controller = {
             'transacting'
         ],
         data: [
-            'creator_id', 
-            'group_name', 
-            'type', 
-            'status'
+            'creator_id',
+            'group_name',
+            'type',
+            'status',
+            'optional_settings'
         ],
         permissions: true,
         async query(frame) {
@@ -164,12 +167,12 @@ const controller = {
 
     destroy: {
         statusCode: 204,
-        headers: {cacheInvalidate: false},
+        headers: { cacheInvalidate: false },
         options: ['id'],
         permissions: true,
         query(frame) {
             // @ts-ignore
-            return models.SocialGroup.destroy({...frame.options, require: true});
+            return models.SocialGroup.destroy({ ...frame.options, require: true });
         }
     },
 
@@ -187,4 +190,3 @@ const controller = {
 };
 
 module.exports = controller;
-

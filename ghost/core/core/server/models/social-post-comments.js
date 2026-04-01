@@ -1,3 +1,4 @@
+// @ts-nocheck
 const ghostBookshelf = require('./base');
 const _ = require('lodash');
 const errors = require('@tryghost/errors');
@@ -39,7 +40,7 @@ const SocialPostComment = ghostBookshelf.Model.extend({
     },
 
     user() {
-        return this.belongsTo('User', 'user_id');
+        return this.belongsTo('User', 'created_by');
     },
 
     parent() {
@@ -294,11 +295,11 @@ const SocialPostComment = ghostBookshelf.Model.extend({
             },
             liked(modelOrCollection, options) {
                 modelOrCollection.query('columns', 'social_post_comments.*', (qb) => {
-                    if (options.context && options.context.user && options.context.user.id) {
+                    if (options.context && options.context.user) {
                         qb.count('social_post_comment_likes.id')
                             .from('social_post_comment_likes')
                             .whereRaw('social_post_comment_likes.comment_id = social_post_comments.id')
-                            .where('social_post_comment_likes.user_id', options.context.user.id)
+                            .where('social_post_comment_likes.user_id', options.context.user)
                             .as('count__liked');
                         return;
                     }

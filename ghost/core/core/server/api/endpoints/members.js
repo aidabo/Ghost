@@ -107,7 +107,7 @@ const controller = {
         ],
         validation: {
             data: {
-                email: {required: true}
+                email: { required: true }
             },
             options: {
                 email_type: {
@@ -226,7 +226,7 @@ const controller = {
                     }
                 });
             }
-            let model = await membersService.api.memberBREADService.read({id: frame.options.id});
+            let model = await membersService.api.memberBREADService.read({ id: frame.options.id });
             if (!model) {
                 throw new errors.NotFoundError({
                     message: tpl(messages.memberNotFound)
@@ -270,7 +270,7 @@ const controller = {
                     stripe_price_id: frame.data.stripe_price_id
                 }
             });
-            let model = await membersService.api.memberBREADService.read({id: frame.options.id});
+            let model = await membersService.api.memberBREADService.read({ id: frame.options.id });
             if (!model) {
                 throw new errors.NotFoundError({
                     message: tpl(messages.memberNotFound)
@@ -457,7 +457,7 @@ const controller = {
                 resource: 'members',
                 total: totalMembers,
                 data: memberStats.map((d) => {
-                    const {paid, free, comped} = d;
+                    const { paid, free, comped } = d;
                     return {
                         date: moment(d.date).format('YYYY-MM-DD'),
                         paid, free, comped

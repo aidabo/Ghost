@@ -44,6 +44,34 @@ const messages = {
     invalidLexicalStructureHelp: 'https://ghost.org/docs/publishing/'
 };
 
+const extractGroupIdsFromFilter = (filter) => {
+    if (!filter || typeof filter !== 'string') {
+        return [];
+    }
+
+    const ids = new Set();
+
+    // group_id:[id1,id2]
+    const listMatch = filter.match(/group_id:\[([^\]]+)\]/);
+    if (listMatch && listMatch[1]) {
+        listMatch[1]
+            .split(',')
+            .map(id => id.trim().replace(/^['"]|['"]$/g, ''))
+            .filter(Boolean)
+            .forEach(id => ids.add(id));
+    }
+
+    // group_id:id OR group_id:'id'
+    const singleMatches = filter.matchAll(/group_id:'?([a-f0-9]+)'?/g);
+    for (const match of singleMatches) {
+        if (match[1]) {
+            ids.add(match[1]);
+        }
+    }
+
+    return [...ids];
+};
+
 const MOBILEDOC_REVISIONS_COUNT = 10;
 const POST_REVISIONS_COUNT = 25;
 const POST_REVISIONS_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
@@ -105,11 +133,13 @@ Post = ghostBookshelf.Model.extend({
             tiers,
             visibility: visibility,
             email_recipient_filter: 'all',
-            show_title_and_feature_image: true
+            show_title_and_feature_image: true,
+            public_post: true,
+            post_approved: true
         };
     },
 
-    relationships: ['tags', 'authors', 'mobiledoc_revisions', 'post_revisions', 'posts_meta', 'tiers'],
+    relationships: ['tags', 'authors', 'mobiledoc_revisions', 'post_revisions', 'posts_meta', 'tiers', 'social_post_components'],
     relationshipConfig: {
         tags: {
             editable: true
@@ -125,6 +155,9 @@ Post = ghostBookshelf.Model.extend({
         },
         posts_meta: {
             editable: true
+        },
+        social_post_components: {
+            editable: true
         }
     },
 
@@ -133,7 +166,8 @@ Post = ghostBookshelf.Model.extend({
         tags: 'tags',
         tiers: 'products',
         authors: 'users',
-        posts_meta: 'posts_meta'
+        posts_meta: 'posts_meta',
+        social_post_components: 'social_post_components'
     },
 
     relationsMeta: {
@@ -143,6 +177,10 @@ Post = ghostBookshelf.Model.extend({
         },
         email: {
             targetTableName: 'emails',
+            foreignKey: 'post_id'
+        },
+        social_post_components: {
+            targetTableName: 'social_post_components',
             foreignKey: 'post_id'
         }
     },
@@ -272,11 +310,12 @@ Post = ghostBookshelf.Model.extend({
         // @ts-ignore
         let postsMetaKeys = _.without(ghostBookshelf.model('PostsMeta').prototype.orderAttributes(), 'posts_meta.id', 'posts_meta.post_id');
 
-        // extend ordered by count of bookmarks, favors, forwards
+        // extend ordered by count of bookmarks, favors, forwards, comments
         let counts = [
             'count__bookmarks',
             'count__favors',
-            'count__forwards'
+            'count__forwards',
+            'count__comments'
         ];
 
         return [...keys, ...postsMetaKeys, ...counts];
@@ -369,6 +408,11 @@ Post = ghostBookshelf.Model.extend({
             },
             post_revisions: {
                 tableName: 'post_revisions',
+                type: 'oneToMany',
+                joinFrom: 'post_id'
+            },
+            social_post_components: {
+                tableName: 'social_post_components',
                 type: 'oneToMany',
                 joinFrom: 'post_id'
             }
@@ -645,6 +689,9 @@ Post = ghostBookshelf.Model.extend({
         // not a group post
         const groupId = model.get('group_id');
         if (!groupId) {
+            if (!model.get('public_post')) {
+                model.set('public_post', true);
+            }
             return; 
         }
 
@@ -662,6 +709,13 @@ Post = ghostBookshelf.Model.extend({
             throw new errors.NoPermissionError({
                 message: `You do not have permission to post in group ${group.get('id')} ${group.get('status')}`
             });
+        }
+
+        // if group is public, ensure public_post = true, otherwise false
+        if (group && group.get('type') === 'public') {
+            model.set('public_post', true);
+        } else {
+            model.set('public_post', false);
         }
     },
 
@@ -1147,6 +1201,10 @@ Post = ghostBookshelf.Model.extend({
         return this.hasMany('PostRevision', 'post_id');
     },
 
+    social_post_components() {
+        return this.hasMany('SocialPostComponent', 'post_id');
+    },
+
     posts_meta: function postsMeta() {
         return this.hasOne('PostsMeta', 'post_id');
     },
@@ -1252,20 +1310,21 @@ Post = ghostBookshelf.Model.extend({
     },
 
     defaultFilters: function defaultFilters(options) {
-        // if (options.context && options.context.internal) {
-        //     return null;
-        // }
+        if (options.context && options.context.internal) {
+            return null;
+        }
 
         // return options.context && options.context.public ? 'type:post' : 'type:post+status:published';
 
-        let filter = options.context && options.context.internal ?
-            null : options.context && options.context.public ? 
-                'type:post' : 'type:post+status:published';
+        let filter = options.context && options.context.public ? 'type:post' : 'type:post+status:published';
         
         //default filter to get posts not in groups
-        if (!/\bgroup_id:/.test(filter)) {            
-            filter = filter ? `${filter}+(group_id:null)` : '(group_id:null)';
+        if (!/\bgroup_id:/.test(options.filter || '')) {
+            //filter = filter ? `${filter}+(group_id:null)` : '(group_id:null)';
+            filter = filter ? `${filter}+(public_post:true)` : '(public_post:true)';
         }
+
+        logging.info('Post.defaultFilters', filter, JSON.stringify(options.context || {}));
         return filter;
     },
 
@@ -1375,33 +1434,46 @@ Post = ghostBookshelf.Model.extend({
         return options;
     },
 
-    validateGroupPostOnFetch: function validateGroupPostOnFetch(options) {
+    validateGroupPostOnFetch: async function validateGroupPostOnFetch(options) {
         logging.info('validateGroupPostOnFetch', JSON.stringify(options));
+        if (options.context?.internal){
+            return;
+        }
 
-        // Matches group_id:'684fe613ac7a254f8909f8d4' or group_id:684fe613ac7a254f8909f8d4
-        let filter = options.filter;
-        const match = filter?.match(/group_id:'?([a-f0-9]+)'?/);
-        if (match) {
-            const groupId = match[1];
+        const groupIds = extractGroupIdsFromFilter(options.filter);
+        if (!groupIds.length) {
+            return;
+        }
+
+        const user = options.context?.user;
+
+        for (const groupId of groupIds) {
             // @ts-ignore
-            return models.SocialGroup.findOne({id: groupId})
-                .then((group) => {
-                    const user = options.context.user;
-                    if (!user) {
-                        throw new errors.NoPermissionError({
-                            message: `No login user authentication, can not read posts in this group: ${groupId}.`
-                        });
-                    }
-                    // @ts-ignore
-                    return models.SocialGroup.canAccessGroup(group, user, 'read')
-                        .then((allowed) => {
-                            if (!allowed) {
-                                throw new errors.NoPermissionError({
-                                    message: `You are not allowed to read posts in this group: ${groupId}, user: ${user}.`
-                                });
-                            }
-                        });
+            const group = await models.SocialGroup.findOne({id: groupId});
+            if (!group) {
+                throw new errors.NotFoundError({
+                    message: `Group not found: ${groupId}.`
                 });
+            }
+
+            // public groups are readable without user auth
+            if (group.get('type') === 'public') {
+                continue;
+            }
+
+            if (!user) {
+                throw new errors.NoPermissionError({
+                    message: `No login user authentication, can not read posts in this group: ${groupId}.`
+                });
+            }
+
+            // @ts-ignore
+            const allowed = await models.SocialGroup.canAccessGroup(group, user, 'read');
+            if (!allowed) {
+                throw new errors.NoPermissionError({
+                    message: `You are not allowed to read posts in this group: ${groupId}, user: ${user}.`
+                });
+            }
         }
     },
 
@@ -1426,7 +1498,7 @@ Post = ghostBookshelf.Model.extend({
             // @ts-ignore
             && _.intersection(_.without(ghostBookshelf.model('PostsMeta').prototype.permittedAttributes(), 'id', 'post_id'), options.columns).length)
         ) {
-            options.withRelated = _.union(['posts_meta', 'count.bookmarks', 'count.favors', 'count.forwards'], options.withRelated || []);
+            options.withRelated = _.union(['posts_meta', 'count.bookmarks', 'count.favors', 'count.forwards', 'count.comments', 'social_post_components'], options.withRelated || []);
         }
 
         return options;
@@ -1618,7 +1690,7 @@ Post = ghostBookshelf.Model.extend({
     // NOTE: the `authors` extension is the parent of the post model. It also has a permissible function.
     // @ts-ignore
     permissible: async function permissible(postModel, action, context, unsafeAttrs, loadedPermissions, hasUserPermission, hasApiKeyPermission) {
-        let {isContributor, isOwner, isAdmin, isEitherEditor} = setIsRoles(loadedPermissions);
+        let {isContributor, isOwner, isAdmin, isEitherEditor, isAuthor} = setIsRoles(loadedPermissions);
         let isIntegration;
         let isEdit;
         let isAdd;
@@ -1658,7 +1730,7 @@ Post = ghostBookshelf.Model.extend({
         } else if (isContributor && isDestroy) {
             // If destroying, only allow contributor to destroy their own draft posts
             hasUserPermission = isDraft();
-        } else if (!(isOwner || isAdmin || isEitherEditor || isIntegration)) {
+        } else if (!(isOwner || isAdmin || isEitherEditor || isIntegration /**custom added*/ || isAuthor)) {
             hasUserPermission = !isChanging('visibility');
         }
 
@@ -1707,6 +1779,15 @@ Post = ghostBookshelf.Model.extend({
                         .as('count__forwards');
                 });
             },
+            comments(modelOrCollection) {
+                modelOrCollection.query('columns', 'posts.*', (qb) => {
+                    qb.count('social_post_comments.id')
+                        .from('social_post_comments')
+                        .whereRaw('posts.id = social_post_comments.post_id and social_post_comments.status = ?', 'published')
+                        .as('count__comments');
+                });
+            },
+
             signups(modelOrCollection) {
                 modelOrCollection.query('columns', 'posts.*', (qb) => {
                     qb.count('members_created_events.id')

@@ -1,5 +1,6 @@
 const urlUtils = require('../../../shared/url-utils');
 const models = require('../../models');
+const errors = require('@tryghost/errors');
 const getPostServiceInstance = require('../../services/posts/posts-service');
 const allowedIncludes = [
     'tags',
@@ -19,7 +20,9 @@ const allowedIncludes = [
     'post_revisions.author',
     'count.bookmarks',
     'count.favors',
-    'count.forwards'
+    'count.forwards',
+    'count.comments',
+    'social_post_components'
 ];
 const unsafeAttrs = ['status', 'authors', 'visibility'];
 
@@ -47,6 +50,90 @@ function getCacheHeaderFromEventString(event, dto) {
     }
 }
 
+function setDefaultPostApproved(frame) {
+    if (frame?.data?.posts && Array.isArray(frame.data.posts) && frame.data.posts.length > 0) {
+        if (typeof frame.data.posts[0].post_approved === 'undefined') {
+            frame.data.posts[0].post_approved = true;
+        }
+    }
+}
+
+function appendGroupFilter(frame) {
+    const groupId = frame.options?.group_id;
+    if (!groupId) {
+        return;
+    }
+
+    if (!/\bgroup_id:/.test(frame.options.filter || '')) {
+        frame.options.filter = frame.options.filter ? `${frame.options.filter}+group_id:${groupId}` : `group_id:${groupId}`;
+    }
+
+    delete frame.options.group_id;
+}
+
+function extractGroupIds(filter) {
+    if (!filter || typeof filter !== 'string') {
+        return [];
+    }
+
+    const ids = new Set();
+    const listMatch = filter.match(/group_id:\[([^\]]+)\]/);
+    if (listMatch && listMatch[1]) {
+        listMatch[1]
+            .split(',')
+            .map(id => id.trim().replace(/^['"]|['"]$/g, ''))
+            .filter(Boolean)
+            .forEach(id => ids.add(id));
+    }
+
+    const singleMatches = filter.matchAll(/group_id:'?([a-f0-9]+)'?/g);
+    for (const match of singleMatches) {
+        if (match[1]) {
+            ids.add(match[1]);
+        }
+    }
+
+    return [...ids];
+}
+
+async function enforceGroupAccess(frame) {
+    const groupIds = extractGroupIds(frame.options?.filter);
+    if (!groupIds.length) {
+        return;
+    }
+
+    const userId = frame.options?.context?.user;
+
+    for (const groupId of groupIds) {
+        // @ts-ignore
+        const group = await models.SocialGroup.findOne({id: groupId});
+        if (!group) {
+            throw new errors.NotFoundError({
+                message: `Group not found: ${groupId}.`
+            });
+        }
+
+        // public groups are readable without user auth
+        if (group.get('type') === 'public') {
+            continue;
+        }
+
+        if (!userId) {
+            throw new errors.NoPermissionError({
+                message: `No login user authentication, can not read posts in this group: ${groupId}.`
+            });
+        }
+
+        // @ts-ignore
+        const allowed = await models.SocialGroup.canAccessGroup(group, userId, 'read');
+        if (!allowed) {
+            throw new errors.NoPermissionError({
+                message: `You are not allowed to read posts in this group: ${groupId}, user: ${userId}.`
+            });
+        }
+    }
+}
+
 /** @type {import('@tryghost/api-framework').Controller} */
 const controller = {
     docName: 'posts',
@@ -57,6 +144,7 @@ const controller = {
         options: [
             'include',
             'filter',
+            'group_id',
             'fields',
             'collection',
             'formats',
@@ -72,6 +160,7 @@ const controller = {
                     values: allowedIncludes
                 },
                 formats: {
+                    // @ts-ignore
                     values: models.Post.allowedFormats
                 }
             }
@@ -79,7 +168,9 @@ const controller = {
         permissions: {
             unsafeAttrs: unsafeAttrs
         },
-        query(frame) {
+        async query(frame) {
+            appendGroupFilter(frame);
+            await enforceGroupAccess(frame);
             return postsService.browsePosts(frame.options);
         }
     },
@@ -176,6 +267,7 @@ const controller = {
             unsafeAttrs: unsafeAttrs
         },
         query(frame) {
+            setDefaultPostApproved(frame);
             // @ts-ignore
             return models.Post.add(frame.data.posts[0], frame.options)
                 .then((model) => {
@@ -229,6 +321,8 @@ const controller = {
             unsafeAttrs: unsafeAttrs
         },
         async query(frame) {
+            await enforceGroupAccess(frame);
+            setDefaultPostApproved(frame);
             // @ts-ignore
             let model = await postsService.editPost(frame, {
                 eventHandler: (event, dto) => {

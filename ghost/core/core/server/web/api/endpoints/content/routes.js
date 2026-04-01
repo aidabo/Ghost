@@ -4,6 +4,7 @@ const api = require('../../../../api').endpoints;
 const {http} = require('@tryghost/api-framework');
 const mw = require('./middleware');
 const config = require('../../../../../shared/config');
+const customApi = require('./custom-routes');
 
 /**
  * @returns {import('express').Router}
@@ -32,6 +33,8 @@ module.exports = function apiRoutes() {
     router.get('/tags', mw.authenticatePublic, http(api.tagsPublic.browse));
     router.get('/tags/:id', mw.authenticatePublic, http(api.tagsPublic.read));
     router.get('/tags/slug/:slug', mw.authenticatePublic, http(api.tagsPublic.read));
+
+    // ## Tags custom api
     router.get('/tags/all/count', mw.authenticatePublic, http(api.tagsPublic.count));
 
     // ## Settings
@@ -44,6 +47,9 @@ module.exports = function apiRoutes() {
 
     // ## Recommendations
     router.get('/recommendations', mw.authenticatePublic, http(api.recommendationsPublic.browse));
+
+    // Add custom api routes
+    customApi(router);
 
     return router;
 };

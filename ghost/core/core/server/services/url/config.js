@@ -38,7 +38,14 @@ module.exports = [
                 'email_recipient_filter',
                 'comment_id',
                 'tiers',
-                'group_id'
+
+                // customized appended fields
+                'group_id',
+                'public_post',
+                'related_date',
+                'related_events',
+                'post_approved',
+                'post_comment_closed'
             ],
             withRelated: ['tags', 'authors'],
             withRelatedPrimary: {
@@ -92,7 +99,14 @@ module.exports = [
                 'email_recipient_filter',
                 'comment_id',
                 'tiers',
-                'group_id'
+
+                // customized appended fields
+                'group_id',
+                'public_post',
+                'related_date',
+                'related_events',
+                'post_approved',
+                'post_comment_closed'
             ],
             filter: 'status:published+type:page'
         },

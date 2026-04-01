@@ -1,0 +1,21 @@
+{
+  "name": "@tryghost/user-events",
+  "version": "0.0.0",
+  "private": true,
+  "author": "Ghost Foundation (added by custom)",
+  "license": "MIT",
+  "main": "index.js",
+  "scripts": {
+    "dev": "echo \"Implement me!\"",
+    "test:unit": "NODE_ENV=testing c8 --all --reporter text --reporter cobertura -- mocha --reporter dot './test/**/*.test.js'",
+    "test": "yarn test:unit",
+    "lint:code": "eslint *.js lib/ --ext .js --cache",
+    "lint": "yarn lint:code && yarn lint:test",
+    "lint:test": "eslint -c test/.eslintrc.js test/ --ext .js --cache"
+  },
+  "files": [
+    "index.js",
+    "lib"
+  ],
+  "yalcSig": "116bb450b7bbd1e1158f7b48c238cf40"
+}

@@ -1,6 +1,6 @@
 // @ts-ignore
-// @ts-ignore
 const _ = require('lodash');
+const crypto = require('crypto');
 // @ts-nocheck
 const ObjectId = require('bson-objectid').default;
 const ghostBookshelf = require('./base');
@@ -22,6 +22,34 @@ const SocialGroup = ghostBookshelf.Model.extend({
         };
     },
 
+    format(attrs) {
+        const formatted = ghostBookshelf.Model.prototype.format.call(this, attrs);
+
+        if (
+            Object.prototype.hasOwnProperty.call(formatted, 'optional_settings') &&
+            formatted.optional_settings &&
+            typeof formatted.optional_settings !== 'string'
+        ) {
+            formatted.optional_settings = JSON.stringify(formatted.optional_settings);
+        }
+
+        return formatted;
+    },
+
+    parse() {
+        const attrs = ghostBookshelf.Model.prototype.parse.apply(this, arguments);
+
+        if (typeof attrs.optional_settings === 'string') {
+            try {
+                attrs.optional_settings = JSON.parse(attrs.optional_settings);
+            } catch (err) {
+                // keep original string when legacy value is not JSON
+            }
+        }
+
+        return attrs;
+    },
+
     owner() {
         return this.belongsTo('User', 'creator_id');
     },
@@ -32,7 +60,7 @@ const SocialGroup = ghostBookshelf.Model.extend({
 
     posts() {
         return this.hasMany('Post', 'group_id');
-    },   
+    },
 
     initialize() {
         // @ts-ignore
@@ -42,40 +70,47 @@ const SocialGroup = ghostBookshelf.Model.extend({
 
     async validateFields(model) {
         logging.info(JSON.stringify(model));
-        
+
         const userId = model.get('creator_id');
         const groupName = model.get('group_name');
         const groupType = model.get('type');
         const groupStatus = model.get('status');
+        const mediaFolderAlias = model.get('media_folder_alias');
 
         if (!userId) {
-            throw new errors.ValidationError({message: '`creator_id` is required.'});
+            throw new errors.ValidationError({ message: '`creator_id` is required.' });
         }
 
         if (!groupName) {
-            throw new errors.ValidationError({message: '`group_name` is required.'});
+            throw new errors.ValidationError({ message: '`group_name` is required.' });
         }
 
         if (!groupType) {
-            throw new errors.ValidationError({message: '`type` is required.'});
+            throw new errors.ValidationError({ message: '`type` is required.' });
         }
 
         if (!groupStatus) {
-            throw new errors.ValidationError({message: '`status` is required.'});
-        }        
- 
+            throw new errors.ValidationError({ message: '`status` is required.' });
+        }
+
+        if (mediaFolderAlias && !/^g_[a-f0-9]{12}$/.test(mediaFolderAlias)) {
+            throw new errors.ValidationError({
+                message: 'media_folder_alias must match g_<12 hex chars>.'
+            });
+        }
+
         // @ts-ignore
-        const user = await models.User.findOne({id: userId});
+        const user = await models.User.findOne({ id: userId });
         if (!user) {
-            throw new errors.NotFoundError({message: `User of creator with ID ${userId} not found.`});
-        } 
-        
+            throw new errors.NotFoundError({ message: `User of creator with ID ${userId} not found.` });
+        }
+
         // No permission to update for archived group 
         if (model.get('id')) {
             // @ts-ignore
-            const group = await models.SocialGroup.findOne({id: model.get('id')});
-            if (group && group.status === 'archived'){
-                throw new errors.NoPermissionError({message: `No permission for update archived group: ${group.id} not found.`});
+            const group = await models.SocialGroup.findOne({ id: model.get('id') });
+            if (group && group.status === 'archived') {
+                throw new errors.NoPermissionError({ message: `No permission for update archived group: ${group.id} not found.` });
             }
         }
     },
@@ -96,7 +131,13 @@ const SocialGroup = ghostBookshelf.Model.extend({
             return null;
         }
 
-        // 3. Otherwise (public or non-admin user): only show active groups
+        // 2. Authenticated admin API context: keep all statuses.
+        // Membership/permission checks are handled in controllers/services.
+        if (ctx.user) {
+            return null;
+        }
+
+        // 3. Public/unauthenticated context: only show active groups.
         return 'status:active';
     },
 
@@ -140,9 +181,24 @@ const SocialGroup = ghostBookshelf.Model.extend({
         logging.info(`SocialGroup.onCreated: ${model.id}, ${JSON.stringify(model.toJSON())}`);
 
         const creatorUserId = model.get('creator_id') || options.context?.user;
+        if (!creatorUserId) {
+            throw new errors.ValidationError({
+                message: 'creator_id is required to create group owner membership.'
+            });
+        }
 
         // @ts-ignore
-        const groupOwnerRole = await models.Role.findOne({name: 'Social Group Owner'}, {transacting: options.transacting});
+        let groupOwnerRole = await models.Role.findOne({ name: 'Social Group Owner' }, { transacting: options.transacting });
+        if (!groupOwnerRole) {
+            // Fallback for environments where custom role migrations were not applied yet.
+            // @ts-ignore
+            groupOwnerRole = await models.Role.findOne({ name: 'Administrator' }, { transacting: options.transacting });
+        }
+        if (!groupOwnerRole) {
+            throw new errors.NotFoundError({
+                message: 'Role "Social Group Owner" not found. Please run social role migrations.'
+            });
+        }
 
         // Create owner member
         const ownerMember = {
@@ -157,7 +213,7 @@ const SocialGroup = ghostBookshelf.Model.extend({
             transacting: options.transacting
         });
     },
-    
+
     /**
      * When deleting a group, we move all posts in this group to Trash group.
      * And Trash group can not be deleted.
@@ -169,19 +225,19 @@ const SocialGroup = ghostBookshelf.Model.extend({
     async onDestroying(model, attrs, options) {
         logging.info(`SocialGroup.onDestroying: ${model.id}, ${JSON.stringify(model.toJSON())}`);
 
-        if (model.get('group_name') === 'Trash') {    
-            throw new errors.NoPermissionError({message: `No permission to delete Trash group.`});
+        if (model.get('group_name') === 'Trash') {
+            throw new errors.NoPermissionError({ message: `No permission to delete Trash group.` });
         }
 
         // Get trash group
         // @ts-ignore
-        const trashGroup = await SocialGroup.findOne({group_name: 'Trash'});        
+        const trashGroup = await SocialGroup.findOne({ group_name: 'Trash' });
         if (!trashGroup) {
             logging.warn(`Trash group not found. Don't move posts in deleted group to Trash`);
             return;
             //throw new errors.NotFoundError({message: `Trash group not found. Don't move posts in deleted group to Trash`});
         }
-        
+
         const groupId = model.get('id');
         const trashGroupId = trashGroup.get('id');
 
@@ -189,12 +245,62 @@ const SocialGroup = ghostBookshelf.Model.extend({
         const updated = await ghostBookshelf.knex('posts')
             .where('group_id', groupId)
             .update('group_id', trashGroupId);
-            //.transacting(options.transacting);
+        //.transacting(options.transacting);
 
-        logging.info(`${updated} posts moved to Trash group`);            
+        logging.info(`${updated} posts moved to Trash group`);
     }
-    
-},{
+
+}, {
+    generateMediaFolderAlias: async function generateMediaFolderAlias(options = {}) {
+        const knex = options.transacting || ghostBookshelf.knex;
+
+        for (let i = 0; i < 8; i++) {
+            const alias = `g_${crypto.randomBytes(6).toString('hex')}`;
+            const exists = await knex('social_groups')
+                .where('media_folder_alias', alias)
+                .first('id');
+
+            if (!exists) {
+                return alias;
+            }
+        }
+
+        throw new errors.InternalServerError({
+            message: 'Unable to generate unique social group media folder alias.'
+        });
+    },
+
+    ensureMediaFolderAlias: async function ensureMediaFolderAlias(groupId, options = {}) {
+        if (!groupId) {
+            return null;
+        }
+
+        // @ts-ignore
+        const group = await this.findOne({ id: groupId }, options);
+        if (!group) {
+            return null;
+        }
+
+        const existing = group.get('media_folder_alias');
+        if (existing) {
+            return existing;
+        }
+
+        const alias = await this.generateMediaFolderAlias({
+            transacting: options.transacting
+        });
+
+        await group.save({
+            media_folder_alias: alias
+        }, {
+            patch: true,
+            method: 'update',
+            transacting: options.transacting
+        });
+
+        return alias;
+    },
+
     getGroupsCount: async function getGroupsCount(options) {
         const knex = ghostBookshelf.knex('social_groups');
         const allCounts = await knex.count('social_groups.id as count')
@@ -210,8 +316,8 @@ const SocialGroup = ghostBookshelf.Model.extend({
             //.andWhereRaw('social_groups.status = ?', 'active')
             .andWhereRaw('social_group_members.status <> ?', 'disabled')
             .groupBy('social_groups.type');
-        
-        return {admin_groups: allCounts, user_groups: counts};
+
+        return { admin_groups: allCounts, user_groups: counts };
     },
 
     canAccessGroup: async function canAccessGroup(groupModel, userId, mode = 'read') {
@@ -220,18 +326,18 @@ const SocialGroup = ghostBookshelf.Model.extend({
         }
 
         // 'active', 'archived', etc.
-        const groupStatus = groupModel.get('status'); 
+        const groupStatus = groupModel.get('status');
 
         // Check admin
         // @ts-ignore
-        const user = await models.User.findOne({id: userId}, {withRelated: ['roles']});
+        const user = await models.User.findOne({ id: userId }, { withRelated: ['roles'] });
         const isAdmin = user?.related('roles').some(role => role.get('name') === 'Administrator' || role.get('name') === 'Owner');
-        
+
         if (isAdmin) {
             // Admins can't write to archived groups
             if (groupStatus === 'archived' && mode === 'write') {
                 logging.warn(`Administrator can not write post in archived group ${groupModel.get('id')}`);
-                return false; 
+                return false;
             }
             return true;
         }
@@ -246,11 +352,11 @@ const SocialGroup = ghostBookshelf.Model.extend({
         // not a member
         if (!member) {
             logging.warn(`You are not a member of group ${groupModel.get('id')}, ${userId}`);
-            return false; 
+            return false;
         }
 
         // 'active', 'archived', 'disabled', etc.
-        const memberStatus = member.get('status'); 
+        const memberStatus = member.get('status');
 
         // Disabled members get no access
         if (memberStatus === 'disabled') {
@@ -285,6 +391,14 @@ const SocialGroup = ghostBookshelf.Model.extend({
                         .as('count__posts');
                 });
             },
+            pages(modelOrCollection) {
+                modelOrCollection.query('columns', 'social_groups.*', (qb) => {
+                    qb.count('social_components.id')
+                        .from('social_components')
+                        .whereRaw('social_components.group_id = social_groups.id')
+                        .as('count__pages');
+                });
+            },
             inactive_members(modelOrCollection) {
                 modelOrCollection.query('columns', 'social_groups.*', (qb) => {
                     qb.count('social_group_members.id')
@@ -301,4 +415,3 @@ const SocialGroup = ghostBookshelf.Model.extend({
 module.exports = {
     SocialGroup: ghostBookshelf.model('SocialGroup', SocialGroup)
 };
-

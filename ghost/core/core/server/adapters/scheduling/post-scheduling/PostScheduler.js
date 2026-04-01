@@ -61,7 +61,13 @@ class PostScheduler {
                 secret: integration.api_keys[0].secret
             }
         });
+
+        //add group_id filter for scheduled post in private group
         let url = `${urlUtils.urlJoin(apiUrl, 'schedules', resource, model.get('id'))}/?token=${signedAdminToken}`;
+        if(model.get('group_id')){
+            let filter = `group_id=${model.get('group_id')}`
+            url = `${url}&${filter}`
+        }                
 
         return {
             // NOTE: The scheduler expects a unix timestamp.

@@ -339,6 +339,9 @@ async function initServices() {
 
     const urlUtils = require('./shared/url-utils');
 
+    //add social comments
+    const socialComments = require('./server/services/social-comments');
+
     // NOTE: limits service has to be initialized first
     // in case it limits initialization of any other service (e.g. webhooks)
     await limits.init();
@@ -381,7 +384,9 @@ async function initServices() {
         donationService.init(),
         recommendationsService.init(),
         statsService.init(),
-        explorePingService.init()
+        explorePingService.init(),
+        //add social comments 
+        socialComments.init()
     ]);
     debug('End: Services');
 

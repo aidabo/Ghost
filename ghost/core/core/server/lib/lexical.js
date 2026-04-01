@@ -12,7 +12,12 @@ let postsService;
 let serializePosts;
 
 function populateNodes() {
-    const {DEFAULT_NODES} = require('@tryghost/kg-default-nodes');
+    // Ensure renderer and nodes come from the same module tree to avoid
+    // instanceof mismatches that can drop decorator cards (e.g. image) from HTML output.
+    const rendererEntry = require.resolve('@tryghost/kg-lexical-html-renderer');
+    const rendererDir = path.dirname(rendererEntry);
+    const kgDefaultNodesPath = require.resolve('@tryghost/kg-default-nodes', {paths: [rendererDir]});
+    const {DEFAULT_NODES} = require(kgDefaultNodesPath);
     nodes = DEFAULT_NODES;
 }
 

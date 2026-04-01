@@ -238,6 +238,70 @@ module.exports = {
         return apiFramework.pipeline(require('./social-group-members'), localUtils);
     },
 
+    get socialComments() {
+        return apiFramework.pipeline(require('./social-post-comments'), localUtils);
+    },
+
+    get socialCommentReplies() {
+        return apiFramework.pipeline(require('./social-post-comment-replies'), localUtils);
+    },
+
+    get socialCommentReports() {
+        return apiFramework.pipeline(require('./social-post-comment-report'), localUtils);
+    },
+
+    get socialComponents() {
+        return apiFramework.pipeline(require('./social-components'), localUtils);
+    },
+
+    get socialPostComponents() {
+        return apiFramework.pipeline(require('./social-post-components'), localUtils);
+    },
+
+    get socialUserLogs() {
+        return apiFramework.pipeline(require('./social-user-logs'), localUtils);
+    },
+
+    get socialGallery() {
+        return apiFramework.pipeline(require('./social-gallery'), localUtils);
+    },
+
+    get socialAiChats() {
+        return apiFramework.pipeline(require('./social-ai-chats'), localUtils);
+    },
+
+    get socialAiUsages() {
+        return apiFramework.pipeline(require('./social-ai-usages'), localUtils);
+    },
+
+    get socialAiReminders() {
+        return apiFramework.pipeline(require('./social-ai-reminders'), localUtils);
+    },
+
+    get socialAiReminderEvents() {
+        return apiFramework.pipeline(require('./social-ai-reminder-events'), localUtils);
+    },
+
+    get socialAiReminderDispatch() {
+        return apiFramework.pipeline(require('./social-ai-reminder-dispatch'), localUtils);
+    },
+
+    get socialAiDevices() {
+        return apiFramework.pipeline(require('./social-ai-devices'), localUtils);
+    },
+
+    get socialAiSmsLogs() {
+        return apiFramework.pipeline(require('./social-ai-sms-logs'), localUtils);
+    },
+
+    get socialAiUserPhones() {
+        return apiFramework.pipeline(require('./social-ai-user-phones'), localUtils);
+    },
+
+    get socialAiAgentSettings() {
+        return apiFramework.pipeline(require('./social-ai-agent-settings'), localUtils);
+    },
+
     //custom end
 
     /**
@@ -290,6 +354,15 @@ module.exports = {
 
     get recommendationsPublic() {
         return apiFramework.pipeline(require('./recommendations-public'), localUtils, 'content');
+    },
+
+    //add custom
+    get socialCommentsPublic() {
+        return apiFramework.pipeline(require('./social-post-comments-public'), localUtils, 'social');
+    },
+
+    get socialComponentsPublic() {
+        return apiFramework.pipeline(require('./social-components-public'), localUtils, 'social');
     }
 
 };
