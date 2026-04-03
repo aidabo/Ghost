@@ -15,7 +15,6 @@ const messages = {
     groupNotFound: 'Group not found.',
     invalidJobId: '`id` is required.',
     invalidTransition: 'The requested job transition is not allowed.',
-    noQueuedJob: 'No queued AI media job is available to claim.',
     invalidCorrectedTranscript: '`corrected_transcript_json` must be valid JSON with a segments array.',
     invalidPriority: '`priority` must be a non-negative number.'
 };
@@ -59,27 +58,10 @@ const isAdminUser = async (userId) => {
     return roles.some(role => ADMIN_ROLES.has(role.get('name')));
 };
 
-// @ts-ignore
-// @ts-ignore
-const parseLimit = (value) => {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isNaN(parsed) || parsed <= 0) {
-        return 30;
-    }
-    return Math.min(parsed, 100);
-};
-
-// @ts-ignore
-// @ts-ignore
-const parsePage = (value) => {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isNaN(parsed) || parsed <= 0) {
-        return 1;
-    }
-    return parsed;
-};
-
 const nowMySql = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+// @ts-ignore
+const getJobId = (frame) => frame.options?.id || frame.data?.id || null;
 
 // @ts-ignore
 const resolveTargetUserId = async (frame) => {
@@ -320,6 +302,12 @@ const assertCanWriteGroup = async ({ frame, groupId, targetUserId }) => {
 };
 
 // @ts-ignore
+const loadModelForUpdateOrThrow = async (frame) => loadModelOrThrow(getJobId(frame));
+
+// @ts-ignore
+const loadRowForActionOrThrow = async (knex, frame) => loadRowOrThrow(knex, getJobId(frame));
+
+// @ts-ignore
 const loadModelOrThrow = async (id) => {
     if (!id) {
         throw new errors.ValidationError({
@@ -383,7 +371,7 @@ const controller = {
                 include: ALLOWED_INCLUDES
             }
         },
-        permissions: false,
+        permissions: true,
         async query(frame) {
             //logging.info('[social-ai-media-jobs] read: input frame snapshot', JSON.stringify(frame));
             const targetUserId = await resolveTargetUserId(frame);
@@ -410,7 +398,7 @@ const controller = {
                 include: ALLOWED_INCLUDES
             }
         },
-        permissions: false,
+        permissions: true,
         async query(frame) {
             //logging.info('[social-ai-media-jobs] read: input frame snapshot', JSON.stringify(frame));
             const targetUserId = await resolveTargetUserId(frame);
@@ -436,12 +424,12 @@ const controller = {
             'priority',
             'corrected_transcript_json'
         ],
-        permissions: false,
+        permissions: true,
         // @ts-ignore
         async query(frame) {
             const payloadInput = getPayload(frame);
-            const id = frame.options?.id || frame.data?.id;
-            const model = await loadModelOrThrow(id);
+            const id = getJobId(frame);
+            const model = await loadModelForUpdateOrThrow(frame);
             const row = model.toJSON();
             await assertCanReadRow({ frame, row });
 
@@ -543,7 +531,7 @@ const controller = {
             'file_url',
             'input_file_name'
         ],
-        permissions: false,
+        permissions: true,
         async query(frame) {
             const payloadInput = getPayload(frame);
             const payload = normalizeWritePayload(payloadInput);
@@ -604,12 +592,12 @@ const controller = {
     // @ts-ignore
     cancel: {
         options: ['id'],
-        permissions: false,
+        permissions: true,
         async query(frame) {
             const knex = models.Base.knex;
             const currentUserId = getCurrentUserId(frame);
             // @ts-ignore
-            const row = (await loadModelOrThrow(frame.options?.id || frame.data?.id)).toJSON();
+            const row = (await loadModelForUpdateOrThrow(frame)).toJSON();
             await assertCanReadRow({ frame, row });
 
             if (!['queued', 'running'].includes(row.status)) {
@@ -641,12 +629,12 @@ const controller = {
     // @ts-ignore
     retry: {
         options: ['id'],
-        permissions: false,
+        permissions: true,
         async query(frame) {
             const knex = models.Base.knex;
             const currentUserId = getCurrentUserId(frame);
             // @ts-ignore
-            const row = (await loadModelOrThrow(frame.options?.id || frame.data?.id)).toJSON();
+            const row = (await loadModelForUpdateOrThrow(frame)).toJSON();
             await assertCanReadRow({ frame, row });
 
             if (!['failed', 'canceled', 'completed'].includes(row.status)) {
@@ -693,7 +681,7 @@ const controller = {
 
     // @ts-ignore
     claim: {
-        permissions: false,
+        permissions: true,
         async query(frame) {
             const knex = models.Base.knex;
             const payloadInput = getActionPayload(frame);
@@ -741,12 +729,12 @@ const controller = {
     // @ts-ignore
     progress: {
         options: ['id'],
-        permissions: false,
+        permissions: true,
         async query(frame) {
             const knex = models.Base.knex;
             const payloadInput = getActionPayload(frame);
             // @ts-ignore
-            const row = await loadRowOrThrow(knex, frame.options?.id || frame.data?.id);
+            const row = await loadRowForActionOrThrow(knex, frame);
             const now = nowMySql();
             await knex(TABLE)
                 .where({ id: row.id })
@@ -778,12 +766,12 @@ const controller = {
     // @ts-ignore
     complete: {
         options: ['id'],
-        permissions: false,
+        permissions: true,
         async query(frame) {
             const knex = models.Base.knex;
             const payloadInput = getActionPayload(frame);
             // @ts-ignore
-            const row = await loadRowOrThrow(knex, frame.options?.id || frame.data?.id);
+            const row = await loadRowForActionOrThrow(knex, frame);
             const now = nowMySql();
             await knex(TABLE)
                 .where({ id: row.id })
@@ -814,12 +802,12 @@ const controller = {
     // @ts-ignore
     fail: {
         options: ['id'],
-        permissions: false,
+        permissions: true,
         async query(frame) {
             const knex = models.Base.knex;
             const payloadInput = getActionPayload(frame);
             // @ts-ignore
-            const row = await loadRowOrThrow(knex, frame.options?.id || frame.data?.id);
+            const row = await loadRowForActionOrThrow(knex, frame);
             const now = nowMySql();
             await knex(TABLE)
                 .where({ id: row.id })

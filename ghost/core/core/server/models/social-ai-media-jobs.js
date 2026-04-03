@@ -17,9 +17,10 @@ const SocialAiMediaJob = ghostBookshelf.Model.extend({
             priority: 0,
             mode: 'subtitle_only',
             source_lang: 'auto',
-            subtitle_render: 'soft',
+            subtitle_render: 'none',
             output_playback_speed: 'normal',
             retry_count: 0,
+            settings_json: '{}',
             artifacts_json: '[]'
         };
     },
