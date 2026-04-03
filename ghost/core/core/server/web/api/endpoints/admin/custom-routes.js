@@ -132,5 +132,17 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/agent-settings', mw.authAdminApi, http(api.socialAiAgentSettings.add));
     router.put('/social/ai/agent-settings/:id', mw.authAdminApi, http(api.socialAiAgentSettings.edit));
 
+    // ## ai media jobs
+    router.get('/social/ai/media/jobs', mw.authAdminApi, http(api.socialAiMediaJobs.browse));
+    router.get('/social/ai/media/jobs/:id', mw.authAdminApi, http(api.socialAiMediaJobs.read));
+    router.post('/social/ai/media/jobs', mw.authAdminApi, http(api.socialAiMediaJobs.add));
+    router.put('/social/ai/media/jobs/:id', mw.authAdminApi, http(api.socialAiMediaJobs.edit));
+    router.post('/social/ai/media/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiMediaJobs.cancel));
+    router.post('/social/ai/media/jobs/:id/retry', mw.authAdminApi, http(api.socialAiMediaJobs.retry));
+    router.post('/social/ai/media/jobs/claim', mw.authAdminApi, http(api.socialAiMediaJobs.claim));
+    router.post('/social/ai/media/jobs/:id/progress', mw.authAdminApi, http(api.socialAiMediaJobs.progress));
+    router.post('/social/ai/media/jobs/:id/complete', mw.authAdminApi, http(api.socialAiMediaJobs.complete));
+    router.post('/social/ai/media/jobs/:id/fail', mw.authAdminApi, http(api.socialAiMediaJobs.fail));
+
     return router;
 };
