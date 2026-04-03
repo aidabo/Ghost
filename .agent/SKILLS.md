@@ -3,6 +3,19 @@
 Date: 2026-03-08
 Scope: AI reminder persistence and realtime tool execution path
 
+## Document map
+
+For Ghost custom backend docs, prefer:
+
+- [docs/README.md](../docs/README.md)
+- [social-api/README.md](../docs/social-api/README.md)
+
+Use this file for:
+
+- agent-facing backend change notes
+- implementation history
+- custom Ghost backend conventions
+
 ## Change Log (Codex changes)
 - Added AI reminder persistence support in Ghost backend:
   - Added reminders table migration: `ghost/core/core/server/data/migrations/versions/5.116/2026-03-08-00-00-04-add-social-ai-reminders-table.js`
