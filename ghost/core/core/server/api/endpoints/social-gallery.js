@@ -238,6 +238,14 @@ const wrapStorageError = (message, context, err) => {
     });
 };
 
+const isMissingThumbnailColumnError = (err) => {
+    const message = String(err?.message || '').toLowerCase();
+    return err?.code === 'ER_BAD_FIELD_ERROR' ||
+        (err?.code === 'SQLITE_ERROR' && message.includes('thumbnail_')) ||
+        message.includes('unknown column') ||
+        message.includes('has no column named thumbnail_');
+};
+
 const sanitizeFileName = (value) => {
     const raw = String(value || '').trim();
     const base = path.basename(raw).replace(/[^\w.\-()+\u3040-\u30ff\u3400-\u9fff]/g, '_');
@@ -251,6 +259,19 @@ const buildUniqueStorageKey = (targetDir, filename) => {
     const suffix = ObjectId().toHexString().slice(-8);
     const uniqueName = `${baseName}-${suffix}${ext}`;
     return path.posix.join(targetDir || '', uniqueName).replace(/^\/+/, '');
+};
+
+const buildThumbnailFilename = (filename) => {
+    const parsed = path.posix.parse(String(filename || '').trim() || 'upload.bin');
+    const baseName = String(parsed.name || 'upload').trim() || 'upload';
+    return `${baseName}.png`;
+};
+
+const buildThumbnailStorageKey = (storageKey) => {
+    const parsed = path.posix.parse(String(storageKey || '').trim() || 'upload.bin');
+    const dir = String(parsed.dir || '').trim();
+    const baseName = String(parsed.name || 'upload').trim() || 'upload';
+    return path.posix.join(dir, `${baseName}.png`).replace(/^\/+/, '');
 };
 
 const assertListSupported = (store) => {
@@ -457,21 +478,45 @@ const attachCategoryInfo = async (items) => {
     let rows = [];
 
     try {
-        rows = keys.length > 0
-            ? await knex('social_media_assets as sma')
-                .leftJoin('tags as t', 'sma.tag_id', 't.id')
-                .whereIn('sma.storage_key', keys)
-                .select(
-                    'sma.storage_key as storage_key',
-                    'sma.original_filename as original_filename',
-                    'sma.tag_slug as asset_tag_slug',
-                    'sma.asset_type as asset_type',
-                    'sma.created_at as created_at',
-                    'sma.updated_at as updated_at',
-                    't.name as tag_name',
-                    't.slug as tag_slug'
-                )
-            : [];
+        if (keys.length > 0) {
+            try {
+                rows = await knex('social_media_assets as sma')
+                    .leftJoin('tags as t', 'sma.tag_id', 't.id')
+                    .whereIn('sma.storage_key', keys)
+                    .select(
+                        'sma.storage_key as storage_key',
+                        'sma.thumbnail_url as thumbnail_url',
+                        'sma.thumbnail_storage_key as thumbnail_storage_key',
+                        'sma.original_filename as original_filename',
+                        'sma.tag_slug as asset_tag_slug',
+                        'sma.asset_type as asset_type',
+                        'sma.created_at as created_at',
+                        'sma.updated_at as updated_at',
+                        't.name as tag_name',
+                        't.slug as tag_slug'
+                    );
+            } catch (err) {
+                if (!isMissingThumbnailColumnError(err)) {
+                    throw err;
+                }
+
+                rows = await knex('social_media_assets as sma')
+                    .leftJoin('tags as t', 'sma.tag_id', 't.id')
+                    .whereIn('sma.storage_key', keys)
+                    .select(
+                        'sma.storage_key as storage_key',
+                        'sma.original_filename as original_filename',
+                        'sma.tag_slug as asset_tag_slug',
+                        'sma.asset_type as asset_type',
+                        'sma.created_at as created_at',
+                        'sma.updated_at as updated_at',
+                        't.name as tag_name',
+                        't.slug as tag_slug'
+                    );
+            }
+        } else {
+            rows = [];
+        }
     } catch (err) {
         if (err?.code !== 'ER_NO_SUCH_TABLE' && err?.code !== 'SQLITE_ERROR') {
             throw err;
@@ -493,6 +538,8 @@ const attachCategoryInfo = async (items) => {
         return {
             ...item,
             original_filename: row?.original_filename || null,
+            thumbnail_url: row?.thumbnail_url || null,
+            thumbnail_storage_key: row?.thumbnail_storage_key || null,
             asset_type: row?.asset_type || null,
             created_at: row?.created_at || null,
             updated_at: row?.updated_at || null,
@@ -597,9 +644,8 @@ const listByAssetTable = async ({ scope, userId, groupId, limit, nextCursor, typ
     const sortField = orderBy?.field === 'updated_at' ? 'updated_at' : 'created_at';
     const sortDirection = orderBy?.direction === 'asc' ? 'asc' : 'desc';
 
-    let query = knex('social_media_assets as sma')
-        .leftJoin('tags as t', 'sma.tag_id', 't.id')
-        .select(
+    const buildAssetTableQuery = (includeThumbnailColumns) => {
+        const columns = [
             'sma.id as id',
             'sma.storage_key as key',
             'sma.storage_url as url',
@@ -610,11 +656,25 @@ const listByAssetTable = async ({ scope, userId, groupId, limit, nextCursor, typ
             'sma.updated_at as updated_at',
             't.name as tag_name',
             't.slug as tag_slug'
-        )
-        .where('sma.owner_scope', scope)
-        .limit(limit + 1)
-        .orderBy(`sma.${sortField}`, sortDirection)
-        .orderBy('sma.id', sortDirection);
+        ];
+
+        if (includeThumbnailColumns) {
+            columns.splice(4, 0,
+                'sma.thumbnail_url as thumbnail_url',
+                'sma.thumbnail_storage_key as thumbnail_storage_key'
+            );
+        }
+
+        return knex('social_media_assets as sma')
+            .leftJoin('tags as t', 'sma.tag_id', 't.id')
+            .select(columns)
+            .where('sma.owner_scope', scope)
+            .limit(limit + 1)
+            .orderBy(`sma.${sortField}`, sortDirection)
+            .orderBy('sma.id', sortDirection);
+    };
+
+    let query = buildAssetTableQuery(true);
 
     if (scope === 'group') {
         query = query.andWhere('sma.group_id', groupId);
@@ -636,7 +696,38 @@ const listByAssetTable = async ({ scope, userId, groupId, limit, nextCursor, typ
         });
     }
 
-    const rows = await query;
+    let rows;
+    try {
+        rows = await query;
+    } catch (err) {
+        if (!isMissingThumbnailColumnError(err)) {
+            throw err;
+        }
+
+        query = buildAssetTableQuery(false);
+
+        if (scope === 'group') {
+            query = query.andWhere('sma.group_id', groupId);
+        } else {
+            query = query.andWhere('sma.user_id', userId).whereNull('sma.group_id');
+        }
+
+        if (type !== TYPE_ALL) {
+            query = query.andWhere('sma.asset_type', type);
+        }
+
+        if (cursor) {
+            query = query.andWhere(function () {
+                this.where(`sma.${sortField}`, sortDirection === 'asc' ? '>' : '<', cursor.createdAt)
+                    .orWhere(function () {
+                        this.where(`sma.${sortField}`, '=', cursor.createdAt)
+                            .andWhere('sma.id', sortDirection === 'asc' ? '>' : '<', cursor.id);
+                    });
+            });
+        }
+
+        rows = await query;
+    }
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
 
@@ -644,6 +735,8 @@ const listByAssetTable = async ({ scope, userId, groupId, limit, nextCursor, typ
         key: row.key,
         url: row.url,
         path: row.path,
+        thumbnail_url: row.thumbnail_url || null,
+        thumbnail_storage_key: row.thumbnail_storage_key || null,
         name: String(row.original_filename || '').trim() || String(row.key || '').split('/').filter(Boolean).pop() || null,
         type: resolveGalleryItemType({
             asset_type: row.asset_type
@@ -981,6 +1074,34 @@ const controller = {
                 storageUrl: presigned?.url || null
             });
 
+            const assetType = resolveUploadedAssetType({ filename, contentType });
+            let thumbnailPresigned = null;
+            if (assetType === TYPE_VIDEO) {
+                const thumbnailKey = buildThumbnailStorageKey(presigned?.key || uniqueKey);
+
+                try {
+                    thumbnailPresigned = await mediaStore.getPresignedPutUrl({
+                        key: thumbnailKey,
+                        contentType: 'image/png',
+                        expiresInSeconds: 900
+                    });
+                } catch (err) {
+                    logging.warn('[social-gallery] presign stage: failed to create thumbnail presign', {
+                        filename,
+                        thumbnailKey,
+                        message: err?.message || null
+                    });
+                }
+
+                if (thumbnailPresigned) {
+                    logging.info('[social-gallery] presign stage: thumbnail presigned url created', {
+                        filename,
+                        thumbnailKey: thumbnailPresigned?.key || thumbnailKey,
+                        thumbnailUrl: thumbnailPresigned?.url || null
+                    });
+                }
+            }
+
             return {
                 data: [{
                     upload_url: presigned.uploadUrl,
@@ -988,14 +1109,20 @@ const controller = {
                     storage_key: presigned.key,
                     headers: presigned.headers || {},
                     original_filename: originalFilename,
-                    asset_type: resolveUploadedAssetType({ filename, contentType }),
+                    asset_type: assetType,
                     owner_scope: uploadContext.groupId ? 'group' : 'user',
                     user_id: uploadContext.userId || null,
                     group_id: uploadContext.groupId || null,
                     category: uploadContext.tag?.name || null,
                     category_slug: uploadContext.tag?.slug || null,
                     content_type: contentType,
-                    content_length: Number.isFinite(contentLength) ? contentLength : null
+                    content_length: Number.isFinite(contentLength) ? contentLength : null,
+                    thumbnail_upload_url: thumbnailPresigned?.uploadUrl || null,
+                    thumbnail_storage_url: thumbnailPresigned?.url || null,
+                    thumbnail_storage_key: thumbnailPresigned?.key || null,
+                    thumbnail_headers: thumbnailPresigned?.headers || {},
+                    thumbnail_content_type: thumbnailPresigned ? 'image/png' : null,
+                    thumbnail_filename: thumbnailPresigned ? buildThumbnailFilename(originalFilename || filename) : null
                 }]
             };
         }
@@ -1012,6 +1139,8 @@ const controller = {
             'tag_id',
             'storage_key',
             'storage_url',
+            'thumbnail_storage_key',
+            'thumbnail_storage_url',
             'asset_type',
             'original_filename'
         ],
@@ -1019,6 +1148,8 @@ const controller = {
         async query(frame) {
             const storageKey = String(getFrameValue(frame, 'storage_key') || '').trim();
             const storageUrl = String(getFrameValue(frame, 'storage_url') || '').trim();
+            const thumbnailStorageKey = String(getFrameValue(frame, 'thumbnail_storage_key') || '').trim();
+            const thumbnailStorageUrl = String(getFrameValue(frame, 'thumbnail_storage_url') || '').trim();
             const requestedAssetType = String(getFrameValue(frame, 'asset_type') || '').trim().toLowerCase();
             const originalFilename = sanitizeFileName(getFrameValue(frame, 'original_filename'));
 
@@ -1044,6 +1175,8 @@ const controller = {
                     knex: models.Base.knex,
                     store: uploadContext.mediaStore,
                     url: storageUrl,
+                    thumbnailUrl: thumbnailStorageUrl || null,
+                    thumbnailStorageKey: thumbnailStorageKey || null,
                     assetType,
                     originalFilename,
                     userId: uploadContext.userId,
@@ -1059,6 +1192,9 @@ const controller = {
                     id: assetId,
                     storage_key: storageKey,
                     storage_url: storageUrl,
+                    thumbnail_storage_key: thumbnailStorageKey || null,
+                    thumbnail_storage_url: thumbnailStorageUrl || null,
+                    thumbnail_url: thumbnailStorageUrl || null,
                     original_filename: originalFilename || null,
                     asset_type: assetType,
                     owner_scope: uploadContext.groupId ? 'group' : 'user',

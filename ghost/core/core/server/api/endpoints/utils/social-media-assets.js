@@ -64,10 +64,30 @@ const getStorageKeyFromUrl = (store, url) => {
     }
 };
 
+const normalizeOptionalUrl = (value) => {
+    const normalized = String(value || '').trim();
+    return normalized || null;
+};
+
+const resolveStorageKey = (store, keyOrUrl) => {
+    const normalized = String(keyOrUrl || '').trim();
+    if (!normalized) {
+        return null;
+    }
+
+    if (/^https?:\/\//i.test(normalized)) {
+        return getStorageKeyFromUrl(store, normalized);
+    }
+
+    return normalized.replace(/^\/+/, '');
+};
+
 const upsertAsset = async ({
     knex,
     store,
     url,
+    thumbnailUrl,
+    thumbnailStorageKey,
     assetType,
     originalFilename,
     userId,
@@ -90,6 +110,8 @@ const upsertAsset = async ({
         const payload = {
             storage_key: storageKey,
             storage_url: url,
+            thumbnail_url: normalizeOptionalUrl(thumbnailUrl),
+            thumbnail_storage_key: resolveStorageKey(store, thumbnailStorageKey || thumbnailUrl),
             original_filename: String(originalFilename || '').trim() || null,
             asset_type: assetType,
             owner_scope: ownerScope,
@@ -99,21 +121,52 @@ const upsertAsset = async ({
             tag_slug: tag?.slug || null,
             updated_at: now
         };
+        const legacyPayload = {
+            storage_key: payload.storage_key,
+            storage_url: payload.storage_url,
+            original_filename: payload.original_filename,
+            asset_type: payload.asset_type,
+            owner_scope: payload.owner_scope,
+            user_id: payload.user_id,
+            group_id: payload.group_id,
+            tag_id: payload.tag_id,
+            tag_slug: payload.tag_slug,
+            updated_at: payload.updated_at
+        };
 
-        const existing = await knex('social_media_assets').where({storage_key: storageKey}).first('id');
-        if (existing) {
-            await knex('social_media_assets').where({id: existing.id}).update(payload);
-            return existing.id;
+        const persistAsset = async (persistPayload) => {
+            const existing = await knex('social_media_assets').where({storage_key: storageKey}).first('id');
+            if (existing) {
+                await knex('social_media_assets').where({id: existing.id}).update(persistPayload);
+                return existing.id;
+            }
+
+            const id = ObjectId().toHexString();
+            await knex('social_media_assets').insert({
+                id,
+                ...persistPayload,
+                created_at: now
+            });
+
+            return id;
+        };
+
+        try {
+            return await persistAsset(payload);
+        } catch (err) {
+            const message = String(err?.message || '').toLowerCase();
+            const isMissingThumbnailColumn =
+                err?.code === 'ER_BAD_FIELD_ERROR' ||
+                (err?.code === 'SQLITE_ERROR' && message.includes('thumbnail_')) ||
+                message.includes('unknown column') ||
+                message.includes('has no column named thumbnail_');
+
+            if (!isMissingThumbnailColumn) {
+                throw err;
+            }
+
+            return await persistAsset(legacyPayload);
         }
-
-        const id = ObjectId().toHexString();
-        await knex('social_media_assets').insert({
-            id,
-            ...payload,
-            created_at: now
-        });
-
-        return id;
     } catch (err) {
         // Backward compatibility: allow uploads before migration is applied.
         if (err?.code === 'ER_NO_SUCH_TABLE' || err?.code === 'SQLITE_ERROR') {
