@@ -1754,110 +1754,110 @@ Post = ghostBookshelf.Model.extend({
     },
 
     countRelations() {
-        return {
-            bookmarks(modelOrCollection) {
-                modelOrCollection.query('columns', 'posts.*', (qb) => {
-                    qb.count('social_bookmarks.id')
-                        .from('social_bookmarks')
-                        .whereRaw('posts.id = social_bookmarks.post_id')
-                        .as('count__bookmarks');
-                });
-            },
-            favors(modelOrCollection) {
-                modelOrCollection.query('columns', 'posts.*', (qb) => {
-                    qb.count('social_favors.id')
-                        .from('social_favors')
-                        .whereRaw('posts.id = social_favors.post_id')
-                        .as('count__favors');
-                });
-            },
-            forwards(modelOrCollection) {
-                modelOrCollection.query('columns', 'posts.*', (qb) => {
-                    qb.count('social_forwards.id')
-                        .from('social_forwards')
-                        .whereRaw('posts.id = social_forwards.post_id')
-                        .as('count__forwards');
-                });
-            },
-            comments(modelOrCollection) {
-                modelOrCollection.query('columns', 'posts.*', (qb) => {
-                    qb.count('social_post_comments.id')
-                        .from('social_post_comments')
-                        .whereRaw('posts.id = social_post_comments.post_id and social_post_comments.status = ?', 'published')
-                        .as('count__comments');
-                });
-            },
+            return {
+                bookmarks(modelOrCollection) {
+                    modelOrCollection.query('columns', 'posts.*', (qb) => {
+                        qb.count('social_bookmarks.id')
+                            .from('social_bookmarks')
+                            .whereRaw('posts.id = social_bookmarks.post_id')
+                            .as('count__bookmarks');
+                    });
+                },
+                favors(modelOrCollection) {
+                    modelOrCollection.query('columns', 'posts.*', (qb) => {
+                        qb.count('social_favors.id')
+                            .from('social_favors')
+                            .whereRaw('posts.id = social_favors.post_id')
+                            .as('count__favors');
+                    });
+                },
+                forwards(modelOrCollection) {
+                    modelOrCollection.query('columns', 'posts.*', (qb) => {
+                        qb.count('social_forwards.id')
+                            .from('social_forwards')
+                            .whereRaw('posts.id = social_forwards.post_id')
+                            .as('count__forwards');
+                    });
+                },
+                comments(modelOrCollection) {
+                    modelOrCollection.query('columns', 'posts.*', (qb) => {
+                        qb.count('social_post_comments.id')
+                            .from('social_post_comments')
+                            .whereRaw('posts.id = social_post_comments.post_id and social_post_comments.status = ?', 'published')
+                            .as('count__comments');
+                    });
+                },
 
-            signups(modelOrCollection) {
-                modelOrCollection.query('columns', 'posts.*', (qb) => {
-                    qb.count('members_created_events.id')
-                        .from('members_created_events')
-                        .whereRaw('posts.id = members_created_events.attribution_id')
-                        .as('count__signups');
-                });
-            },
-            paid_conversions(modelOrCollection) {
-                modelOrCollection.query('columns', 'posts.*', (qb) => {
-                    qb.count('members_subscription_created_events.id')
-                        .from('members_subscription_created_events')
-                        .whereRaw('posts.id = members_subscription_created_events.attribution_id')
-                        .as('count__paid_conversions');
-                });
-            },
+                signups(modelOrCollection) {
+                    modelOrCollection.query('columns', 'posts.*', (qb) => {
+                        qb.count('members_created_events.id')
+                            .from('members_created_events')
+                            .whereRaw('posts.id = members_created_events.attribution_id')
+                            .as('count__signups');
+                    });
+                },
+                paid_conversions(modelOrCollection) {
+                    modelOrCollection.query('columns', 'posts.*', (qb) => {
+                        qb.count('members_subscription_created_events.id')
+                            .from('members_subscription_created_events')
+                            .whereRaw('posts.id = members_subscription_created_events.attribution_id')
+                            .as('count__paid_conversions');
+                    });
+                },
             /**
              * Combination of sigups and paid conversions, but unique per member
              */
-            conversions(modelOrCollection) {
-                modelOrCollection.query('columns', 'posts.*', (qb) => {
-                    qb.count('*')
-                        .from('k')
-                        .with('k', (q) => {
-                            q.select('member_id')
-                                .from('members_subscription_created_events')
-                                .whereRaw('posts.id = members_subscription_created_events.attribution_id')
-                                .union(function () {
-                                    this.select('member_id')
-                                        .from('members_created_events')
-                                        .whereRaw('posts.id = members_created_events.attribution_id');
-                                });
-                        })
-                        .as('count__conversions');
-                });
-            },
-            clicks(modelOrCollection) {
-                modelOrCollection.query('columns', 'posts.*', (qb) => {
-                    qb.countDistinct('members_click_events.member_id')
-                        .from('members_click_events')
-                        .join('redirects', 'members_click_events.redirect_id', 'redirects.id')
-                        .whereRaw('posts.id = redirects.post_id')
-                        .as('count__clicks');
-                });
-            },
-            sentiment(modelOrCollection) {
-                modelOrCollection.query('columns', 'posts.*', (qb) => {
-                    qb.select(qb.client.raw('COALESCE(ROUND(AVG(score) * 100), 0)'))
-                        .from('members_feedback')
-                        .whereRaw('posts.id = members_feedback.post_id')
-                        .as('count__sentiment');
-                });
-            },
-            negative_feedback(modelOrCollection) {
-                modelOrCollection.query('columns', 'posts.*', (qb) => {
-                    qb.count('*')
-                        .from('members_feedback')
-                        .whereRaw('posts.id = members_feedback.post_id AND members_feedback.score = 0')
-                        .as('count__negative_feedback');
-                });
-            },
-            positive_feedback(modelOrCollection) {
-                modelOrCollection.query('columns', 'posts.*', (qb) => {
-                    qb.sum('score')
-                        .from('members_feedback')
-                        .whereRaw('posts.id = members_feedback.post_id')
-                        .as('count__positive_feedback');
-                });
-            }
-        };
+                conversions(modelOrCollection) {
+                    modelOrCollection.query('columns', 'posts.*', (qb) => {
+                        qb.count('*')
+                            .from('k')
+                            .with('k', (q) => {
+                                q.select('member_id')
+                                    .from('members_subscription_created_events')
+                                    .whereRaw('posts.id = members_subscription_created_events.attribution_id')
+                                    .union(function () {
+                                        this.select('member_id')
+                                            .from('members_created_events')
+                                            .whereRaw('posts.id = members_created_events.attribution_id');
+                                    });
+                            })
+                            .as('count__conversions');
+                    });
+                },
+                clicks(modelOrCollection) {
+                    modelOrCollection.query('columns', 'posts.*', (qb) => {
+                        qb.countDistinct('members_click_events.member_id')
+                            .from('members_click_events')
+                            .join('redirects', 'members_click_events.redirect_id', 'redirects.id')
+                            .whereRaw('posts.id = redirects.post_id')
+                            .as('count__clicks');
+                    });
+                },
+                sentiment(modelOrCollection) {
+                    modelOrCollection.query('columns', 'posts.*', (qb) => {
+                        qb.select(qb.client.raw('COALESCE(ROUND(AVG(score) * 100), 0)'))
+                            .from('members_feedback')
+                            .whereRaw('posts.id = members_feedback.post_id')
+                            .as('count__sentiment');
+                    });
+                },
+                negative_feedback(modelOrCollection) {
+                    modelOrCollection.query('columns', 'posts.*', (qb) => {
+                        qb.count('*')
+                            .from('members_feedback')
+                            .whereRaw('posts.id = members_feedback.post_id AND members_feedback.score = 0')
+                            .as('count__negative_feedback');
+                    });
+                },
+                positive_feedback(modelOrCollection) {
+                    modelOrCollection.query('columns', 'posts.*', (qb) => {
+                        qb.sum('score')
+                            .from('members_feedback')
+                            .whereRaw('posts.id = members_feedback.post_id')
+                            .as('count__positive_feedback');
+                    });
+                }
+            };
     }
 });
 

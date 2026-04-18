@@ -410,7 +410,7 @@ const controller = {
             unsafeAttrs: unsafeAttrs
         },
         query(frame) {
-            return models.Post.destroy({...frame.options, require: true});
+            return models.Post.destroy({ ...frame.options, require: true });
         }
     },
 

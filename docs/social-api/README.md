@@ -26,3 +26,9 @@ Use this directory for custom social API and backend notes.
 - [LEGACY_NOTES.md](./LEGACY_NOTES.md)
   - older post/user/schema extension notes
   - historical custom admin API examples
+
+## Group routing rule
+
+- use the Content API for `public` groups when no member auth is available
+- use the Admin/Dashboard API for private groups and any write flow that depends on logged-in user permissions
+- pick the route based on group type before making the request, rather than trying one endpoint and falling back after a failure
