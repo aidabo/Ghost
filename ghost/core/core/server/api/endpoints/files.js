@@ -73,6 +73,7 @@ const controller = {
         },
         options: [
             'group_id',
+            'job_id',
             'tag',
             'tag_slug',
             'tag_id'
@@ -93,6 +94,8 @@ const controller = {
                 store: fileStore,
                 url: filePath,
                 assetType: 'file',
+                originalFilename: frame.file?.originalname || frame.file?.name || null,
+                jobId: frame.data?.job_id || frame.options?.job_id || null,
                 userId: uploadContext.userId,
                 groupId: uploadContext.groupId,
                 tag: uploadContext.tag

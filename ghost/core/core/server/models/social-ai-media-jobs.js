@@ -33,6 +33,10 @@ const SocialAiMediaJob = ghostBookshelf.Model.extend({
         return this.belongsTo('SocialGroup', 'group_id');
     },
 
+    galleryAssets() {
+        return this.hasMany('SocialMediaAsset', 'job_id');
+    },
+
     initialize() {
         // @ts-ignore
         ghostBookshelf.Model.prototype.initialize.call(this);

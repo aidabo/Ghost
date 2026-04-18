@@ -405,7 +405,7 @@ const syncAssetsFromPost = async (frame) => {
     let updated = 0;
     let inserted = 0;
     for (const key of keys) {
-        const existing = await knex('social_media_assets').where({ storage_key: key }).first('id');
+        const existing = await socialMediaAssets.findAssetRowByStorageKey(knex, key, ['id']);
         const patch = {
             tag_id: selectedTag?.id || null,
             tag_slug: selectedTag?.slug || null,
@@ -418,9 +418,10 @@ const syncAssetsFromPost = async (frame) => {
             continue;
         }
 
-        await knex('social_media_assets').insert({
+        const insertPayload = {
             id: ObjectId().toHexString(),
             storage_key: key,
+            storage_key_hash: socialMediaAssets.buildStorageKeyHash(key),
             storage_url: keyToUrl.get(key),
             asset_type: inferAssetTypeByKey(key),
             owner_scope: post.get('group_id') ? 'group' : 'user',
@@ -430,7 +431,18 @@ const syncAssetsFromPost = async (frame) => {
             tag_slug: selectedTag?.slug || null,
             created_at: now,
             updated_at: now
-        });
+        };
+
+        try {
+            await knex('social_media_assets').insert(insertPayload);
+        } catch (err) {
+            if (!socialMediaAssets.isMissingStorageKeyHashColumnError(err)) {
+                throw err;
+            }
+
+            delete insertPayload.storage_key_hash;
+            await knex('social_media_assets').insert(insertPayload);
+        }
         inserted += 1;
     }
 
@@ -479,13 +491,17 @@ const attachCategoryInfo = async (items) => {
 
     try {
         if (keys.length > 0) {
+            const keyHashes = keys
+                .map(key => socialMediaAssets.buildStorageKeyHash(key))
+                .filter(Boolean);
             try {
                 rows = await knex('social_media_assets as sma')
                     .leftJoin('tags as t', 'sma.tag_id', 't.id')
-                    .whereIn('sma.storage_key', keys)
+                    .whereIn('sma.storage_key_hash', keyHashes)
                     .select(
                         'sma.storage_key as storage_key',
                         'sma.thumbnail_url as thumbnail_url',
+                        'sma.storage_key_hash as storage_key_hash',
                         'sma.thumbnail_storage_key as thumbnail_storage_key',
                         'sma.original_filename as original_filename',
                         'sma.tag_slug as asset_tag_slug',
@@ -496,7 +512,10 @@ const attachCategoryInfo = async (items) => {
                         't.slug as tag_slug'
                     );
             } catch (err) {
-                if (!isMissingThumbnailColumnError(err)) {
+                if (
+                    !isMissingThumbnailColumnError(err) &&
+                    !socialMediaAssets.isMissingStorageKeyHashColumnError(err)
+                ) {
                     throw err;
                 }
 
@@ -638,7 +657,7 @@ const listByPrefix = async (store, prefix, limit, nextCursor, type) => {
     };
 };
 
-const listByAssetTable = async ({ scope, userId, groupId, limit, nextCursor, type, orderBy }) => {
+const listByAssetTable = async ({ scope, userId, groupId, jobId, limit, nextCursor, type, orderBy }) => {
     const knex = models.Base.knex;
     const cursor = parseDbNextCursor(nextCursor);
     const sortField = orderBy?.field === 'updated_at' ? 'updated_at' : 'created_at';
@@ -652,6 +671,7 @@ const listByAssetTable = async ({ scope, userId, groupId, limit, nextCursor, typ
             'sma.storage_key as path',
             'sma.original_filename as original_filename',
             'sma.asset_type as asset_type',
+            'sma.job_id as job_id',
             'sma.created_at as created_at',
             'sma.updated_at as updated_at',
             't.name as tag_name',
@@ -686,6 +706,10 @@ const listByAssetTable = async ({ scope, userId, groupId, limit, nextCursor, typ
         query = query.andWhere('sma.asset_type', type);
     }
 
+    if (jobId) {
+        query = query.andWhere('sma.job_id', jobId);
+    }
+
     if (cursor) {
         query = query.andWhere(function () {
             this.where(`sma.${sortField}`, sortDirection === 'asc' ? '>' : '<', cursor.createdAt)
@@ -716,6 +740,10 @@ const listByAssetTable = async ({ scope, userId, groupId, limit, nextCursor, typ
             query = query.andWhere('sma.asset_type', type);
         }
 
+        if (jobId) {
+            query = query.andWhere('sma.job_id', jobId);
+        }
+
         if (cursor) {
             query = query.andWhere(function () {
                 this.where(`sma.${sortField}`, sortDirection === 'asc' ? '>' : '<', cursor.createdAt)
@@ -742,6 +770,7 @@ const listByAssetTable = async ({ scope, userId, groupId, limit, nextCursor, typ
             asset_type: row.asset_type
         }),
         asset_type: row.asset_type || null,
+        job_id: row.job_id || null,
         category: row.tag_name || null,
         category_slug: row.tag_slug || null,
         created_at: row.created_at || null,
@@ -890,6 +919,7 @@ const controller = {
             'limit',
             'next_cursor',
             'type',
+            'job_id',
             'include',
             'page',
             'limit',
@@ -910,6 +940,7 @@ const controller = {
             const limit = parseLimit(frame.options?.limit);
             const nextCursor = frame.options?.next_cursor || null;
             const type = parseType(frame.options?.type);
+            const jobId = String(frame.options?.job_id || '').trim() || null;
             const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
 
             const userAlias = await models.User.ensureMediaFolderAlias(userId);
@@ -917,6 +948,7 @@ const controller = {
                 scope: 'user',
                 userId,
                 groupId: null,
+                jobId,
                 limit,
                 nextCursor,
                 type,
@@ -925,6 +957,7 @@ const controller = {
             listed.meta.scope = 'user';
             listed.meta.alias = userAlias;
             listed.meta.user_id = userId;
+            listed.meta.job_id = jobId;
             listed.meta.type = type;
             listed.meta.orderby = `${orderBy.field}:${orderBy.direction}`;
 
@@ -941,6 +974,7 @@ const controller = {
             'next_cursor',
             'type',
             'group_id',
+            'job_id',
             'include',
             'page',
             'limit',
@@ -965,6 +999,7 @@ const controller = {
             const limit = parseLimit(frame.options?.limit);
             const nextCursor = frame.options?.next_cursor || null;
             const type = parseType(frame.options?.type);
+            const jobId = String(frame.options?.job_id || '').trim() || null;
             const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
 
             // @ts-ignore
@@ -973,6 +1008,7 @@ const controller = {
                 scope: 'group',
                 userId: null,
                 groupId,
+                jobId,
                 limit,
                 nextCursor,
                 type,
@@ -982,6 +1018,7 @@ const controller = {
             listed.meta.scope = 'group';
             listed.meta.alias = groupAlias;
             listed.meta.group_id = groupId;
+            listed.meta.job_id = jobId;
             listed.meta.group_type = group.get('type');
             listed.meta.type = type;
             listed.meta.orderby = `${orderBy.field}:${orderBy.direction}`;
@@ -996,6 +1033,7 @@ const controller = {
         },
         options: [
             'group_id',
+            'job_id',
             'tag',
             'tag_slug',
             'tag_id',
@@ -1113,6 +1151,7 @@ const controller = {
                     owner_scope: uploadContext.groupId ? 'group' : 'user',
                     user_id: uploadContext.userId || null,
                     group_id: uploadContext.groupId || null,
+                    job_id: String(getFrameValue(frame, 'job_id') || '').trim() || null,
                     category: uploadContext.tag?.name || null,
                     category_slug: uploadContext.tag?.slug || null,
                     content_type: contentType,
@@ -1134,6 +1173,7 @@ const controller = {
         },
         options: [
             'group_id',
+            'job_id',
             'tag',
             'tag_slug',
             'tag_id',
@@ -1152,6 +1192,7 @@ const controller = {
             const thumbnailStorageUrl = String(getFrameValue(frame, 'thumbnail_storage_url') || '').trim();
             const requestedAssetType = String(getFrameValue(frame, 'asset_type') || '').trim().toLowerCase();
             const originalFilename = sanitizeFileName(getFrameValue(frame, 'original_filename'));
+            const jobId = String(getFrameValue(frame, 'job_id') || '').trim() || null;
 
             if (!storageKey) {
                 throw new errors.ValidationError({
@@ -1179,6 +1220,7 @@ const controller = {
                     thumbnailStorageKey: thumbnailStorageKey || null,
                     assetType,
                     originalFilename,
+                    jobId,
                     userId: uploadContext.userId,
                     groupId: uploadContext.groupId,
                     tag: uploadContext.tag
@@ -1196,6 +1238,7 @@ const controller = {
                     thumbnail_storage_url: thumbnailStorageUrl || null,
                     thumbnail_url: thumbnailStorageUrl || null,
                     original_filename: originalFilename || null,
+                    job_id: jobId,
                     asset_type: assetType,
                     owner_scope: uploadContext.groupId ? 'group' : 'user',
                     user_id: uploadContext.userId || null,

@@ -1295,6 +1295,7 @@ module.exports = {
         id: { type: 'string', maxlength: 24, nullable: false, primary: true },
         // Keep non-indexed because MySQL/InnoDB key length limits are exceeded for utf8mb4 varchar(2000).
         storage_key: { type: 'string', maxlength: 2000, nullable: false },
+        storage_key_hash: { type: 'string', maxlength: 64, nullable: true, index: true },
         storage_url: { type: 'string', maxlength: 2000, nullable: false },
         thumbnail_storage_key: { type: 'string', maxlength: 2000, nullable: true },
         thumbnail_url: { type: 'string', maxlength: 2000, nullable: true },
@@ -1303,13 +1304,15 @@ module.exports = {
         owner_scope: { type: 'string', maxlength: 20, nullable: false, index: true },
         user_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'users.id', cascadeDelete: true },
         group_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true },
+        job_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_ai_media_jobs.id', setNullDelete: true },
         tag_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'tags.id', setNullDelete: true },
         tag_slug: { type: 'string', maxlength: 191, nullable: true, index: true },
         created_at: { type: 'dateTime', nullable: false },
         updated_at: { type: 'dateTime', nullable: true },
         '@@INDEXES@@': [
             ['owner_scope', 'user_id', 'created_at'],
-            ['owner_scope', 'group_id', 'created_at']
+            ['owner_scope', 'group_id', 'created_at'],
+            ['job_id', 'created_at']
         ]
     },
 
@@ -1470,7 +1473,10 @@ module.exports = {
         updated_by: { type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true },
         '@@INDEXES@@': [
             ['user_id', 'status'],
-            ['group_id', 'status']
+            ['group_id', 'status'],
+            ['user_id', 'updated_at'],
+            ['group_id', 'updated_at'],
+            ['status', 'claim_expires_at']
         ]
 
     }
