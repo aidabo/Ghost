@@ -183,3 +183,4 @@ temp*.sql
 
 /ghost/core/content.origin/
 ghost/core/core/shared/config/env/config.development.json 
+.omx/

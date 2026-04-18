@@ -172,6 +172,13 @@ describe('Posts Content API', function () {
         assert.equal(jsonResponse.posts[0].slug, 'welcome', 'The API orders by number of matched authors, then by published_at desc, then by id desc');
         jsonResponse.posts.forEach((post) => {
             assert(Array.isArray(post.authors), 'Expected authors include for each post');
+            assert.equal(typeof post.primary_author?.slug, 'string', 'Expected primary_author slug');
+            post.authors.forEach((author) => {
+                assert.equal(typeof author.id, 'string', 'Expected author id');
+                assert.equal(typeof author.slug, 'string', 'Expected author slug');
+                assert.equal(typeof author.name, 'string', 'Expected author name');
+                assert.match(author.media_folder_alias, /^u_[a-f0-9]{12}$/, 'Expected stable user media alias format');
+            });
         });
 
         const primaryAuthors = jsonResponse.posts.map((post) => {
@@ -212,6 +219,17 @@ describe('Posts Content API', function () {
         res.body.posts.forEach((post) => {
             assert(Array.isArray(post.tags), 'Expected tags include for each post');
             assert(Array.isArray(post.authors), 'Expected authors include for each post');
+            post.tags.forEach((tag) => {
+                assert.equal(typeof tag.id, 'string', 'Expected tag id');
+                assert.equal(typeof tag.slug, 'string', 'Expected tag slug');
+                assert.equal(typeof tag.name, 'string', 'Expected tag name');
+            });
+            post.authors.forEach((author) => {
+                assert.equal(typeof author.id, 'string', 'Expected author id');
+                assert.equal(typeof author.slug, 'string', 'Expected author slug');
+                assert.equal(typeof author.name, 'string', 'Expected author name');
+                assert.match(author.media_folder_alias, /^u_[a-f0-9]{12}$/, 'Expected stable user media alias format');
+            });
         });
     });
 
@@ -361,6 +379,34 @@ describe('Posts Content API', function () {
                 group_name: `Private Group ${groupId}`,
                 type: 'private',
                 status: 'active',
+                created_at: now,
+                updated_at: now,
+                created_by: ownerId,
+                updated_by: ownerId
+            });
+
+            await agent
+                .get(`posts/?filter=group_id:${groupId}`)
+                .expectStatus(403);
+        } finally {
+            await testUtils.knex('social_groups')
+                .where('id', groupId)
+                .del();
+        }
+    });
+
+    it('Rejects posts scoped to a non-active public group without member auth', async function () {
+        const ownerId = testUtils.DataGenerator.Content.users[0].id;
+        const groupId = ObjectId().toHexString();
+        const now = new Date();
+
+        try {
+            await testUtils.knex('social_groups').insert({
+                id: groupId,
+                creator_id: ownerId,
+                group_name: `Archived Public Group ${groupId}`,
+                type: 'public',
+                status: 'archived',
                 created_at: now,
                 updated_at: now,
                 created_by: ownerId,

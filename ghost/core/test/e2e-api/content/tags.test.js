@@ -2,6 +2,7 @@ const assert = require('assert/strict');
 const should = require('should');
 const supertest = require('supertest');
 const _ = require('lodash');
+const ObjectId = require('bson-objectid').default;
 const url = require('url');
 const configUtils = require('../../utils/configUtils');
 const config = require('../../../core/shared/config');
@@ -104,6 +105,113 @@ describe('Tags Content API', function () {
         _.find(jsonResponse.tags, {name: 'kitchen sink'}).count.posts.should.eql(2);
         _.find(jsonResponse.tags, {name: 'bacon'}).count.posts.should.eql(2);
         _.find(jsonResponse.tags, {name: 'chorizo'}).count.posts.should.eql(1);
+    });
+
+    it('Can include post count scoped to a public group without member auth', async function () {
+        const ownerId = testUtils.DataGenerator.Content.users[0].id;
+        const groupId = ObjectId().toHexString();
+        const tagId = testUtils.DataGenerator.Content.tags[0].id;
+        const now = new Date();
+        let postId;
+
+        try {
+            const relation = await testUtils.knex('posts_tags')
+                .where('tag_id', tagId)
+                .first('post_id');
+            postId = relation.post_id;
+
+            await testUtils.knex('social_groups').insert({
+                id: groupId,
+                creator_id: ownerId,
+                group_name: `Public Tag Group ${groupId}`,
+                type: 'public',
+                status: 'active',
+                created_at: now,
+                updated_at: now,
+                created_by: ownerId,
+                updated_by: ownerId
+            });
+
+            await testUtils.knex('posts')
+                .where('id', postId)
+                .update({group_id: groupId});
+
+            const res = await request.get(localUtils.API.getApiQuery(`tags/?key=${validKey}&include=count.posts&group_id=${groupId}`))
+                .set('Origin', testUtils.API.getURL())
+                .expect('Content-Type', /json/)
+                .expect('Cache-Control', testUtils.cacheRules.public)
+                .expect(200);
+
+            const scopedTag = _.find(res.body.tags, {id: tagId});
+            should.exist(scopedTag);
+            scopedTag.count.posts.should.eql(1);
+        } finally {
+            if (postId) {
+                await testUtils.knex('posts')
+                    .where('id', postId)
+                    .update({group_id: null});
+            }
+
+            await testUtils.knex('social_groups')
+                .where('id', groupId)
+                .del();
+        }
+    });
+
+    it('Rejects tags scoped to a private group without member auth', async function () {
+        const ownerId = testUtils.DataGenerator.Content.users[0].id;
+        const groupId = ObjectId().toHexString();
+        const now = new Date();
+
+        try {
+            await testUtils.knex('social_groups').insert({
+                id: groupId,
+                creator_id: ownerId,
+                group_name: `Private Tag Group ${groupId}`,
+                type: 'private',
+                status: 'active',
+                created_at: now,
+                updated_at: now,
+                created_by: ownerId,
+                updated_by: ownerId
+            });
+
+            await request.get(localUtils.API.getApiQuery(`tags/?key=${validKey}&include=count.posts&group_id=${groupId}`))
+                .set('Origin', testUtils.API.getURL())
+                .expect(403);
+        } finally {
+            await testUtils.knex('social_groups')
+                .where('id', groupId)
+                .del();
+        }
+    });
+
+    it('Rejects tags scoped to a non-active public group without member auth', async function () {
+        const ownerId = testUtils.DataGenerator.Content.users[0].id;
+        const groupId = ObjectId().toHexString();
+        const now = new Date();
+
+        try {
+            await testUtils.knex('social_groups').insert({
+                id: groupId,
+                creator_id: ownerId,
+                group_name: `Archived Public Tag Group ${groupId}`,
+                type: 'public',
+                status: 'archived',
+                created_at: now,
+                updated_at: now,
+                created_by: ownerId,
+                updated_by: ownerId
+            });
+
+            await request.get(localUtils.API.getApiQuery(`tags/?key=${validKey}&include=count.posts&group_id=${groupId}`))
+                .set('Origin', testUtils.API.getURL())
+                .expect(403);
+        } finally {
+            await testUtils.knex('social_groups')
+                .where('id', groupId)
+                .del();
+        }
     });
 
     it('Can use multiple fields and have valid url fields', async function () {

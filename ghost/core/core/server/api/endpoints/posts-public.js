@@ -74,7 +74,7 @@ async function enforcePublicGroupAccess(frame, requestedGroupId = null) {
 
     for (const groupId of groupIds) {
         const group = await db.knex('social_groups')
-            .select('id', db.knex.raw('type as groupType'))
+            .select('id', 'status', db.knex.raw('type as groupType'))
             .where('id', groupId)
             .first();
 
@@ -84,7 +84,7 @@ async function enforcePublicGroupAccess(frame, requestedGroupId = null) {
             });
         }
 
-        if (group.groupType !== 'public') {
+        if (group.groupType !== 'public' || group.status !== 'active') {
             throw new errors.NoPermissionError({
                 message: tpl(messages.noPermission)
             });
