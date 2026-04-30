@@ -4,6 +4,12 @@ const storage = require('../../adapters/storage');
 const models = require('../../models');
 const socialMediaAssets = require('./utils/social-media-assets');
 
+const normalizeUploadFilename = (value) => {
+    const raw = path.basename(String(value || '').trim() || 'upload.bin');
+    const deduped = raw.match(/^(.*\.[a-z0-9]+)-[a-z0-9_-]+$/i);
+    return deduped ? deduped[1] : raw;
+};
+
 const resolveUploadedMediaAssetType = (file) => {
     const mime = String(file?.mimetype || file?.type || '').toLowerCase().split(';')[0].trim();
     if (mime.startsWith('audio/')) {
@@ -13,7 +19,7 @@ const resolveUploadedMediaAssetType = (file) => {
         return 'video';
     }
 
-    const name = String(file?.originalname || file?.name || '').toLowerCase();
+    const name = normalizeUploadFilename(file?.originalname || file?.name || '').toLowerCase();
     const ext = path.extname(name).replace('.', '');
     if (['mp3', 'wav', 'ogg', 'm4a', 'weba'].includes(ext)) {
         return 'audio';
@@ -180,22 +186,29 @@ const controller = {
             const mediaStore = storage.getStorage('media');
             const uploadContext = await resolveUploadTargetDir(mediaStore, frame);
             const targetDir = uploadContext.targetDir;
+            const originalFile = frame.files.file[0];
+            const normalizedFileName = normalizeUploadFilename(originalFile?.originalname || originalFile?.name || '');
+            const uploadFile = {
+                ...originalFile,
+                name: normalizedFileName,
+                originalname: normalizedFileName
+            };
 
             let thumbnailPath = null;
             if (frame.files.thumbnail && frame.files.thumbnail[0]) {
                 thumbnailPath = await mediaStore.save(frame.files.thumbnail[0], targetDir || undefined);
             }
 
-            const filePath = await mediaStore.save(frame.files.file[0], targetDir || undefined);
+            const filePath = await mediaStore.save(uploadFile, targetDir || undefined);
 
-            const mediaType = resolveUploadedMediaAssetType(frame.files.file[0]);
+            const mediaType = resolveUploadedMediaAssetType(uploadFile);
             await socialMediaAssets.upsertAsset({
                 knex: models.Base.knex,
                 store: mediaStore,
                 url: filePath,
                 thumbnailUrl: thumbnailPath,
                 assetType: mediaType,
-                originalFilename: frame.files.file[0]?.originalname || frame.files.file[0]?.name || null,
+                originalFilename: originalFile?.originalname || originalFile?.name || null,
                 jobId: frame.data?.job_id || frame.options?.job_id || null,
                 userId: uploadContext.userId,
                 groupId: uploadContext.groupId,

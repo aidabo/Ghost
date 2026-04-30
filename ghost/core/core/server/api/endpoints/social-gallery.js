@@ -103,6 +103,12 @@ const extractUrlsFromLexical = (lexical) => {
     return Array.from(set);
 };
 
+const normalizeUploadFilename = (value) => {
+    const raw = path.basename(String(value || '').trim() || 'upload.bin');
+    const deduped = raw.match(/^(.*\.[a-z0-9]+)-[a-z0-9_-]+$/i);
+    return deduped ? deduped[1] : raw;
+};
+
 const inferAssetTypeByKey = (key) => {
     const ext = getExtension({ name: key });
     if (typeExtensions[TYPE_IMAGE].has(ext)) {
@@ -168,7 +174,7 @@ const buildDbNextCursor = (item) => {
 };
 
 const getExtension = (item) => {
-    const name = String(item?.name || item?.key || item?.path || item?.url || '').toLowerCase();
+    const name = normalizeUploadFilename(item?.name || item?.key || item?.path || item?.url || '').toLowerCase();
     const idx = name.lastIndexOf('.');
     if (idx < 0 || idx === name.length - 1) {
         return '';
@@ -253,7 +259,7 @@ const sanitizeFileName = (value) => {
 };
 
 const buildUniqueStorageKey = (targetDir, filename) => {
-    const parsed = path.posix.parse(String(filename || '').trim() || 'upload.bin');
+    const parsed = path.posix.parse(normalizeUploadFilename(filename));
     const baseName = String(parsed.name || 'upload').trim() || 'upload';
     const ext = String(parsed.ext || '').trim();
     const suffix = ObjectId().toHexString().slice(-8);
@@ -262,7 +268,7 @@ const buildUniqueStorageKey = (targetDir, filename) => {
 };
 
 const buildThumbnailFilename = (filename) => {
-    const parsed = path.posix.parse(String(filename || '').trim() || 'upload.bin');
+    const parsed = path.posix.parse(normalizeUploadFilename(filename));
     const baseName = String(parsed.name || 'upload').trim() || 'upload';
     return `${baseName}.png`;
 };
