@@ -24,7 +24,9 @@ const messages = {
     storageKeyRequired: '`storage_key` is required.',
     storageUrlRequired: '`storage_url` is required.',
     presignFailed: 'Failed to create presigned upload URL for "{filename}".',
-    finalizeFailed: 'Failed to finalize uploaded gallery asset for key "{storageKey}".'
+    finalizeFailed: 'Failed to finalize uploaded gallery asset for key "{storageKey}".',
+    assetNotFound: 'Gallery asset not found for key "{storageKey}".',
+    tagNotFound: 'Tag not found for the supplied tag value.'
 };
 
 const TYPE_ALL = 'all';
@@ -161,7 +163,10 @@ const parseDbNextCursor = (value) => {
         return null;
     }
 
-    return { createdAt, id };
+    const parsedDate = new Date(createdAt);
+    const normalizedDate = Number.isNaN(parsedDate.getTime()) ? createdAt : parsedDate.toISOString();
+
+    return { createdAt: normalizedDate, id };
 };
 
 const buildDbNextCursor = (item) => {
@@ -170,7 +175,9 @@ const buildDbNextCursor = (item) => {
     if (!createdAt || !id) {
         return null;
     }
-    return `${createdAt}__${id}`;
+    const parsedDate = new Date(createdAt);
+    const normalizedDate = Number.isNaN(parsedDate.getTime()) ? createdAt : parsedDate.toISOString();
+    return `${normalizedDate}__${id}`;
 };
 
 const getExtension = (item) => {
@@ -1267,6 +1274,71 @@ const controller = {
         permissions: false,
         async query(frame) {
             return syncAssetsFromPost(frame);
+        }
+    },
+
+    updateTag: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'storage_key',
+            'tag_id',
+            'tag_slug',
+            'tag'
+        ],
+        permissions: false,
+        async query(frame) {
+            const storageKey = String(frame.data?.storage_key || frame.options?.storage_key || '').trim();
+            if (!storageKey) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.storageKeyRequired)
+                });
+            }
+
+            const knex = models.Base.knex;
+            const existing = await socialMediaAssets.findAssetRowByStorageKey(knex, storageKey, ['id']);
+            if (!existing) {
+                throw new errors.NotFoundError({
+                    message: tpl(messages.assetNotFound, {storageKey})
+                });
+            }
+
+            const hasTagInput = Boolean(
+                frame.data?.tag_id ||
+                frame.data?.tag_slug ||
+                frame.data?.tag ||
+                frame.options?.tag_id ||
+                frame.options?.tag_slug ||
+                frame.options?.tag
+            );
+            const resolvedTag = await socialMediaAssets.resolveTag(knex, frame);
+            if (hasTagInput && !resolvedTag) {
+                throw new errors.NotFoundError({
+                    message: tpl(messages.tagNotFound)
+                });
+            }
+
+            const now = new Date();
+            const patch = {
+                tag_id: resolvedTag?.id || null,
+                tag_slug: resolvedTag?.slug || null,
+                updated_at: now
+            };
+
+            await knex('social_media_assets').where({id: existing.id}).update(patch);
+
+            return {
+                data: [{
+                    id: existing.id,
+                    storage_key: storageKey,
+                    tag_id: patch.tag_id,
+                    tag_slug: patch.tag_slug,
+                    category: resolvedTag?.name || null,
+                    category_slug: resolvedTag?.slug || null,
+                    updated_at: now
+                }]
+            };
         }
     }
 };
