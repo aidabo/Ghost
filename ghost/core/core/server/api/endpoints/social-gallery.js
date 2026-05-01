@@ -773,6 +773,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, limit, nextCurs
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
 
     const items = pageRows.map((row) => ({
+        id: row.id,
         key: row.key,
         url: row.url,
         path: row.path,
