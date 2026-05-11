@@ -11,7 +11,7 @@ const messages = {
     notFound: 'AI conversation not found.',
     noPermission: 'You are not allowed to access this AI conversation.',
     conversationIdRequired: '`conversation_id` is required.',
-    groupNotFound: 'Group not found.'
+    groupNotFound: 'Group not found or You are not allowed to access this group.'
 };
 
 const getCurrentUserId = frame => frame.options?.context?.user || null;
@@ -52,6 +52,22 @@ const parsePage = (value) => {
         return 1;
     }
     return parsed;
+};
+
+const normalizeGroupId = (value) => {
+    const groupId = String(value || '').trim();
+    if (!groupId) {
+        return null;
+    }
+
+    // Host-side private/site chat scopes use synthetic ids like `u:<userId>`
+    // or the sentinel `site`. These are not real Ghost groups and must not
+    // be validated as such.
+    if (groupId.startsWith('u:') || groupId === 'site') {
+        return null;
+    }
+
+    return groupId;
 };
 
 const resolveTargetUserId = async (frame) => {
@@ -131,7 +147,7 @@ const formatMySqlDateTime = (date) => {
     return date.toISOString().slice(0, 19).replace('T', ' ');
 };
 
-const buildConversationTitle = ({provider, title, userMessage}) => {
+const buildConversationTitle = ({ provider, title, userMessage }) => {
     const incomingTitle = String(title || '').trim();
     if (incomingTitle) {
         return incomingTitle;
@@ -156,7 +172,8 @@ const buildConversationTitle = ({provider, title, userMessage}) => {
 };
 
 const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) => {
-    if (!groupId) {
+    const normalizedGroupId = normalizeGroupId(groupId);
+    if (!normalizedGroupId) {
         return;
     }
 
@@ -167,9 +184,9 @@ const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) =
     }
 
     // @ts-ignore
-    const group = await models.SocialGroup.findOne({ id: groupId });
+    const group = await models.SocialGroup.findOne({ id: normalizedGroupId });
     if (!group) {
-        throw new errors.NotFoundError({
+        throw new errors.NoPermissionError({
             message: tpl(messages.groupNotFound)
         });
     }
@@ -203,7 +220,7 @@ const controller = {
         async query(frame) {
             const knex = models.Base.knex;
             const targetUserId = await resolveTargetUserId(frame);
-            const groupId = frame.options?.group_id || null;
+            const groupId = normalizeGroupId(frame.options?.group_id || null);
             const provider = frame.options?.provider || null;
             const visibility = frame.options?.visibility || null;
             const limit = parseLimit(frame.options?.limit);
@@ -309,7 +326,7 @@ const controller = {
                 }
             }
 
-            const groupId = frame.options?.group_id || null;
+            const groupId = normalizeGroupId(frame.options?.group_id || null);
             if (groupId && conversation.group_id !== groupId) {
                 throw new errors.NotFoundError({
                     message: tpl(messages.notFound)
@@ -413,7 +430,7 @@ const controller = {
             });
 
             const hasGroupId = Object.prototype.hasOwnProperty.call(payload, 'group_id');
-            const groupId = hasGroupId ? (payload.group_id || null) : undefined;
+            const groupId = hasGroupId ? normalizeGroupId(payload.group_id || null) : undefined;
             const visibility = payload.visibility || 'private';
             const provider = payload.provider || null;
             const model = payload.model || null;

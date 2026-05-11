@@ -137,23 +137,6 @@
           "type": ["string", "null"],
           "maxLength": 24
         },
-        "public_post": {
-          "type": "boolean"
-        },
-        "related_date": {
-          "type": ["string", "null"],
-          "format": "date-time"
-        },
-        "related_events": {
-          "type": ["string", "null"],
-          "maxLength": 2000
-        },
-        "post_approved": {
-          "type": "boolean"
-        },
-        "post_comment_closed": {
-          "type": "boolean"
-        },
         "authors": {
           "$ref": "#/definitions/post-authors"
         },

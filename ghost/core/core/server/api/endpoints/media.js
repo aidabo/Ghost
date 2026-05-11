@@ -4,6 +4,12 @@ const storage = require('../../adapters/storage');
 const models = require('../../models');
 const socialMediaAssets = require('./utils/social-media-assets');
 
+const normalizeUploadFilename = (value) => {
+    const raw = path.basename(String(value || '').trim() || 'upload.bin');
+    const deduped = raw.match(/^(.*\.[a-z0-9]+)-[a-z0-9_-]+$/i);
+    return deduped ? deduped[1] : raw;
+};
+
 const resolveUploadedMediaAssetType = (file) => {
     const mime = String(file?.mimetype || file?.type || '').toLowerCase().split(';')[0].trim();
     if (mime.startsWith('audio/')) {
@@ -13,12 +19,92 @@ const resolveUploadedMediaAssetType = (file) => {
         return 'video';
     }
 
-    const name = String(file?.originalname || file?.name || '').toLowerCase();
+    const name = normalizeUploadFilename(file?.originalname || file?.name || '').toLowerCase();
     const ext = path.extname(name).replace('.', '');
     if (['mp3', 'wav', 'ogg', 'm4a', 'weba'].includes(ext)) {
         return 'audio';
     }
     return 'video';
+};
+
+const resolveStorageKeyFromUrl = (store, url) => {
+    const normalized = String(url || '').trim();
+    if (!normalized) {
+        return null;
+    }
+
+    if (typeof store?.urlToPath === 'function') {
+        return store.urlToPath(normalized);
+    }
+
+    try {
+        const parsed = new URL(normalized);
+        return parsed.pathname.replace(/^\/+/, '');
+    } catch (err) {
+        return normalized.replace(/^\/+/, '');
+    }
+};
+
+const updateExistingAssetThumbnail = async ({knex, store, mediaUrl, thumbnailUrl}) => {
+    const mediaStorageKey = resolveStorageKeyFromUrl(store, mediaUrl);
+    const thumbnailStorageKey = resolveStorageKeyFromUrl(store, thumbnailUrl);
+    if (!mediaStorageKey || !thumbnailStorageKey) {
+        return null;
+    }
+
+    const existing = await socialMediaAssets.findAssetRowByStorageKey(knex, mediaStorageKey, ['id', 'original_filename']);
+    if (!existing?.id) {
+        return null;
+    }
+
+    const originalFilename =
+        String(existing.original_filename || '').trim() ||
+        path.basename(mediaStorageKey || '').trim() ||
+        null;
+
+    try {
+        await knex('social_media_assets')
+            .where({id: existing.id})
+            .update({
+                thumbnail_url: String(thumbnailUrl || '').trim() || null,
+                thumbnail_storage_key: thumbnailStorageKey,
+                original_filename: originalFilename,
+                updated_at: new Date()
+            });
+    } catch (err) {
+        const message = String(err?.message || '').toLowerCase();
+        const isMissingThumbnailColumn =
+            err?.code === 'ER_BAD_FIELD_ERROR' ||
+            (err?.code === 'SQLITE_ERROR' && message.includes('thumbnail_')) ||
+            message.includes('unknown column') ||
+            message.includes('has no column named thumbnail_');
+        const isMissingOriginalFilenameColumn =
+            err?.code === 'ER_BAD_FIELD_ERROR' ||
+            (err?.code === 'SQLITE_ERROR' && message.includes('original_filename')) ||
+            message.includes('unknown column') ||
+            message.includes('has no column named original_filename');
+
+        if (!isMissingThumbnailColumn && !isMissingOriginalFilenameColumn) {
+            throw err;
+        }
+
+        const fallbackPayload = {
+            updated_at: new Date()
+        };
+        if (!isMissingThumbnailColumn) {
+            fallbackPayload.thumbnail_url = String(thumbnailUrl || '').trim() || null;
+            fallbackPayload.thumbnail_storage_key = thumbnailStorageKey;
+        }
+        if (!isMissingOriginalFilenameColumn) {
+            fallbackPayload.original_filename = originalFilename;
+        }
+
+        await knex('social_media_assets')
+            .where({id: existing.id})
+            .update(fallbackPayload);
+    }
+
+    return existing.id;
 };
 
 const resolveUploadTargetDir = async (store, frame) => {
@@ -90,6 +176,7 @@ const controller = {
         },
         options: [
             'group_id',
+            'job_id',
             'tag',
             'tag_slug',
             'tag_id'
@@ -99,20 +186,30 @@ const controller = {
             const mediaStore = storage.getStorage('media');
             const uploadContext = await resolveUploadTargetDir(mediaStore, frame);
             const targetDir = uploadContext.targetDir;
+            const originalFile = frame.files.file[0];
+            const normalizedFileName = normalizeUploadFilename(originalFile?.originalname || originalFile?.name || '');
+            const uploadFile = {
+                ...originalFile,
+                name: normalizedFileName,
+                originalname: normalizedFileName
+            };
 
             let thumbnailPath = null;
             if (frame.files.thumbnail && frame.files.thumbnail[0]) {
                 thumbnailPath = await mediaStore.save(frame.files.thumbnail[0], targetDir || undefined);
             }
 
-            const filePath = await mediaStore.save(frame.files.file[0], targetDir || undefined);
+            const filePath = await mediaStore.save(uploadFile, targetDir || undefined);
 
-            const mediaType = resolveUploadedMediaAssetType(frame.files.file[0]);
+            const mediaType = resolveUploadedMediaAssetType(uploadFile);
             await socialMediaAssets.upsertAsset({
                 knex: models.Base.knex,
                 store: mediaStore,
                 url: filePath,
+                thumbnailUrl: thumbnailPath,
                 assetType: mediaType,
+                originalFilename: originalFile?.originalname || originalFile?.name || null,
+                jobId: frame.data?.job_id || frame.options?.job_id || null,
                 userId: uploadContext.userId,
                 groupId: uploadContext.groupId,
                 tag: uploadContext.tag
@@ -144,7 +241,15 @@ const controller = {
                 await mediaStorage.delete(frame.file.name, targetDir);
             }
 
-            return await mediaStorage.save(frame.file, targetDir);
+            const thumbnailPath = await mediaStorage.save(frame.file, targetDir);
+            await updateExistingAssetThumbnail({
+                knex: models.Base.knex,
+                store: mediaStorage,
+                mediaUrl: frame.data.url,
+                thumbnailUrl: thumbnailPath
+            });
+
+            return thumbnailPath;
         }
     }
 };

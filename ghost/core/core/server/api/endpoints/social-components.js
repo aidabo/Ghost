@@ -192,7 +192,6 @@ const controller = {
         },
         permissions: true,
         async query(frame) {
-            console.log('socialcomponents options before processing', frame.options);
             const userId = getCurrentUserId(frame);
             const isAdmin = await isAdminUser(userId);
             const requestedGroupId = frame.options?.group_id || null;

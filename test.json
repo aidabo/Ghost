@@ -1,0 +1,115 @@
+{
+    "original": {
+        "body": {},
+        "query": {
+            "orderby": "created_at:desc"
+        },
+        "params": {},
+        "user": {
+            "id": "1",
+            "name": "たろう",
+            "slug": "tarou",
+            "email": "aidabo@thinksystem-jp.com",
+            "profile_image": "https://dnicugzydez8x.cloudfront.net/60-think-prd/gallery/users/u_c54793eb6a94/2026/02/_418b22d1-19e9-47f4-ac2a-d774c67bd4c2-2.jpg",
+            "cover_image": null,
+            "bio": "{\"job\":\"job_it_engineer\",\"birthday\":\"1973-11-09\",\"language\":\"ja\",\"login_redirect\":{\"type\":\"writeStory\",\"url\":\"/panel\",\"id\":\"\",\"title\":\"\"},\"accountmenu_items\":[{\"id\":\"977b831a-1e84-47da-a667-8ed284dc4965\",\"name\":\"page builders\",\"url\":\"http://localhost:3000/pages/list\",\"type\":\"custom\",\"selectId\":\"\"},{\"id\":\"e4d707e5-9b35-4b6e-9ff8-246b5eb988e6\",\"name\":\"new post\",\"url\":\"http://localhost:3000/editor\",\"type\":\"custom\",\"selectId\":\"\"},{\"id\":\"899974f7-adad-4c00-9875-58e8a7fb4fef\",\"name\":\"2322323\",\"url\":\"/pages/list/\",\"type\":\"pageBuilder\",\"selectId\":\"\"},{\"id\":\"9d2b1579-fffd-40fd-80e7-b529b4d26bb9\",\"name\":\"gallery\",\"url\":\"/gallery/\",\"type\":\"gallery\",\"selectId\":\"\"},{\"id\":\"b8f19e85-a761-43fc-b9fc-ad1a07c8e802\",\"name\":\"job\",\"url\":\"http://localhost:3000/ai/jobs\",\"type\":\"custom\",\"selectId\":\"\"}]}",
+            "website": null,
+            "location": "{\"country\":\"日本\",\"prefecture\":\"栃木県\",\"city\":\"那須塩原市\"}",
+            "facebook": null,
+            "twitter": null,
+            "accessibility": "{\"onboarding\":{\"completedSteps\":[],\"checklistState\":\"started\"}}",
+            "status": "active",
+            "locale": null,
+            "visibility": "public",
+            "meta_title": null,
+            "meta_description": null,
+            "tour": null,
+            "last_seen": "2026-04-02T14:07:36.000Z",
+            "comment_notifications": true,
+            "free_member_signup_notification": true,
+            "paid_subscription_started_notification": true,
+            "paid_subscription_canceled_notification": false,
+            "mention_notifications": true,
+            "recommendation_notifications": true,
+            "milestone_notifications": true,
+            "donation_notifications": true,
+            "created_at": "2025-11-08T11:08:06.000Z",
+            "created_by": "1",
+            "updated_at": "2026-04-02T14:07:36.000Z",
+            "updated_by": "1",
+            "media_folder_alias": "u_c54793eb6a94"
+        },
+        "session": {
+            "cookie": {
+                "originalMaxAge": 15768000000,
+                "expires": "2026-09-28T14:24:31.889Z",
+                "secure": false,
+                "httpOnly": true,
+                "path": "/ghost",
+                "sameSite": "lax"
+            },
+            "origin": "http://localhost:3000",
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+            "ip": "::ffff:127.0.0.1",
+            "verified": true,
+            "user_id": "1"
+        },
+        "url": {
+            "host": "localhost:2368",
+            "pathname": "/ghost/api/admin/social/ai/media/jobs/",
+            "secure": false
+        },
+        "context": {
+            "api_key": null,
+            "user": "1",
+            "integration": null,
+            "member": null
+        }
+    },
+    "options": {
+        "context": {
+            "api_key": null,
+            "user": "1",
+            "integration": null,
+            "member": null
+        }
+    },
+    "data": {},
+    "user": {
+        "id": "1",
+        "name": "たろう",
+        "slug": "tarou",
+        "email": "aidabo@thinksystem-jp.com",
+        "profile_image": "https://dnicugzydez8x.cloudfront.net/60-think-prd/gallery/users/u_c54793eb6a94/2026/02/_418b22d1-19e9-47f4-ac2a-d774c67bd4c2-2.jpg",
+        "cover_image": null,
+        "bio": "{\"job\":\"job_it_engineer\",\"birthday\":\"1973-11-09\",\"language\":\"ja\",\"login_redirect\":{\"type\":\"writeStory\",\"url\":\"/panel\",\"id\":\"\",\"title\":\"\"},\"accountmenu_items\":[{\"id\":\"977b831a-1e84-47da-a667-8ed284dc4965\",\"name\":\"page builders\",\"url\":\"http://localhost:3000/pages/list\",\"type\":\"custom\",\"selectId\":\"\"},{\"id\":\"e4d707e5-9b35-4b6e-9ff8-246b5eb988e6\",\"name\":\"new post\",\"url\":\"http://localhost:3000/editor\",\"type\":\"custom\",\"selectId\":\"\"},{\"id\":\"899974f7-adad-4c00-9875-58e8a7fb4fef\",\"name\":\"2322323\",\"url\":\"/pages/list/\",\"type\":\"pageBuilder\",\"selectId\":\"\"},{\"id\":\"9d2b1579-fffd-40fd-80e7-b529b4d26bb9\",\"name\":\"gallery\",\"url\":\"/gallery/\",\"type\":\"gallery\",\"selectId\":\"\"},{\"id\":\"b8f19e85-a761-43fc-b9fc-ad1a07c8e802\",\"name\":\"job\",\"url\":\"http://localhost:3000/ai/jobs\",\"type\":\"custom\",\"selectId\":\"\"}]}",
+        "website": null,
+        "location": "{\"country\":\"日本\",\"prefecture\":\"栃木県\",\"city\":\"那須塩原市\"}",
+        "facebook": null,
+        "twitter": null,
+        "accessibility": "{\"onboarding\":{\"completedSteps\":[],\"checklistState\":\"started\"}}",
+        "status": "active",
+        "locale": null,
+        "visibility": "public",
+        "meta_title": null,
+        "meta_description": null,
+        "tour": null,
+        "last_seen": "2026-04-02T14:07:36.000Z",
+        "comment_notifications": true,
+        "free_member_signup_notification": true,
+        "paid_subscription_started_notification": true,
+        "paid_subscription_canceled_notification": false,
+        "mention_notifications": true,
+        "recommendation_notifications": true,
+        "milestone_notifications": true,
+        "donation_notifications": true,
+        "created_at": "2025-11-08T11:08:06.000Z",
+        "created_by": "1",
+        "updated_at": "2026-04-02T14:07:36.000Z",
+        "updated_by": "1",
+        "media_folder_alias": "u_c54793eb6a94"
+    },
+    "docName": "socialaimediajobs",
+    "method": "browse",
+    "response": null
+}

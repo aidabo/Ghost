@@ -2,6 +2,7 @@
 const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const models = require('../../models');
+const db = require('../../data/db');
 const logging = require('@tryghost/logging');
 
 const ALLOWED_INCLUDES = [
@@ -100,13 +101,15 @@ const isPublicGroup = async (groupId) => {
         return false;
     }
 
-    // @ts-ignore
-    const group = await models.SocialGroup.findOne({id: groupId});
+    const group = await db.knex('social_groups')
+        .select('id', 'status', db.knex.raw('type as groupType'))
+        .where('id', groupId)
+        .first();
     if (!group) {
         return false;
     }
 
-    return group.get('type') === 'public';
+    return group.groupType === 'public' && group.status === 'active';
 };
 
 const enforcePublicBrowseScope = async (frame) => {

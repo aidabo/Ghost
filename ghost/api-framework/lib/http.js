@@ -102,7 +102,7 @@ const http = (apiImpl) => {
 
             let responseFormat;
 
-            if (apiImpl.response){
+            if (apiImpl.response) {
                 if (typeof apiImpl.response.format === 'function') {
                     const apiResponseFormat = apiImpl.response.format();
 

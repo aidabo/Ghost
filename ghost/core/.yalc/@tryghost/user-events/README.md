@@ -1,13 +1,13 @@
-# Member Events
+# User Events
 
 ## Usage
 
-```
-const {MemberEntryViewEvent} = require('@tryghost/member-events');
+```js
+const {UserEntryViewEvent} = require('@tryghost/user-events');
 
-const event = MemberEntryViewEvent.create({
-    memberId: member.id,
-    memberStatus: member.status,
+const event = UserEntryViewEvent.create({
+    userId: user.id,
+    userStatus: user.status,
     entryId: post.id,
     entryUrl: post.url
 });

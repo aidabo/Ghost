@@ -1,0 +1,36 @@
+{
+  "name": "@tryghost/kg-markdown-html-renderer",
+  "version": "7.0.8",
+  "repository": "https://github.com/TryGhost/Koenig/tree/master/packages/kg-markdown-html-renderer",
+  "author": "Ghost Foundation",
+  "license": "MIT",
+  "main": "index.js",
+  "scripts": {
+    "dev": "echo \"Implement me!\"",
+    "test": "NODE_ENV=testing c8 --all --reporter text --reporter cobertura mocha './test/**/*.test.js'",
+    "lint": "eslint . --ext .js --cache",
+    "posttest": "yarn lint"
+  },
+  "engines": {
+    "node": "^18.12.1 || ^20.11.1"
+  },
+  "files": [
+    "index.js",
+    "lib"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@tryghost/kg-utils": "1.0.29",
+    "markdown-it": "^14.0.0",
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-image-lazy-loading": "^2.0.0",
+    "markdown-it-lazy-headers": "^0.1.3",
+    "markdown-it-mark": "^4.0.0",
+    "markdown-it-sub": "^2.0.0",
+    "markdown-it-sup": "^2.0.0",
+    "semver": "^7.6.2"
+  },
+  "yalcSig": "271d96fbad4c1738d468e2436e0dc75e"
+}

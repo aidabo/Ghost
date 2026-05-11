@@ -116,5 +116,23 @@ function convertSpanElement(lexicalNode, domNode) {
         lexicalNode = lexicalNode.toggleFormat('highlight');
     }
 
+    const hasFontFamily = span.style.fontFamily || span.parentElement?.style.fontFamily;
+    if (hasFontFamily) {
+        lexicalNode.setStyle(setStyleProperty(lexicalNode.getStyle(), 'font-family', hasFontFamily));
+    }
+
     return lexicalNode;
+}
+
+function setStyleProperty(styleString, property, value) {
+    const element = document.createElement('span');
+    element.style.cssText = styleString || '';
+
+    if (value) {
+        element.style.setProperty(property, value);
+    } else {
+        element.style.removeProperty(property);
+    }
+
+    return element.getAttribute('style') || '';
 }

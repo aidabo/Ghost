@@ -1295,19 +1295,24 @@ module.exports = {
         id: { type: 'string', maxlength: 24, nullable: false, primary: true },
         // Keep non-indexed because MySQL/InnoDB key length limits are exceeded for utf8mb4 varchar(2000).
         storage_key: { type: 'string', maxlength: 2000, nullable: false },
+        storage_key_hash: { type: 'string', maxlength: 64, nullable: true, index: true },
         storage_url: { type: 'string', maxlength: 2000, nullable: false },
+        thumbnail_storage_key: { type: 'string', maxlength: 2000, nullable: true },
+        thumbnail_url: { type: 'string', maxlength: 2000, nullable: true },
         original_filename: { type: 'string', maxlength: 1000, nullable: true },
         asset_type: { type: 'string', maxlength: 50, nullable: false, index: true },
         owner_scope: { type: 'string', maxlength: 20, nullable: false, index: true },
         user_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'users.id', cascadeDelete: true },
         group_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true },
+        job_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_ai_media_jobs.id', setNullDelete: true },
         tag_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'tags.id', setNullDelete: true },
         tag_slug: { type: 'string', maxlength: 191, nullable: true, index: true },
         created_at: { type: 'dateTime', nullable: false },
         updated_at: { type: 'dateTime', nullable: true },
         '@@INDEXES@@': [
             ['owner_scope', 'user_id', 'created_at'],
-            ['owner_scope', 'group_id', 'created_at']
+            ['owner_scope', 'group_id', 'created_at'],
+            ['job_id', 'created_at']
         ]
     },
 
@@ -1429,4 +1434,51 @@ module.exports = {
 
 
     // 202601 add custom social tables end
+    social_ai_media_jobs: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        job_type: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'media_translation' },
+        user_id: { type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true, index: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', setNullDelete: true },
+        visibility: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'private' },
+        scope_type: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'user' },
+        status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued', index: true },
+        progress: { type: 'integer', nullable: false, unsigned: true, defaultTo: 0 },
+        priority: { type: 'integer', nullable: false, defaultTo: 0 },
+        mode: { type: 'string', maxlength: 50, nullable: false },
+        source_lang: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'auto' },
+        target_lang: { type: 'string', maxlength: 50, nullable: false },
+        stt_model: { type: 'string', maxlength: 191, nullable: true },
+        translation_model: { type: 'string', maxlength: 191, nullable: true },
+        tts_model: { type: 'string', maxlength: 191, nullable: true },
+        tts_voice: { type: 'string', maxlength: 191, nullable: true },
+        tts_tone: { type: 'string', maxlength: 191, nullable: true },
+        subtitle_render: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'soft' },
+        output_playback_speed: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'normal' },
+        input_asset_url: { type: 'string', maxlength: 2000, nullable: false },
+        input_file_name: { type: 'string', maxlength: 255, nullable: true },
+        settings_json: { type: 'text', nullable: false },
+        artifacts_json: { type: 'text', nullable: false },
+        artifact_manifest_json: { type: 'text', nullable: true },
+        error_code: { type: 'string', maxlength: 100, nullable: true },
+        error_message: { type: 'text', nullable: true },
+        claim_worker_id: { type: 'string', maxlength: 191, nullable: true },
+        claim_expires_at: { type: 'dateTime', nullable: true },
+        retry_count: { type: 'integer', nullable: false, unsigned: true, defaultTo: 0 },
+        started_at: { type: 'dateTime', nullable: true },
+        completed_at: { type: 'dateTime', nullable: true },
+        canceled_at: { type: 'dateTime', nullable: true },
+        created_at: { type: 'dateTime', nullable: false },
+        created_by: { type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true },
+        updated_at: { type: 'dateTime', nullable: false },
+        updated_by: { type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true },
+        '@@INDEXES@@': [
+            ['user_id', 'status'],
+            ['group_id', 'status'],
+            ['user_id', 'updated_at'],
+            ['group_id', 'updated_at'],
+            ['status', 'claim_expires_at']
+        ]
+
+    }
+
 };

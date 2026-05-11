@@ -1,21 +1,14 @@
 # Admin Api Schema
 
-Fork from @tryghost/admin-api-schema with following modification:
-
 The package serves as a single source of truth when validating requests coming into Ghost's Admin API endpoints. It uses [JSON Schema](https://json-schema.org/) definitions under the hood to describe expected format of validated data.
-
-## Modify schema validation
-
-- Add `group_id` into posts.js
-- Add status value `hidden` into posts.status
 
 ## Install
 
-`npm install @tryghost/admin-api-schema-next --save`
+`npm install @tryghost/admin-api-schema --save`
 
 or
 
-`yarn add @tryghost/admin-api-schema-next`
+`yarn add @tryghost/admin-api-schema`
 
 
 ## Usage
@@ -95,8 +88,9 @@ Follow the instructions for the top-level repo.
 - `yarn lint` run just eslint
 - `yarn test` run lint and tests
 
+
+
+
 # Copyright & License
 
 Copyright (c) 2013-2025 Ghost Foundation - Released under the [MIT license](LICENSE).
-
-

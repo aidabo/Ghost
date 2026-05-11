@@ -8,6 +8,13 @@ const models = require('../../models');
 const config = require('../../../shared/config');
 const socialMediaAssets = require('./utils/social-media-assets');
 
+const normalizeUploadFilename = (value) => {
+    const raw = path.basename(String(value || '').trim() || 'upload.bin');
+    const withoutOriginalSuffix = raw.replace(/_o(\.\w+?)$/, '$1');
+    const deduped = withoutOriginalSuffix.match(/^(.*\.[a-z0-9]+)-[a-z0-9_-]+$/i);
+    return deduped ? deduped[1] : withoutOriginalSuffix;
+};
+
 const resolveUploadTargetDir = async (store, frame) => {
     if (typeof store.getTargetDir !== 'function') {
         return {targetDir: null, userId: null, groupId: null, tag: null};
@@ -86,12 +93,13 @@ const controller = {
             const store = storage.getStorage('images');
             const uploadContext = await resolveUploadTargetDir(store, frame);
             const userTargetDir = uploadContext.targetDir;
+            const normalizedName = normalizeUploadFilename(frame.file.originalname || frame.file.name || '');
+            frame.file.name = normalizedName;
+            frame.file.originalname = normalizedName;
+            frame.file.ext = path.extname(normalizedName);
 
             // Normalize
             const imageOptimizationOptions = config.get('imageOptimization');
-
-            // Trim _o from file name (not allowed suffix)
-            frame.file.name = frame.file.name.replace(/_o(\.\w+?)$/, '$1');
 
             // CASE: image transform is not capable of transforming file (e.g. .gif)
             if (imageTransform.shouldResizeFileExtension(frame.file.ext) && imageOptimizationOptions.resize) {

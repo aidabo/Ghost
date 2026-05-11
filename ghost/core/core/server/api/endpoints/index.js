@@ -302,6 +302,10 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-agent-settings'), localUtils);
     },
 
+    get socialAiMediaJobs() {
+        return apiFramework.pipeline(require('./social-ai-media-jobs'), localUtils);
+    },
+
     //custom end
 
     /**

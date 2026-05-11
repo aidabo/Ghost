@@ -4,6 +4,12 @@ const errors = require('@tryghost/errors');
 const models = require('../../models');
 const socialMediaAssets = require('./utils/social-media-assets');
 
+const normalizeUploadFilename = (value) => {
+    const raw = path.basename(String(value || '').trim() || 'upload.bin');
+    const deduped = raw.match(/^(.*\.[a-z0-9]+)-[a-z0-9_-]+$/i);
+    return deduped ? deduped[1] : raw;
+};
+
 const resolveUploadTargetDir = async (store, frame) => {
     if (typeof store.getTargetDir !== 'function') {
         return {targetDir: null, userId: null, groupId: null, tag: null};
@@ -73,6 +79,7 @@ const controller = {
         },
         options: [
             'group_id',
+            'job_id',
             'tag',
             'tag_slug',
             'tag_id'
@@ -82,9 +89,11 @@ const controller = {
             const fileStore = storage.getStorage('files');
             const uploadContext = await resolveUploadTargetDir(fileStore, frame);
             const targetDir = uploadContext.targetDir;
+            const originalFileName = frame.file?.originalname || frame.file?.name || null;
+            const normalizedName = normalizeUploadFilename(originalFileName);
 
             const filePath = await fileStore.save({
-                name: frame.file.originalname,
+                name: normalizedName,
                 path: frame.file.path
             }, targetDir || undefined);
 
@@ -93,6 +102,8 @@ const controller = {
                 store: fileStore,
                 url: filePath,
                 assetType: 'file',
+                originalFilename: originalFileName,
+                jobId: frame.data?.job_id || frame.options?.job_id || null,
                 userId: uploadContext.userId,
                 groupId: uploadContext.groupId,
                 tag: uploadContext.tag

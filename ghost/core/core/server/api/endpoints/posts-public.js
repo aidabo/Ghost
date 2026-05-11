@@ -1,4 +1,5 @@
 const models = require('../../models');
+const db = require('../../data/db');
 const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const { mapQuery } = require('@tryghost/mongo-utils');
@@ -19,8 +20,77 @@ const allowedIncludes = [
 ];
 
 const messages = {
-    postNotFound: 'Post not found.'
+    postNotFound: 'Post not found.',
+    noPermission: 'You are not allowed to access posts in this group.'
 };
+
+function extractGroupIds(filter) {
+    if (!filter || typeof filter !== 'string') {
+        return [];
+    }
+
+    const ids = new Set();
+    const listMatch = filter.match(/group_id:\[([^\]]+)\]/);
+    if (listMatch && listMatch[1]) {
+        listMatch[1]
+            .split(',')
+            .map(id => id.trim().replace(/^['"]|['"]$/g, ''))
+            .filter(Boolean)
+            .forEach(id => ids.add(id));
+    }
+
+    const singleMatches = filter.matchAll(/group_id:'?([a-f0-9]+)'?/g);
+    for (const match of singleMatches) {
+        if (match[1]) {
+            ids.add(match[1]);
+        }
+    }
+
+    return [...ids];
+}
+
+function appendGroupFilter(frame) {
+    const groupId = frame.options?.group_id;
+    if (!groupId) {
+        return;
+    }
+
+    if (!/\bgroup_id:/.test(frame.options.filter || '')) {
+        frame.options.filter = frame.options.filter ? `${frame.options.filter}+group_id:${groupId}` : `group_id:${groupId}`;
+    }
+
+    delete frame.options.group_id;
+}
+
+async function enforcePublicGroupAccess(frame, requestedGroupId = null) {
+    const groupIds = new Set([
+        ...extractGroupIds(frame.options?.filter),
+        ...(requestedGroupId ? [requestedGroupId] : [])
+    ]);
+
+    if (!groupIds.size) {
+        return;
+    }
+
+    for (const groupId of groupIds) {
+        const group = await db.knex('social_groups')
+            .select('id', 'status', db.knex.raw('type as groupType'))
+            .where('id', groupId)
+            .first();
+
+        if (!group) {
+            throw new errors.NotFoundError({
+                message: `Group not found: ${groupId}.`
+            });
+        }
+
+        if (group.groupType !== 'public' || group.status !== 'active') {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.noPermission)
+            });
+        }
+    }
+}
 
 const rejectPrivateFieldsTransformer = input => mapQuery(input, function (value, key) {
     const lowerCaseKey = key.toLowerCase();
@@ -83,6 +153,7 @@ const controller = {
                 options: generateOptionsData(frame, [
                     'include',
                     'filter',
+                    'group_id',
                     'fields',
                     'formats',
                     'limit',
@@ -98,6 +169,7 @@ const controller = {
         options: [
             'include',
             'filter',
+            'group_id',
             'fields',
             'formats',
             'limit',
@@ -118,7 +190,11 @@ const controller = {
             }
         },
         permissions: true,
-        query(frame) {
+        async query(frame) {
+            const requestedGroupId = frame.options?.group_id || null;
+            await enforcePublicGroupAccess(frame, requestedGroupId);
+            appendGroupFilter(frame);
+
             const options = {
                 ...frame.options,
                 mongoTransformer: rejectPrivateFieldsTransformer
@@ -137,6 +213,7 @@ const controller = {
                 options: generateOptionsData(frame, [
                     'filter',
                     'include',
+                    'group_id',
                     'fields',
                     'formats',
                     'absolute_urls'
@@ -153,6 +230,7 @@ const controller = {
         options: [
             'filter',
             'include',
+            'group_id',
             'fields',
             'formats',
             'debug',
@@ -174,7 +252,11 @@ const controller = {
             }
         },
         permissions: true,
-        query(frame) {
+        async query(frame) {
+            const requestedGroupId = frame.options?.group_id || null;
+            await enforcePublicGroupAccess(frame, requestedGroupId);
+            appendGroupFilter(frame);
+
             const options = {
                 ...frame.options,
                 mongoTransformer: rejectPrivateFieldsTransformer

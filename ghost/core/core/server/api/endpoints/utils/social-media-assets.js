@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const {slugify} = require('@tryghost/string');
 const ObjectId = require('bson-objectid').default;
 
@@ -12,6 +13,11 @@ const normalizeSlug = (value) => {
         return null;
     }
     return slugify(raw);
+};
+
+const normalizeJobId = (value) => {
+    const raw = String(value || '').trim();
+    return /^[a-f0-9]{24}$/i.test(raw) ? raw : null;
 };
 
 const getTagInputs = (frame) => {
@@ -64,12 +70,76 @@ const getStorageKeyFromUrl = (store, url) => {
     }
 };
 
+const normalizeOptionalUrl = (value) => {
+    const normalized = String(value || '').trim();
+    return normalized || null;
+};
+
+const buildStorageKeyHash = (value) => {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+        return null;
+    }
+    return crypto.createHash('sha256').update(normalized).digest('hex');
+};
+
+const isMissingStorageKeyHashColumnError = (err) => {
+    const message = String(err?.message || '').toLowerCase();
+    return (
+        err?.code === 'ER_BAD_FIELD_ERROR' ||
+        (err?.code === 'SQLITE_ERROR' && message.includes('storage_key_hash')) ||
+        message.includes('unknown column') ||
+        message.includes('has no column named storage_key_hash')
+    );
+};
+
+const findAssetRowByStorageKey = async (knex, storageKey, columns = ['id']) => {
+    const normalizedKey = String(storageKey || '').trim();
+    if (!normalizedKey) {
+        return null;
+    }
+
+    const storageKeyHash = buildStorageKeyHash(normalizedKey);
+    if (storageKeyHash) {
+        try {
+            const row = await knex('social_media_assets')
+                .where({storage_key_hash: storageKeyHash, storage_key: normalizedKey})
+                .first(...columns);
+            if (row) {
+                return row;
+            }
+        } catch (err) {
+            if (!isMissingStorageKeyHashColumnError(err)) {
+                throw err;
+            }
+        }
+    }
+
+    return knex('social_media_assets').where({storage_key: normalizedKey}).first(...columns);
+};
+
+const resolveStorageKey = (store, keyOrUrl) => {
+    const normalized = String(keyOrUrl || '').trim();
+    if (!normalized) {
+        return null;
+    }
+
+    if (/^https?:\/\//i.test(normalized)) {
+        return getStorageKeyFromUrl(store, normalized);
+    }
+
+    return normalized.replace(/^\/+/, '');
+};
+
 const upsertAsset = async ({
     knex,
     store,
     url,
+    thumbnailUrl,
+    thumbnailStorageKey,
     assetType,
     originalFilename,
+    jobId,
     userId,
     groupId,
     tag
@@ -89,31 +159,81 @@ const upsertAsset = async ({
 
         const payload = {
             storage_key: storageKey,
+            storage_key_hash: buildStorageKeyHash(storageKey),
             storage_url: url,
+            thumbnail_url: normalizeOptionalUrl(thumbnailUrl),
+            thumbnail_storage_key: resolveStorageKey(store, thumbnailStorageKey || thumbnailUrl),
             original_filename: String(originalFilename || '').trim() || null,
             asset_type: assetType,
             owner_scope: ownerScope,
             user_id: userId || null,
             group_id: groupId || null,
+            job_id: normalizeJobId(jobId),
             tag_id: tag?.id || null,
             tag_slug: tag?.slug || null,
             updated_at: now
         };
+        const legacyPayload = {
+            storage_key: payload.storage_key,
+            storage_key_hash: payload.storage_key_hash,
+            storage_url: payload.storage_url,
+            original_filename: payload.original_filename,
+            asset_type: payload.asset_type,
+            owner_scope: payload.owner_scope,
+            user_id: payload.user_id,
+            group_id: payload.group_id,
+            job_id: payload.job_id,
+            tag_id: payload.tag_id,
+            tag_slug: payload.tag_slug,
+            updated_at: payload.updated_at
+        };
 
-        const existing = await knex('social_media_assets').where({storage_key: storageKey}).first('id');
-        if (existing) {
-            await knex('social_media_assets').where({id: existing.id}).update(payload);
-            return existing.id;
+        const persistAsset = async (persistPayload) => {
+            const existing = await findAssetRowByStorageKey(knex, storageKey, ['id']);
+            if (existing) {
+                await knex('social_media_assets').where({id: existing.id}).update(persistPayload);
+                return existing.id;
+            }
+
+            const id = ObjectId().toHexString();
+            await knex('social_media_assets').insert({
+                id,
+                ...persistPayload,
+                created_at: now
+            });
+
+            return id;
+        };
+
+        try {
+            return await persistAsset(payload);
+        } catch (err) {
+            const message = String(err?.message || '').toLowerCase();
+            const isMissingThumbnailColumn =
+                err?.code === 'ER_BAD_FIELD_ERROR' ||
+                (err?.code === 'SQLITE_ERROR' && message.includes('thumbnail_')) ||
+                message.includes('unknown column') ||
+                message.includes('has no column named thumbnail_');
+            const isMissingJobIdColumn =
+                err?.code === 'ER_BAD_FIELD_ERROR' ||
+                (err?.code === 'SQLITE_ERROR' && message.includes('job_id')) ||
+                message.includes('unknown column') ||
+                message.includes('has no column named job_id');
+            const isMissingStorageKeyHashColumn = isMissingStorageKeyHashColumnError(err);
+
+            if (!isMissingThumbnailColumn && !isMissingJobIdColumn && !isMissingStorageKeyHashColumn) {
+                throw err;
+            }
+
+            const fallbackPayload = {
+                ...(isMissingThumbnailColumn || isMissingJobIdColumn ? legacyPayload : payload)
+            };
+            if (isMissingStorageKeyHashColumn) {
+                delete fallbackPayload.storage_key_hash;
+            }
+
+            return await persistAsset(fallbackPayload);
         }
-
-        const id = ObjectId().toHexString();
-        await knex('social_media_assets').insert({
-            id,
-            ...payload,
-            created_at: now
-        });
-
-        return id;
     } catch (err) {
         // Backward compatibility: allow uploads before migration is applied.
         if (err?.code === 'ER_NO_SUCH_TABLE' || err?.code === 'SQLITE_ERROR') {
@@ -124,6 +244,9 @@ const upsertAsset = async ({
 };
 
 module.exports = {
+    buildStorageKeyHash,
+    findAssetRowByStorageKey,
+    isMissingStorageKeyHashColumnError,
     resolveTag,
     upsertAsset
 };
