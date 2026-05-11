@@ -21,6 +21,7 @@ import * as gallery from './nodes/gallery/GalleryNode';
 import * as emailCta from './nodes/email-cta/EmailCtaNode';
 import * as signup from './nodes/signup/SignupNode';
 import * as collection from './nodes/collection/CollectionNode';
+import * as multiColumn from './nodes/multi-column/MultiColumnNode';
 import * as textnode from './nodes/ExtendedTextNode';
 import * as headingnode from './nodes/ExtendedHeadingNode';
 import * as quotenode from './nodes/ExtendedQuoteNode';
@@ -55,6 +56,7 @@ export * from './nodes/gallery/GalleryNode';
 export * from './nodes/email-cta/EmailCtaNode';
 export * from './nodes/signup/SignupNode';
 export * from './nodes/collection/CollectionNode';
+export * from './nodes/multi-column/MultiColumnNode';
 export * from './nodes/call-to-action/CallToActionNode';
 export * from './nodes/ExtendedTextNode';
 export * from './nodes/ExtendedHeadingNode';
@@ -116,6 +118,7 @@ export const DEFAULT_NODES = [
     emailCta.EmailCtaNode,
     signup.SignupNode,
     collection.CollectionNode,
+    multiColumn.MultiColumnNode,
     tk.TKNode,
     atLink.AtLinkNode,
     atLink.AtLinkSearchNode,

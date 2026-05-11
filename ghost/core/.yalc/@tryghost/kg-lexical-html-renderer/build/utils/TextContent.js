@@ -53,7 +53,17 @@ class TextContent {
             if ((0, lexical_1.$isTextNode)(node)) {
                 // shortcut format code for plain text
                 if (node.getFormat() === 0) {
-                    currentNode.append(node.getTextContent());
+                    const textContent = node.getTextContent();
+                    const nodeStyle = node.getStyle?.() || '';
+                    if (nodeStyle) {
+                        const styledSpan = document.createElement('span');
+                        styledSpan.setAttribute('style', nodeStyle);
+                        styledSpan.append(textContent);
+                        currentNode.append(styledSpan);
+                    }
+                    else {
+                        currentNode.append(textContent);
+                    }
                     continue;
                 }
                 // open format tags in correct order
@@ -91,7 +101,17 @@ class TextContent {
                     openFormats.push(format);
                 });
                 // insert text
-                currentNode.append(node.getTextContent());
+                const textContent = node.getTextContent();
+                const nodeStyle = node.getStyle?.() || '';
+                if (nodeStyle) {
+                    const styledSpan = document.createElement('span');
+                    styledSpan.setAttribute('style', nodeStyle);
+                    styledSpan.append(textContent);
+                    currentNode.append(styledSpan);
+                }
+                else {
+                    currentNode.append(textContent);
+                }
                 // close tags in correct order if next node doesn't have the format
                 // links are their own formatting islands so all formats need to close before a link
                 const nextNode = remainingNodes.find(n => (0, lexical_1.$isTextNode)(n) || (0, link_1.$isLinkNode)(n));

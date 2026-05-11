@@ -5147,6 +5147,117 @@ function $isCollectionNode(node) {
   return node instanceof CollectionNode;
 }
 
+function renderMultiColumnNode(node, options = {}) {
+  addCreateDocumentOption(options);
+  const document = options.createDocument();
+  const {
+    columns,
+    gap,
+    column1,
+    column2,
+    column3,
+    column4
+  } = node.getDataset();
+  const columnCount = columns >= 4 ? 4 : columns === 3 ? 3 : 2;
+  const renderedColumns = [column1, column2, column3, column4].slice(0, columnCount);
+  if (!renderedColumns.length) {
+    return renderEmptyContainer(document);
+  }
+  const element = document.createElement('div');
+  element.className = `kg-card kg-multi-column-card kg-width-wide columns-${columnCount}`;
+  element.setAttribute('data-kg-multi-column-columns', `${columnCount}`);
+  element.setAttribute('data-kg-multi-column-gap', `${gap}`);
+  element.style.display = 'grid';
+  element.style.setProperty('--kg-multi-column-gap', `${gap}rem`);
+  renderedColumns.forEach((html, index) => {
+    const column = document.createElement('div');
+    column.className = 'kg-multi-column-card-column';
+    column.setAttribute('data-kg-multi-column-column', `${index + 1}`);
+    column.innerHTML = html || '';
+    element.appendChild(column);
+  });
+  return {
+    element
+  };
+}
+
+function multiColumnParser(MultiColumnNode) {
+  return {
+    div: nodeElem => {
+      const isMultiColumnNode = nodeElem.classList?.contains('kg-multi-column-card');
+      if (nodeElem.tagName === 'DIV' && isMultiColumnNode) {
+        return {
+          conversion(domNode) {
+            const columnCount = parseInt(domNode.getAttribute('data-kg-multi-column-columns'), 10) || 2;
+            const parsedGap = parseFloat(domNode.getAttribute('data-kg-multi-column-gap') || domNode.style.getPropertyValue('--kg-multi-column-gap') || domNode.style.gap);
+            const gap = Number.isFinite(parsedGap) ? parsedGap : 1.5;
+            const columnElements = Array.from(domNode.children).filter(child => child.classList?.contains('kg-multi-column-card-column'));
+            const payload = {
+              columns: columnCount,
+              gap,
+              column1: columnElements[0]?.innerHTML || '',
+              column2: columnElements[1]?.innerHTML || '',
+              column3: columnElements[2]?.innerHTML || '',
+              column4: columnElements[3]?.innerHTML || ''
+            };
+            const node = new MultiColumnNode(payload);
+            return {
+              node
+            };
+          },
+          priority: 1
+        };
+      }
+      return null;
+    }
+  };
+}
+
+/* eslint-disable ghost/filenames/match-exported-class */
+class MultiColumnNode extends generateDecoratorNode({
+  nodeType: 'multi-column',
+  properties: [{
+    name: 'columns',
+    default: 2
+  }, {
+    name: 'gap',
+    default: 1.5
+  }, {
+    name: 'column1',
+    default: '',
+    urlType: 'html',
+    wordCount: true
+  }, {
+    name: 'column2',
+    default: '',
+    urlType: 'html',
+    wordCount: true
+  }, {
+    name: 'column3',
+    default: '',
+    urlType: 'html',
+    wordCount: true
+  }, {
+    name: 'column4',
+    default: '',
+    urlType: 'html',
+    wordCount: true
+  }]
+}) {
+  static importDOM() {
+    return multiColumnParser(this);
+  }
+  exportDOM(options = {}) {
+    return renderMultiColumnNode(this, options);
+  }
+}
+const $createMultiColumnNode = dataset => {
+  return new MultiColumnNode(dataset);
+};
+function $isMultiColumnNode(node) {
+  return node instanceof MultiColumnNode;
+}
+
 /* eslint-disable ghost/filenames/match-exported-class */
 
 // Since the TextNode is foundational to all Lexical packages, including the
@@ -5246,7 +5357,21 @@ function convertSpanElement(lexicalNode, domNode) {
   if (hasHighlightClass && !lexicalNode.hasFormat('highlight')) {
     lexicalNode = lexicalNode.toggleFormat('highlight');
   }
+  const hasFontFamily = span.style.fontFamily || span.parentElement?.style.fontFamily;
+  if (hasFontFamily) {
+    lexicalNode.setStyle(setStyleProperty(lexicalNode.getStyle(), 'font-family', hasFontFamily));
+  }
   return lexicalNode;
+}
+function setStyleProperty(styleString, property, value) {
+  const element = document.createElement('span');
+  element.style.cssText = styleString || '';
+  if (value) {
+    element.style.setProperty(property, value);
+  } else {
+    element.style.removeProperty(property);
+  }
+  return element.getAttribute('style') || '';
 }
 
 /* eslint-disable ghost/filenames/match-exported-class */
@@ -5643,6 +5768,9 @@ class ZWNJNode extends TextNode {
   static clone(node) {
     return new ZWNJNode('', node.__key);
   }
+  static importJSON(serializedNode) {
+    return new ZWNJNode(serializedNode.text || '');
+  }
   createDOM(config) {
     const span = super.createDOM(config);
     span.innerHTML = '&zwnj;';
@@ -5737,7 +5865,7 @@ const DEFAULT_CONFIG = {
 };
 
 // export convenience objects for use elsewhere
-const DEFAULT_NODES = [ExtendedTextNode, extendedTextNodeReplacement, ExtendedHeadingNode, extendedHeadingNodeReplacement, ExtendedQuoteNode, extendedQuoteNodeReplacement, CodeBlockNode, ImageNode, MarkdownNode, VideoNode, AudioNode, CalloutNode, CallToActionNode, AsideNode, HorizontalRuleNode, HtmlNode, FileNode, ToggleNode, ButtonNode, HeaderNode, BookmarkNode, PaywallNode, ProductNode, EmbedNode, EmailNode, GalleryNode, EmailCtaNode, SignupNode, CollectionNode, TKNode, AtLinkNode, AtLinkSearchNode, ZWNJNode];
+const DEFAULT_NODES = [ExtendedTextNode, extendedTextNodeReplacement, ExtendedHeadingNode, extendedHeadingNodeReplacement, ExtendedQuoteNode, extendedQuoteNodeReplacement, CodeBlockNode, ImageNode, MarkdownNode, VideoNode, AudioNode, CalloutNode, CallToActionNode, AsideNode, HorizontalRuleNode, HtmlNode, FileNode, ToggleNode, ButtonNode, HeaderNode, BookmarkNode, PaywallNode, ProductNode, EmbedNode, EmailNode, GalleryNode, EmailCtaNode, SignupNode, CollectionNode, MultiColumnNode, TKNode, AtLinkNode, AtLinkSearchNode, ZWNJNode];
 
-export { $createAsideNode, $createAtLinkNode, $createAtLinkSearchNode, $createAudioNode, $createBookmarkNode, $createButtonNode, $createCallToActionNode, $createCalloutNode, $createCodeBlockNode, $createCollectionNode, $createEmailCtaNode, $createEmailNode, $createEmbedNode, $createFileNode, $createGalleryNode, $createHeaderNode, $createHorizontalRuleNode, $createHtmlNode, $createImageNode, $createMarkdownNode, $createPaywallNode, $createProductNode, $createSignupNode, $createTKNode, $createToggleNode, $createVideoNode, $createZWNJNode, $isAsideNode, $isAtLinkNode, $isAtLinkSearchNode, $isAudioNode, $isBookmarkNode, $isButtonNode, $isCallToActionNode, $isCalloutNode, $isCodeBlockNode, $isCollectionNode, $isEmailCtaNode, $isEmailNode, $isEmbedNode, $isFileNode, $isGalleryNode, $isHeaderNode, $isHorizontalRuleNode, $isHtmlNode, $isImageNode, $isKoenigCard, $isMarkdownNode, $isPaywallNode, $isProductNode, $isSignupNode, $isTKNode, $isToggleNode, $isVideoNode, $isZWNJNode, AsideNode, AtLinkNode, AtLinkSearchNode, AudioNode, BookmarkNode, ButtonNode, CallToActionNode, CalloutNode, CodeBlockNode, CollectionNode, DEFAULT_CONFIG, DEFAULT_NODES, EmailCtaNode, EmailNode, EmbedNode, ExtendedHeadingNode, ExtendedQuoteNode, ExtendedTextNode, FileNode, GalleryNode, HeaderNode, HorizontalRuleNode, HtmlNode, ImageNode, KoenigDecoratorNode, MarkdownNode, PaywallNode, ProductNode, SignupNode, TKNode, ToggleNode, VideoNode, ZWNJNode, extendedHeadingNodeReplacement, extendedQuoteNodeReplacement, extendedTextNodeReplacement, serializers, utils };
+export { $createAsideNode, $createAtLinkNode, $createAtLinkSearchNode, $createAudioNode, $createBookmarkNode, $createButtonNode, $createCallToActionNode, $createCalloutNode, $createCodeBlockNode, $createCollectionNode, $createEmailCtaNode, $createEmailNode, $createEmbedNode, $createFileNode, $createGalleryNode, $createHeaderNode, $createHorizontalRuleNode, $createHtmlNode, $createImageNode, $createMarkdownNode, $createMultiColumnNode, $createPaywallNode, $createProductNode, $createSignupNode, $createTKNode, $createToggleNode, $createVideoNode, $createZWNJNode, $isAsideNode, $isAtLinkNode, $isAtLinkSearchNode, $isAudioNode, $isBookmarkNode, $isButtonNode, $isCallToActionNode, $isCalloutNode, $isCodeBlockNode, $isCollectionNode, $isEmailCtaNode, $isEmailNode, $isEmbedNode, $isFileNode, $isGalleryNode, $isHeaderNode, $isHorizontalRuleNode, $isHtmlNode, $isImageNode, $isKoenigCard, $isMarkdownNode, $isMultiColumnNode, $isPaywallNode, $isProductNode, $isSignupNode, $isTKNode, $isToggleNode, $isVideoNode, $isZWNJNode, AsideNode, AtLinkNode, AtLinkSearchNode, AudioNode, BookmarkNode, ButtonNode, CallToActionNode, CalloutNode, CodeBlockNode, CollectionNode, DEFAULT_CONFIG, DEFAULT_NODES, EmailCtaNode, EmailNode, EmbedNode, ExtendedHeadingNode, ExtendedQuoteNode, ExtendedTextNode, FileNode, GalleryNode, HeaderNode, HorizontalRuleNode, HtmlNode, ImageNode, KoenigDecoratorNode, MarkdownNode, MultiColumnNode, PaywallNode, ProductNode, SignupNode, TKNode, ToggleNode, VideoNode, ZWNJNode, extendedHeadingNodeReplacement, extendedQuoteNodeReplacement, extendedTextNodeReplacement, serializers, utils };
 //# sourceMappingURL=kg-default-nodes.js.map

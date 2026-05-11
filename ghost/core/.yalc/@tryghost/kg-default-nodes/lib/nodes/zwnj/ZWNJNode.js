@@ -13,6 +13,10 @@ export class ZWNJNode extends TextNode {
         return new ZWNJNode('', node.__key);
     }
 
+    static importJSON(serializedNode) {
+        return new ZWNJNode(serializedNode.text || '');
+    }
+
     createDOM(config) {
         const span = super.createDOM(config);
         span.innerHTML = '&zwnj;';
