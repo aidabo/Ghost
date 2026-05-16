@@ -1479,6 +1479,125 @@ module.exports = {
             ['status', 'claim_expires_at']
         ]
 
-    }
+    },
 
+    estate_properties: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft'},
+        property_type: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'sale'},
+        price_sale: {type: 'bigInteger', nullable: true},
+        price_rent_monthly: {type: 'bigInteger', nullable: true},
+        price_deposit: {type: 'bigInteger', nullable: true},
+        price_key_money: {type: 'bigInteger', nullable: true},
+        price_management_fee: {type: 'bigInteger', nullable: true},
+        price_maintenance_fee: {type: 'bigInteger', nullable: true},
+        price_other_fees: {type: 'text', maxlength: 2000, nullable: true},
+        floor_plan: {type: 'string', maxlength: 50, nullable: true},
+        floor_area: {type: 'string', maxlength: 50, nullable: true},
+        land_area: {type: 'string', maxlength: 50, nullable: true},
+        building_area: {type: 'string', maxlength: 50, nullable: true},
+        year_built: {type: 'string', maxlength: 20, nullable: true},
+        floors_total: {type: 'integer', nullable: true},
+        floor_number: {type: 'integer', nullable: true},
+        layout_description: {type: 'text', maxlength: 2000, nullable: true},
+        address: {type: 'string', maxlength: 500, nullable: true},
+        city: {type: 'string', maxlength: 100, nullable: true},
+        ward: {type: 'string', maxlength: 100, nullable: true},
+        prefecture: {type: 'string', maxlength: 50, nullable: true},
+        postal_code: {type: 'string', maxlength: 20, nullable: true},
+        latitude: {type: 'float', nullable: true},
+        longitude: {type: 'float', nullable: true},
+        transport_info: {type: 'text', maxlength: 5000, nullable: true},
+        nearest_station: {type: 'string', maxlength: 200, nullable: true},
+        total_units: {type: 'integer', nullable: true},
+        structure: {type: 'string', maxlength: 100, nullable: true},
+        direction: {type: 'string', maxlength: 50, nullable: true},
+        parking_info: {type: 'string', maxlength: 500, nullable: true},
+        pets_allowed: {type: 'bool', nullable: true, defaultTo: false},
+        expected_yield: {type: 'float', nullable: true},
+        current_yield: {type: 'float', nullable: true},
+        expected_rent: {type: 'integer', nullable: true},
+        features: {type: 'text', maxlength: 5000, nullable: true},
+        featured: {type: 'bool', nullable: true, defaultTo: false},
+        sort_order: {type: 'integer', nullable: true, defaultTo: 0},
+        group_id: {type: 'string', maxlength: 24, nullable: true},
+        created_at: {type: 'dateTime', nullable: false},
+        updated_at: {type: 'dateTime', nullable: true},
+        created_by: {type: 'string', maxlength: 24, nullable: true},
+        updated_by: {type: 'string', maxlength: 24, nullable: true},
+        '@@INDEXES@@': [
+            ['status'],
+            ['property_type'],
+            ['group_id'],
+            ['featured']
+        ]
+    },
+
+    estate_property_posts: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        property_id: {type: 'string', maxlength: 24, nullable: false, references: 'estate_properties.id'},
+        post_id: {type: 'string', maxlength: 24, nullable: false, references: 'posts.id'},
+        locale: {type: 'string', maxlength: 10, nullable: false, defaultTo: 'ja'},
+        sort_order: {type: 'integer', nullable: true, defaultTo: 0},
+        is_primary: {type: 'bool', nullable: true, defaultTo: false},
+        created_at: {type: 'dateTime', nullable: false},
+        '@@INDEXES@@': [
+            ['property_id', 'post_id', 'locale']
+        ]
+    },
+
+    estate_property_tags: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        property_id: {type: 'string', maxlength: 24, nullable: false, references: 'estate_properties.id'},
+        tag_id: {type: 'string', maxlength: 24, nullable: false, references: 'tags.id'},
+        created_at: {type: 'dateTime', nullable: false},
+        '@@INDEXES@@': [
+            ['property_id', 'tag_id']
+        ]
+    },
+
+    estate_property_media: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        property_id: {type: 'string', maxlength: 24, nullable: false, references: 'estate_properties.id'},
+        media_id: {type: 'string', maxlength: 24, nullable: false, references: 'social_media_assets.id'},
+        media_type: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'image'},
+        sort_order: {type: 'integer', nullable: true, defaultTo: 0},
+        caption: {type: 'string', maxlength: 500, nullable: true},
+        is_primary: {type: 'bool', nullable: true, defaultTo: false},
+        created_at: {type: 'dateTime', nullable: false},
+        '@@INDEXES@@': [
+            ['property_id', 'media_id', 'media_type']
+        ]
+    },
+
+    estate_inquiries: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        property_id: {type: 'string', maxlength: 24, nullable: true, references: 'estate_properties.id'},
+        name: {type: 'string', maxlength: 200, nullable: false},
+        email: {type: 'string', maxlength: 254, nullable: false},
+        phone: {type: 'string', maxlength: 50, nullable: true},
+        message: {type: 'text', maxlength: 10000, nullable: true},
+        inquiry_type: {type: 'string', maxlength: 50, nullable: true, defaultTo: 'general'},
+        status: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'unread'},
+        referrer_url: {type: 'string', maxlength: 2000, nullable: true},
+        metadata: {type: 'text', maxlength: 10000, nullable: true},
+        user_agent: {type: 'string', maxlength: 500, nullable: true},
+        ip_address: {type: 'string', maxlength: 45, nullable: true},
+        created_at: {type: 'dateTime', nullable: false},
+        updated_at: {type: 'dateTime', nullable: true},
+        '@@INDEXES@@': [
+            ['status'],
+            ['property_id']
+        ]
+    },
+
+    estate_settings: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        key: {type: 'string', maxlength: 200, nullable: false, unique: true},
+        value: {type: 'text', maxlength: 10000, nullable: true},
+        type: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'string'},
+        description: {type: 'string', maxlength: 500, nullable: true},
+        created_at: {type: 'dateTime', nullable: false},
+        updated_at: {type: 'dateTime', nullable: true}
+    }
 };

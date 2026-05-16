@@ -308,6 +308,31 @@ module.exports = {
 
     //custom end
 
+    // estate admin endpoints
+    get estateProperties() {
+        return apiFramework.pipeline(require('./estate-properties'), localUtils);
+    },
+
+    get estatePropertyPosts() {
+        return apiFramework.pipeline(require('./estate-property-posts'), localUtils);
+    },
+
+    get estatePropertyTags() {
+        return apiFramework.pipeline(require('./estate-property-tags'), localUtils);
+    },
+
+    get estatePropertyMedia() {
+        return apiFramework.pipeline(require('./estate-property-media'), localUtils);
+    },
+
+    get estateInquiries() {
+        return apiFramework.pipeline(require('./estate-inquiries'), localUtils);
+    },
+
+    get estateSettings() {
+        return apiFramework.pipeline(require('./estate-settings'), localUtils);
+    },
+
     /**
      * Content API Controllers
      *
@@ -367,6 +392,15 @@ module.exports = {
 
     get socialComponentsPublic() {
         return apiFramework.pipeline(require('./social-components-public'), localUtils, 'social');
+    },
+
+    // estate content endpoints
+    get estatePropertiesPublic() {
+        return apiFramework.pipeline(require('./estate-properties-public'), localUtils, 'content');
+    },
+
+    get estateInquiriesPublic() {
+        return apiFramework.pipeline(require('./estate-inquiries-public'), localUtils, 'content');
     }
 
 };

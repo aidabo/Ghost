@@ -14,5 +14,11 @@ module.exports = function customApiRoutes(router) {
     router.get('/social/components', mw.authenticatePublic, http(api.socialComponentsPublic.browse));
     router.get('/social/components/:id', mw.authenticatePublic, http(api.socialComponentsPublic.read));
 
+    // ## estate content routes
+    router.get('/estate/properties', mw.authenticatePublic, http(api.estatePropertiesPublic.browse));
+    router.get('/estate/properties/search', mw.authenticatePublic, http(api.estatePropertiesPublic.search));
+    router.get('/estate/properties/:id', mw.authenticatePublic, http(api.estatePropertiesPublic.read));
+    router.post('/estate/inquiries', mw.authenticatePublic, http(api.estateInquiriesPublic.add));
+
     return router;
 };

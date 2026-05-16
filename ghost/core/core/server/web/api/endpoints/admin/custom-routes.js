@@ -146,5 +146,34 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/media/jobs/:id/complete', mw.authAdminApi, http(api.socialAiMediaJobs.complete));
     router.post('/social/ai/media/jobs/:id/fail', mw.authAdminApi, http(api.socialAiMediaJobs.fail));
 
+    // ## estate admin routes
+    router.get('/estate/properties', mw.authAdminApi, http(api.estateProperties.browse));
+    router.get('/estate/properties/:id', mw.authAdminApi, http(api.estateProperties.read));
+    router.post('/estate/properties', mw.authAdminApi, http(api.estateProperties.add));
+    router.put('/estate/properties/:id', mw.authAdminApi, http(api.estateProperties.edit));
+    router.del('/estate/properties/:id', mw.authAdminApi, http(api.estateProperties.destroy));
+
+    router.get('/estate/properties/:propertyId/posts', mw.authAdminApi, http(api.estatePropertyPosts.browse));
+    router.post('/estate/properties/:propertyId/posts', mw.authAdminApi, http(api.estatePropertyPosts.add));
+    router.del('/estate/properties/:propertyId/posts/:id', mw.authAdminApi, http(api.estatePropertyPosts.destroy));
+
+    router.get('/estate/properties/:propertyId/tags', mw.authAdminApi, http(api.estatePropertyTags.browse));
+    router.post('/estate/properties/:propertyId/tags', mw.authAdminApi, http(api.estatePropertyTags.add));
+    router.del('/estate/properties/:propertyId/tags/:id', mw.authAdminApi, http(api.estatePropertyTags.destroy));
+
+    router.get('/estate/properties/:propertyId/media', mw.authAdminApi, http(api.estatePropertyMedia.browse));
+    router.post('/estate/properties/:propertyId/media', mw.authAdminApi, http(api.estatePropertyMedia.add));
+    router.put('/estate/properties/:propertyId/media/:id', mw.authAdminApi, http(api.estatePropertyMedia.edit));
+    router.del('/estate/properties/:propertyId/media/:id', mw.authAdminApi, http(api.estatePropertyMedia.destroy));
+
+    router.get('/estate/inquiries', mw.authAdminApi, http(api.estateInquiries.browse));
+    router.get('/estate/inquiries/:id', mw.authAdminApi, http(api.estateInquiries.read));
+    router.put('/estate/inquiries/:id', mw.authAdminApi, http(api.estateInquiries.edit));
+    router.del('/estate/inquiries/:id', mw.authAdminApi, http(api.estateInquiries.destroy));
+
+    router.get('/estate/settings', mw.authAdminApi, http(api.estateSettings.browse));
+    router.get('/estate/settings/:key', mw.authAdminApi, http(api.estateSettings.read));
+    router.put('/estate/settings/:key', mw.authAdminApi, http(api.estateSettings.edit));
+
     return router;
 };
