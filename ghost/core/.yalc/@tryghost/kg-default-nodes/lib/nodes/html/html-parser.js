@@ -24,20 +24,6 @@ export function parseHtmlNode(HtmlNode) {
             }
 
             return null;
-        },
-        table: (nodeElem) => {
-            if (nodeElem.nodeType === 1 && nodeElem.tagName === 'TABLE' && nodeElem.parentNode.tagName !== 'TABLE') {
-                return {
-                    conversion(domNode) {
-                        const payload = {html: domNode.outerHTML};
-                        const node = new HtmlNode(payload);
-                        return {node};
-                    },
-                    priority: 0
-                };
-            }
-
-            return null;
         }
     };
 }

@@ -93,7 +93,7 @@
     "@tryghost/kg-default-atoms": "5.1.0",
     "@tryghost/kg-default-cards": "10.1.1",
     "@tryghost/kg-default-nodes": "file:.yalc/@tryghost/kg-default-nodes",
-    "@tryghost/kg-html-to-lexical": "1.2.5",
+    "@tryghost/kg-html-to-lexical": "file:.yalc/@tryghost/kg-html-to-lexical",
     "@tryghost/kg-lexical-html-renderer": "file:.yalc/@tryghost/kg-lexical-html-renderer",
     "@tryghost/kg-mobiledoc-html-renderer": "7.1.1",
     "@tryghost/limit-service": "1.2.14",

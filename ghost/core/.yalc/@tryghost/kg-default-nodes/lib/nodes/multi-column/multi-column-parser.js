@@ -8,7 +8,7 @@ export function multiColumnParser(MultiColumnNode) {
                         const columnCount = parseInt(domNode.getAttribute('data-kg-multi-column-columns'), 10) || 2;
                         const parsedGap = parseFloat(domNode.getAttribute('data-kg-multi-column-gap') || domNode.style.getPropertyValue('--kg-multi-column-gap') || domNode.style.gap);
                         const gap = Number.isFinite(parsedGap) ? parsedGap : 1.5;
-                        const columnElements = Array.from(domNode.children).filter((child) => child.classList?.contains('kg-multi-column-card-column'));
+                        const columnElements = Array.from(domNode.children).filter(child => child.classList?.contains('kg-multi-column-card-column'));
 
                         const payload = {
                             columns: columnCount,

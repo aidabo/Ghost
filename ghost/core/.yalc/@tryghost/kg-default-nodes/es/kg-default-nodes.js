@@ -3,6 +3,8 @@ import cleanBasicHtml from '@tryghost/kg-clean-basic-html';
 import markdownHtmlRenderer from '@tryghost/kg-markdown-html-renderer';
 import { DateTime } from 'luxon';
 import toArray from 'lodash/toArray';
+import { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
+export { TableCellNode, TableNode, TableRowNode } from '@lexical/table';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 
 /* eslint-disable ghost/filenames/match-exported-class */
@@ -1188,23 +1190,25 @@ function renderVideoNode(node, options = {}) {
   };
 }
 function getVideoType(filename) {
-  if (!filename) return null;
-  const extension = filename.split(".").pop()?.toLowerCase() || "";
+  if (!filename) {
+    return null;
+  }
+  const extension = filename.split('.').pop()?.toLowerCase() || '';
   const typeMap = {
-    mp4: "video/mp4",
-    m4v: "video/mp4",
-    webm: "video/webm",
-    ogg: "video/ogg",
-    ogv: "video/ogg",
-    mov: "video/mp4",
+    mp4: 'video/mp4',
+    m4v: 'video/mp4',
+    webm: 'video/webm',
+    ogg: 'video/ogg',
+    ogv: 'video/ogg',
+    mov: 'video/mp4',
     // keep mov mapped to mp4 for browser compatibility
-    mpeg: "video/mpeg",
-    mpg: "video/mpeg",
-    avi: "video/x-msvideo",
-    wmv: "video/x-ms-wmv",
-    flv: "video/x-flv",
-    "3gp": "video/3gpp",
-    "3g2": "video/3gpp2"
+    mpeg: 'video/mpeg',
+    mpg: 'video/mpeg',
+    avi: 'video/x-msvideo',
+    wmv: 'video/x-ms-wmv',
+    flv: 'video/x-flv',
+    '3gp': 'video/3gpp',
+    '3g2': 'video/3gpp2'
   };
   const key = Object.keys(typeMap).find(k => extension.includes(k));
   return key ? typeMap[key] : null;
@@ -1219,9 +1223,9 @@ function cardTemplate$6({
 }) {
   const width = normalizeDimension(node.width, 16);
   const height = normalizeDimension(node.height, 9);
-  const videoType = getVideoType(node.src) || "video/mp4";
-  const autoplayAttr = node.loop ? "loop autoplay muted" : "";
-  const thumbnailSrc = node.customThumbnailSrc || node.thumbnailSrc || "";
+  const videoType = getVideoType(node.src) || 'video/mp4';
+  const autoplayAttr = node.loop ? 'loop autoplay muted' : '';
+  const thumbnailSrc = node.customThumbnailSrc || node.thumbnailSrc || '';
   const posterSpacerSrc = `https://img.spacergif.org/v1/${width}x${height}/0a/spacer.png`;
   const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
   const divisor = gcd(width, height);
@@ -1230,7 +1234,7 @@ function cardTemplate$6({
   // Important: no max-width clamp, keep fully responsive
   const containerStyle = `width:100%;aspect-ratio:${aspectRatioStr};`;
   return `
-        <figure class="${cardClasses}" data-kg-thumbnail="${node.thumbnailSrc || ""}" data-kg-custom-thumbnail="${node.customThumbnailSrc || ""}">
+        <figure class="${cardClasses}" data-kg-thumbnail="${node.thumbnailSrc || ''}" data-kg-custom-thumbnail="${node.customThumbnailSrc || ''}">
             <div class="kg-video-container" data-vjs-player style="${containerStyle}">
                 <video
                     controls
@@ -1255,7 +1259,7 @@ function cardTemplate$6({
                     </p>
                 </video>
             </div>
-            ${node.caption ? `<figcaption>${node.caption}</figcaption>` : ""}
+            ${node.caption ? `<figcaption>${node.caption}</figcaption>` : ''}
         </figure>
     `;
 }
@@ -2152,23 +2156,6 @@ function parseHtmlNode(HtmlNode) {
             }
             let payload = {
               html: html.join('\n').trim()
-            };
-            const node = new HtmlNode(payload);
-            return {
-              node
-            };
-          },
-          priority: 0
-        };
-      }
-      return null;
-    },
-    table: nodeElem => {
-      if (nodeElem.nodeType === 1 && nodeElem.tagName === 'TABLE' && nodeElem.parentNode.tagName !== 'TABLE') {
-        return {
-          conversion(domNode) {
-            const payload = {
-              html: domNode.outerHTML
             };
             const node = new HtmlNode(payload);
             return {
@@ -5865,7 +5852,7 @@ const DEFAULT_CONFIG = {
 };
 
 // export convenience objects for use elsewhere
-const DEFAULT_NODES = [ExtendedTextNode, extendedTextNodeReplacement, ExtendedHeadingNode, extendedHeadingNodeReplacement, ExtendedQuoteNode, extendedQuoteNodeReplacement, CodeBlockNode, ImageNode, MarkdownNode, VideoNode, AudioNode, CalloutNode, CallToActionNode, AsideNode, HorizontalRuleNode, HtmlNode, FileNode, ToggleNode, ButtonNode, HeaderNode, BookmarkNode, PaywallNode, ProductNode, EmbedNode, EmailNode, GalleryNode, EmailCtaNode, SignupNode, CollectionNode, MultiColumnNode, TKNode, AtLinkNode, AtLinkSearchNode, ZWNJNode];
+const DEFAULT_NODES = [ExtendedTextNode, extendedTextNodeReplacement, ExtendedHeadingNode, extendedHeadingNodeReplacement, ExtendedQuoteNode, extendedQuoteNodeReplacement, CodeBlockNode, ImageNode, MarkdownNode, VideoNode, AudioNode, CalloutNode, CallToActionNode, AsideNode, HorizontalRuleNode, HtmlNode, FileNode, ToggleNode, ButtonNode, HeaderNode, BookmarkNode, PaywallNode, ProductNode, EmbedNode, EmailNode, GalleryNode, EmailCtaNode, SignupNode, CollectionNode, MultiColumnNode, TableNode, TableRowNode, TableCellNode, TKNode, AtLinkNode, AtLinkSearchNode, ZWNJNode];
 
 export { $createAsideNode, $createAtLinkNode, $createAtLinkSearchNode, $createAudioNode, $createBookmarkNode, $createButtonNode, $createCallToActionNode, $createCalloutNode, $createCodeBlockNode, $createCollectionNode, $createEmailCtaNode, $createEmailNode, $createEmbedNode, $createFileNode, $createGalleryNode, $createHeaderNode, $createHorizontalRuleNode, $createHtmlNode, $createImageNode, $createMarkdownNode, $createMultiColumnNode, $createPaywallNode, $createProductNode, $createSignupNode, $createTKNode, $createToggleNode, $createVideoNode, $createZWNJNode, $isAsideNode, $isAtLinkNode, $isAtLinkSearchNode, $isAudioNode, $isBookmarkNode, $isButtonNode, $isCallToActionNode, $isCalloutNode, $isCodeBlockNode, $isCollectionNode, $isEmailCtaNode, $isEmailNode, $isEmbedNode, $isFileNode, $isGalleryNode, $isHeaderNode, $isHorizontalRuleNode, $isHtmlNode, $isImageNode, $isKoenigCard, $isMarkdownNode, $isMultiColumnNode, $isPaywallNode, $isProductNode, $isSignupNode, $isTKNode, $isToggleNode, $isVideoNode, $isZWNJNode, AsideNode, AtLinkNode, AtLinkSearchNode, AudioNode, BookmarkNode, ButtonNode, CallToActionNode, CalloutNode, CodeBlockNode, CollectionNode, DEFAULT_CONFIG, DEFAULT_NODES, EmailCtaNode, EmailNode, EmbedNode, ExtendedHeadingNode, ExtendedQuoteNode, ExtendedTextNode, FileNode, GalleryNode, HeaderNode, HorizontalRuleNode, HtmlNode, ImageNode, KoenigDecoratorNode, MarkdownNode, MultiColumnNode, PaywallNode, ProductNode, SignupNode, TKNode, ToggleNode, VideoNode, ZWNJNode, extendedHeadingNodeReplacement, extendedQuoteNodeReplacement, extendedTextNodeReplacement, serializers, utils };
 //# sourceMappingURL=kg-default-nodes.js.map

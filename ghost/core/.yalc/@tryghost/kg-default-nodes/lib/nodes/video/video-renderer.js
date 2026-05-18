@@ -1,5 +1,5 @@
-import { addCreateDocumentOption } from '../../utils/add-create-document-option';
-import { renderEmptyContainer } from '../../utils/render-empty-container';
+import {addCreateDocumentOption} from '../../utils/add-create-document-option';
+import {renderEmptyContainer} from '../../utils/render-empty-container';
 
 export function renderVideoNode(node, options = {}) {
     addCreateDocumentOption(options);
@@ -13,16 +13,16 @@ export function renderVideoNode(node, options = {}) {
     const cardClasses = getCardClasses(node).join(' ');
 
     const htmlString = options.target === 'email'
-        ? emailCardTemplate({ node, options, cardClasses })
-        : cardTemplate({ node, cardClasses });
+        ? emailCardTemplate({node, options, cardClasses})
+        : cardTemplate({node, cardClasses});
 
     const element = document.createElement('div');
     element.innerHTML = htmlString.trim();
 
-    return { element: element.firstElementChild };
+    return {element: element.firstElementChild};
 }
 
-export function cardTemplate1({ node, cardClasses }) {
+export function cardTemplate1({node, cardClasses}) {
     const width = node.width;
     const height = node.height;
     const posterSpacerSrc = `https://img.spacergif.org/v1/${width}x${height}/0a/spacer.png`;
@@ -91,26 +91,28 @@ export function cardTemplate1({ node, cardClasses }) {
 }
 
 export function getVideoType(filename) {
-    if (!filename) return null;
+    if (!filename) {
+        return null;
+    }
 
-    const extension = filename.split(".").pop()?.toLowerCase() || "";
+    const extension = filename.split('.').pop()?.toLowerCase() || '';
     const typeMap = {
-        mp4: "video/mp4",
-        m4v: "video/mp4",
-        webm: "video/webm",
-        ogg: "video/ogg",
-        ogv: "video/ogg",
-        mov: "video/mp4", // keep mov mapped to mp4 for browser compatibility
-        mpeg: "video/mpeg",
-        mpg: "video/mpeg",
-        avi: "video/x-msvideo",
-        wmv: "video/x-ms-wmv",
-        flv: "video/x-flv",
-        "3gp": "video/3gpp",
-        "3g2": "video/3gpp2"
+        mp4: 'video/mp4',
+        m4v: 'video/mp4',
+        webm: 'video/webm',
+        ogg: 'video/ogg',
+        ogv: 'video/ogg',
+        mov: 'video/mp4', // keep mov mapped to mp4 for browser compatibility
+        mpeg: 'video/mpeg',
+        mpg: 'video/mpeg',
+        avi: 'video/x-msvideo',
+        wmv: 'video/x-ms-wmv',
+        flv: 'video/x-flv',
+        '3gp': 'video/3gpp',
+        '3g2': 'video/3gpp2'
     };
 
-    const key = Object.keys(typeMap).find((k) => extension.includes(k));
+    const key = Object.keys(typeMap).find(k => extension.includes(k));
     return key ? typeMap[key] : null;
 }
 
@@ -119,13 +121,13 @@ function normalizeDimension(value, fallback) {
     return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-export function cardTemplate({ node, cardClasses }) {
+export function cardTemplate({node, cardClasses}) {
     const width = normalizeDimension(node.width, 16);
     const height = normalizeDimension(node.height, 9);
-    const videoType = getVideoType(node.src) || "video/mp4";
+    const videoType = getVideoType(node.src) || 'video/mp4';
 
-    const autoplayAttr = node.loop ? "loop autoplay muted" : "";
-    const thumbnailSrc = node.customThumbnailSrc || node.thumbnailSrc || "";
+    const autoplayAttr = node.loop ? 'loop autoplay muted' : '';
+    const thumbnailSrc = node.customThumbnailSrc || node.thumbnailSrc || '';
     const posterSpacerSrc = `https://img.spacergif.org/v1/${width}x${height}/0a/spacer.png`;
 
     const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
@@ -136,7 +138,7 @@ export function cardTemplate({ node, cardClasses }) {
     const containerStyle = `width:100%;aspect-ratio:${aspectRatioStr};`;
 
     return `
-        <figure class="${cardClasses}" data-kg-thumbnail="${node.thumbnailSrc || ""}" data-kg-custom-thumbnail="${node.customThumbnailSrc || ""}">
+        <figure class="${cardClasses}" data-kg-thumbnail="${node.thumbnailSrc || ''}" data-kg-custom-thumbnail="${node.customThumbnailSrc || ''}">
             <div class="kg-video-container" data-vjs-player style="${containerStyle}">
                 <video
                     controls
@@ -161,12 +163,12 @@ export function cardTemplate({ node, cardClasses }) {
                     </p>
                 </video>
             </div>
-            ${node.caption ? `<figcaption>${node.caption}</figcaption>` : ""}
+            ${node.caption ? `<figcaption>${node.caption}</figcaption>` : ''}
         </figure>
     `;
 }
 
-export function emailCardTemplate({ node, options, cardClasses }) {
+export function emailCardTemplate({node, options, cardClasses}) {
     const thumbnailSrc = node.customThumbnailSrc || node.thumbnailSrc;
     const emailTemplateMaxWidth = 600;
     const aspectRatio = node.width / node.height;

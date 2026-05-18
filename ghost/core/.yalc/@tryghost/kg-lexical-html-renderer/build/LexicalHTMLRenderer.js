@@ -7,6 +7,7 @@ const headless_1 = require("@lexical/headless");
 const list_1 = require("@lexical/list");
 const rich_text_1 = require("@lexical/rich-text");
 const link_1 = require("@lexical/link");
+const table_1 = require("@lexical/table");
 const convert_to_html_string_1 = __importDefault(require("./convert-to-html-string"));
 const get_dynamic_data_nodes_1 = __importDefault(require("./get-dynamic-data-nodes"));
 // TODO: Using import causes circular definitions for kg-default-nodes
@@ -44,6 +45,9 @@ class LexicalHTMLRenderer {
             list_1.ListItemNode,
             rich_text_1.QuoteNode,
             link_1.LinkNode,
+            table_1.TableNode,
+            table_1.TableRowNode,
+            table_1.TableCellNode,
             ...this.nodes
         ];
         const editor = (0, headless_1.createHeadlessEditor)({

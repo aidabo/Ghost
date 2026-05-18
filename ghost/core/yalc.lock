@@ -7,18 +7,23 @@
       "replaced": "4.5.5"
     },
     "@tryghost/kg-lexical-html-renderer": {
-      "signature": "813de52198d6a11ce027e2d14b797048",
+      "signature": "409ce5e480c38610164baa71c96c1ef7",
       "file": true,
       "replaced": "1.3.5"
     },
     "@tryghost/kg-default-nodes": {
-      "signature": "fc1b5f54f7b3365e8e16aa27905eb41a",
+      "signature": "6f7506922446f2813d6e638b3319f098",
       "file": true,
       "replaced": "1.4.5"
     },
     "@tryghost/user-events": {
       "signature": "3f78e5ce30980a1352043286613463a1",
       "file": true
+    },
+    "@tryghost/kg-html-to-lexical": {
+      "signature": "7542825e50622f8eebecea8deec0f6db",
+      "file": true,
+      "replaced": "1.2.5"
     }
   }
 }

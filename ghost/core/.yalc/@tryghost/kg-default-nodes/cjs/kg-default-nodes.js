@@ -5,6 +5,7 @@ var cleanBasicHtml = require('@tryghost/kg-clean-basic-html');
 var markdownHtmlRenderer = require('@tryghost/kg-markdown-html-renderer');
 var luxon = require('luxon');
 var toArray = require('lodash/toArray');
+var table = require('@lexical/table');
 var richText = require('@lexical/rich-text');
 
 /* eslint-disable ghost/filenames/match-exported-class */
@@ -1168,36 +1169,38 @@ function renderVideoNode(node, options = {}) {
     const cardClasses = getCardClasses$3(node).join(' ');
 
     const htmlString = options.target === 'email'
-        ? emailCardTemplate$2({ node, options, cardClasses })
-        : cardTemplate$6({ node, cardClasses });
+        ? emailCardTemplate$2({node, options, cardClasses})
+        : cardTemplate$6({node, cardClasses});
 
     const element = document.createElement('div');
     element.innerHTML = htmlString.trim();
 
-    return { element: element.firstElementChild };
+    return {element: element.firstElementChild};
 }
 
 function getVideoType(filename) {
-    if (!filename) return null;
+    if (!filename) {
+        return null;
+    }
 
-    const extension = filename.split(".").pop()?.toLowerCase() || "";
+    const extension = filename.split('.').pop()?.toLowerCase() || '';
     const typeMap = {
-        mp4: "video/mp4",
-        m4v: "video/mp4",
-        webm: "video/webm",
-        ogg: "video/ogg",
-        ogv: "video/ogg",
-        mov: "video/mp4", // keep mov mapped to mp4 for browser compatibility
-        mpeg: "video/mpeg",
-        mpg: "video/mpeg",
-        avi: "video/x-msvideo",
-        wmv: "video/x-ms-wmv",
-        flv: "video/x-flv",
-        "3gp": "video/3gpp",
-        "3g2": "video/3gpp2"
+        mp4: 'video/mp4',
+        m4v: 'video/mp4',
+        webm: 'video/webm',
+        ogg: 'video/ogg',
+        ogv: 'video/ogg',
+        mov: 'video/mp4', // keep mov mapped to mp4 for browser compatibility
+        mpeg: 'video/mpeg',
+        mpg: 'video/mpeg',
+        avi: 'video/x-msvideo',
+        wmv: 'video/x-ms-wmv',
+        flv: 'video/x-flv',
+        '3gp': 'video/3gpp',
+        '3g2': 'video/3gpp2'
     };
 
-    const key = Object.keys(typeMap).find((k) => extension.includes(k));
+    const key = Object.keys(typeMap).find(k => extension.includes(k));
     return key ? typeMap[key] : null;
 }
 
@@ -1206,13 +1209,13 @@ function normalizeDimension(value, fallback) {
     return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function cardTemplate$6({ node, cardClasses }) {
+function cardTemplate$6({node, cardClasses}) {
     const width = normalizeDimension(node.width, 16);
     const height = normalizeDimension(node.height, 9);
-    const videoType = getVideoType(node.src) || "video/mp4";
+    const videoType = getVideoType(node.src) || 'video/mp4';
 
-    const autoplayAttr = node.loop ? "loop autoplay muted" : "";
-    const thumbnailSrc = node.customThumbnailSrc || node.thumbnailSrc || "";
+    const autoplayAttr = node.loop ? 'loop autoplay muted' : '';
+    const thumbnailSrc = node.customThumbnailSrc || node.thumbnailSrc || '';
     const posterSpacerSrc = `https://img.spacergif.org/v1/${width}x${height}/0a/spacer.png`;
 
     const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
@@ -1223,7 +1226,7 @@ function cardTemplate$6({ node, cardClasses }) {
     const containerStyle = `width:100%;aspect-ratio:${aspectRatioStr};`;
 
     return `
-        <figure class="${cardClasses}" data-kg-thumbnail="${node.thumbnailSrc || ""}" data-kg-custom-thumbnail="${node.customThumbnailSrc || ""}">
+        <figure class="${cardClasses}" data-kg-thumbnail="${node.thumbnailSrc || ''}" data-kg-custom-thumbnail="${node.customThumbnailSrc || ''}">
             <div class="kg-video-container" data-vjs-player style="${containerStyle}">
                 <video
                     controls
@@ -1248,12 +1251,12 @@ function cardTemplate$6({ node, cardClasses }) {
                     </p>
                 </video>
             </div>
-            ${node.caption ? `<figcaption>${node.caption}</figcaption>` : ""}
+            ${node.caption ? `<figcaption>${node.caption}</figcaption>` : ''}
         </figure>
     `;
 }
 
-function emailCardTemplate$2({ node, options, cardClasses }) {
+function emailCardTemplate$2({node, options, cardClasses}) {
     const thumbnailSrc = node.customThumbnailSrc || node.thumbnailSrc;
     const emailTemplateMaxWidth = 600;
     const aspectRatio = node.width / node.height;
@@ -2131,20 +2134,6 @@ function parseHtmlNode(HtmlNode) {
                         }
 
                         let payload = {html: html.join('\n').trim()};
-                        const node = new HtmlNode(payload);
-                        return {node};
-                    },
-                    priority: 0
-                };
-            }
-
-            return null;
-        },
-        table: (nodeElem) => {
-            if (nodeElem.nodeType === 1 && nodeElem.tagName === 'TABLE' && nodeElem.parentNode.tagName !== 'TABLE') {
-                return {
-                    conversion(domNode) {
-                        const payload = {html: domNode.outerHTML};
                         const node = new HtmlNode(payload);
                         return {node};
                     },
@@ -5154,7 +5143,7 @@ function multiColumnParser(MultiColumnNode) {
                         const columnCount = parseInt(domNode.getAttribute('data-kg-multi-column-columns'), 10) || 2;
                         const parsedGap = parseFloat(domNode.getAttribute('data-kg-multi-column-gap') || domNode.style.getPropertyValue('--kg-multi-column-gap') || domNode.style.gap);
                         const gap = Number.isFinite(parsedGap) ? parsedGap : 1.5;
-                        const columnElements = Array.from(domNode.children).filter((child) => child.classList?.contains('kg-multi-column-card-column'));
+                        const columnElements = Array.from(domNode.children).filter(child => child.classList?.contains('kg-multi-column-card-column'));
 
                         const payload = {
                             columns: columnCount,
@@ -5937,12 +5926,27 @@ const DEFAULT_NODES = [
     SignupNode,
     CollectionNode,
     MultiColumnNode,
+    table.TableNode,
+    table.TableRowNode,
+    table.TableCellNode,
     TKNode,
     AtLinkNode,
     AtLinkSearchNode,
     ZWNJNode
 ];
 
+Object.defineProperty(exports, "TableCellNode", {
+    enumerable: true,
+    get: function () { return table.TableCellNode; }
+});
+Object.defineProperty(exports, "TableNode", {
+    enumerable: true,
+    get: function () { return table.TableNode; }
+});
+Object.defineProperty(exports, "TableRowNode", {
+    enumerable: true,
+    get: function () { return table.TableRowNode; }
+});
 exports.$createAsideNode = $createAsideNode;
 exports.$createAtLinkNode = $createAtLinkNode;
 exports.$createAtLinkSearchNode = $createAtLinkSearchNode;
