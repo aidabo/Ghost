@@ -97,7 +97,7 @@ const controller = {
                 path: frame.file.path
             }, targetDir || undefined);
 
-            await socialMediaAssets.upsertAsset({
+            const assetId = await socialMediaAssets.upsertAsset({
                 knex: models.Base.knex,
                 store: fileStore,
                 url: filePath,
@@ -110,7 +110,8 @@ const controller = {
             });
 
             return {
-                filePath
+                filePath,
+                id: assetId
             };
         }
     }

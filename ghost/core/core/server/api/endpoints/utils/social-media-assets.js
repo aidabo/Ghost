@@ -142,6 +142,8 @@ const upsertAsset = async ({
     jobId,
     userId,
     groupId,
+    propertyId,
+    ownerScope,
     tag
 }) => {
     if (!knex || !url) {
@@ -155,7 +157,7 @@ const upsertAsset = async ({
 
     try {
         const now = new Date();
-        const ownerScope = groupId ? 'group' : 'user';
+        const resolvedOwnerScope = ownerScope || (propertyId ? 'property' : (groupId ? 'group' : 'user'));
 
         const payload = {
             storage_key: storageKey,
@@ -165,7 +167,7 @@ const upsertAsset = async ({
             thumbnail_storage_key: resolveStorageKey(store, thumbnailStorageKey || thumbnailUrl),
             original_filename: String(originalFilename || '').trim() || null,
             asset_type: assetType,
-            owner_scope: ownerScope,
+            owner_scope: resolvedOwnerScope,
             user_id: userId || null,
             group_id: groupId || null,
             job_id: normalizeJobId(jobId),

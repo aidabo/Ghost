@@ -61,12 +61,20 @@ const EstateProperty = ghostBookshelf.Model.extend({
         'expected_yield', 'current_yield', 'expected_rent',
         'features', 'featured', 'sort_order',
         'group_id',
-        'created_at', 'updated_at', 'created_by', 'updated_by'
+        'created_at', 'updated_at', 'created_by', 'updated_by',
+        'google_map_url', 'google_3d_url', 'google_places_data', 'mlit_summary_data', 'street_view_url', 'hazard_map_url',
+        'nearby_stores', 'nearby_hospitals', 'nearby_schools', 'nearby_parks',
+        'elementary_school_info', 'junior_school_info', 'school_info', 'preschool_info',
+        'liquefaction_info', 'flood_inundation_info', 'storm_surge_info', 'tsunami_info',
+        'landslide_warning_info', 'disaster_hazard_area_info', 'large_scale_fill_info',
+        'landslide_prevention_info', 'steep_slope_info',
+        'building_auto_lock', 'building_manager',
+        'mlit_data'
     ],
 
     relationships: ['posts', 'propertyTags', 'tags', 'media', 'socialMediaAssets', 'ghostPosts'],
 
-    includeRelations: ['posts', 'tags', 'media']
+    includeRelations: ['posts', 'tags', 'media', 'socialMediaAssets']
 });
 
 const EstateProperties = ghostBookshelf.Collection.extend({

@@ -130,7 +130,7 @@ const controller = {
                     path: out
                 }, userTargetDir || undefined);
 
-                await socialMediaAssets.upsertAsset({
+                const processedAssetId = await socialMediaAssets.upsertAsset({
                     knex: models.Base.knex,
                     store,
                     url: processedImageUrl,
@@ -144,12 +144,7 @@ const controller = {
                 let processedImageDir = undefined;
 
                 if (store.urlToPath) {
-                    // Currently urlToPath is not part of StorageBase, so not all storage provider have implemented it
                     const processedImagePath = store.urlToPath(processedImageUrl);
-
-                    // Get the path and name of the processed image
-                    // We want to store the original image on the same name + _o
-                    // So we need to wait for the first store to finish before generating the name of the original image
                     processedImageName = path.basename(processedImagePath);
                     processedImageDir = path.dirname(processedImagePath);
                 }
@@ -161,12 +156,12 @@ const controller = {
                     name: imageTransform.generateOriginalImageName(processedImageName)
                 }, processedImageDir || userTargetDir || undefined);
 
-                return processedImageUrl;
+                return {url: processedImageUrl, id: processedAssetId};
             }
 
             const imageUrl = await store.save(frame.file, userTargetDir || undefined);
 
-            await socialMediaAssets.upsertAsset({
+            const assetId = await socialMediaAssets.upsertAsset({
                 knex: models.Base.knex,
                 store,
                 url: imageUrl,
@@ -176,7 +171,7 @@ const controller = {
                 tag: uploadContext.tag
             });
 
-            return imageUrl;
+            return {url: imageUrl, id: assetId};
         }
     }
 };

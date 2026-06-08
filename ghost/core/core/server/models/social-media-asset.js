@@ -24,6 +24,13 @@ const SocialMediaAsset = ghostBookshelf.Model.extend({
 
     tag() {
         return this.belongsTo('Tag', 'tag_id');
+    },
+
+    // Virtual: expose storage_url as url for API consumers
+    virtuals: {
+        url() {
+            return this.get('storage_url');
+        }
     }
 });
 

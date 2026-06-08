@@ -69,6 +69,8 @@ To stay up to date with all the latest news and product updates, make sure you [
   
   `yarn` && `yarn build`
 
+  If Nx daemon becomes unstable, rerun with `NX_DAEMON=false yarn build`.
+
 # Build local custom source to docker image
 
 - Create archive

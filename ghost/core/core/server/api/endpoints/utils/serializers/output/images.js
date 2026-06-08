@@ -5,9 +5,12 @@ module.exports = {
     upload(path, apiConfig, frame) {
         debug('upload');
 
+        const img = typeof path === 'object' && path !== null
+            ? {url: mappers.images(path.url), id: path.id || null}
+            : {url: mappers.images(path)};
         return frame.response = {
             images: [{
-                url: mappers.images(path),
+                ...img,
                 // NOTE: ref field is here to have reference point on the client
                 //       for example when substituting existing images in the mobiledoc
                 //       this field would serve as an identifier to find images to replace

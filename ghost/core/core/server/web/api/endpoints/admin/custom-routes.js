@@ -1,6 +1,45 @@
 const api = require('../../../../api').endpoints;
+const models = require('../../../../models');
 const { http } = require('@tryghost/api-framework');
 const mw = require('./middleware');
+
+const createOrUpdatePost = async (req, res, next) => {
+    try {
+        const payload = req.body?.posts?.[0] || req.body?.post?.[0];
+        if (!payload || !payload.slug) {
+            return res.status(400).json({errors: [{message: 'Post payload with slug is required.'}]});
+        }
+
+        const existing = await models.Post.findOne({slug: payload.slug}, {context: {internal: true}});
+        const options = {context: {internal: true}};
+        const saved = existing
+            ? await models.Post.edit(payload, {id: existing.id, context: {internal: true}})
+            : await models.Post.add(payload, options);
+
+        return res.status(existing ? 200 : 201).json({posts: [saved.toJSON ? saved.toJSON() : saved]});
+    } catch (error) {
+        return next(error);
+    }
+};
+
+const createOrUpdateGalleryAsset = async (req, res, next) => {
+    try {
+        const payload = req.body?.persongalleryassets?.[0] || req.body?.asset?.[0] || req.body?.galleryassets?.[0];
+        if (!payload || !payload.person_id || !payload.asset_key) {
+            return res.status(400).json({errors: [{message: 'person_id and asset_key are required.'}]});
+        }
+
+        const existing = await models.PersonGalleryAsset.findOne({person_id: payload.person_id, asset_key: payload.asset_key}, {context: {internal: true}});
+        const options = {context: {internal: true}};
+        const saved = existing
+            ? await models.PersonGalleryAsset.edit(payload, {id: existing.id, context: {internal: true}})
+            : await models.PersonGalleryAsset.add(payload, options);
+
+        return res.status(existing ? 200 : 201).json({persongalleryassets: [saved.toJSON ? saved.toJSON() : saved]});
+    } catch (error) {
+        return next(error);
+    }
+};
 
 /**
  * @returns {import('express').Router}
@@ -93,6 +132,10 @@ module.exports = function customApiRoutes(router) {
     router.get('/social/gallery/group/', mw.authAdminApi, http(api.socialGallery.group));
     router.get('/social/gallery/group/:id', mw.authAdminApi, http(api.socialGallery.group));
     router.get('/social/gallery/group/:id/', mw.authAdminApi, http(api.socialGallery.group));
+    router.get('/social/gallery/property', mw.authAdminApi, http(api.socialGallery.property));
+    router.get('/social/gallery/property/', mw.authAdminApi, http(api.socialGallery.property));
+    router.get('/social/gallery/property/:id', mw.authAdminApi, http(api.socialGallery.property));
+    router.get('/social/gallery/property/:id/', mw.authAdminApi, http(api.socialGallery.property));
     router.post('/social/gallery/presign', mw.authAdminApi, http(api.socialGallery.presign));
     router.post('/social/gallery/presign/', mw.authAdminApi, http(api.socialGallery.presign));
     router.post('/social/gallery/finalize', mw.authAdminApi, http(api.socialGallery.finalize));
@@ -152,6 +195,66 @@ module.exports = function customApiRoutes(router) {
     router.post('/estate/properties', mw.authAdminApi, http(api.estateProperties.add));
     router.put('/estate/properties/:id', mw.authAdminApi, http(api.estateProperties.edit));
     router.del('/estate/properties/:id', mw.authAdminApi, http(api.estateProperties.destroy));
+
+    // ## person story admin routes
+    router.get('/person-stories', mw.authAdminApi, http(api.personStories.browse));
+    router.get('/person-stories/:id', mw.authAdminApi, http(api.personStories.read));
+    router.post('/person-stories', mw.authAdminApi, http(api.personStories.add));
+    router.put('/person-stories/:id', mw.authAdminApi, http(api.personStories.edit));
+    router.del('/person-stories/:id', mw.authAdminApi, http(api.personStories.destroy));
+
+    // ## person graph admin routes
+    router.post('/person-graph/posts', mw.authAdminApi, createOrUpdatePost);
+    router.post('/person-graph/gallery-assets', mw.authAdminApi, createOrUpdateGalleryAsset);
+
+    router.get('/persons', mw.authAdminApi, http(api.persons.browse));
+    router.get('/persons/:id', mw.authAdminApi, http(api.persons.read));
+    router.get('/persons/:id/graph', mw.authAdminApi, http(api.persons.graph));
+    router.post('/persons', mw.authAdminApi, http(api.persons.add));
+    router.put('/persons/:id', mw.authAdminApi, http(api.persons.edit));
+    router.del('/persons/:id', mw.authAdminApi, http(api.persons.destroy));
+
+    router.get('/person-roles', mw.authAdminApi, http(api.personRoles.browse));
+    router.get('/person-roles/:id', mw.authAdminApi, http(api.personRoles.read));
+    router.post('/person-roles', mw.authAdminApi, http(api.personRoles.add));
+    router.put('/person-roles/:id', mw.authAdminApi, http(api.personRoles.edit));
+    router.del('/person-roles/:id', mw.authAdminApi, http(api.personRoles.destroy));
+
+    router.get('/person-life-events', mw.authAdminApi, http(api.personLifeEvents.browse));
+    router.get('/person-life-events/:id', mw.authAdminApi, http(api.personLifeEvents.read));
+    router.post('/person-life-events', mw.authAdminApi, http(api.personLifeEvents.add));
+    router.put('/person-life-events/:id', mw.authAdminApi, http(api.personLifeEvents.edit));
+    router.del('/person-life-events/:id', mw.authAdminApi, http(api.personLifeEvents.destroy));
+
+    router.get('/person-story-series', mw.authAdminApi, http(api.personStorySeries.browse));
+    router.get('/person-story-series/:id', mw.authAdminApi, http(api.personStorySeries.read));
+    router.post('/person-story-series', mw.authAdminApi, http(api.personStorySeries.add));
+    router.put('/person-story-series/:id', mw.authAdminApi, http(api.personStorySeries.edit));
+    router.del('/person-story-series/:id', mw.authAdminApi, http(api.personStorySeries.destroy));
+
+    router.get('/person-story-episodes', mw.authAdminApi, http(api.personStoryEpisodes.browse));
+    router.get('/person-story-episodes/:id', mw.authAdminApi, http(api.personStoryEpisodes.read));
+    router.post('/person-story-episodes', mw.authAdminApi, http(api.personStoryEpisodes.add));
+    router.put('/person-story-episodes/:id', mw.authAdminApi, http(api.personStoryEpisodes.edit));
+    router.del('/person-story-episodes/:id', mw.authAdminApi, http(api.personStoryEpisodes.destroy));
+
+    router.get('/person-relations', mw.authAdminApi, http(api.personRelations.browse));
+    router.get('/person-relations/:id', mw.authAdminApi, http(api.personRelations.read));
+    router.post('/person-relations', mw.authAdminApi, http(api.personRelations.add));
+    router.put('/person-relations/:id', mw.authAdminApi, http(api.personRelations.edit));
+    router.del('/person-relations/:id', mw.authAdminApi, http(api.personRelations.destroy));
+
+    router.get('/person-post-relations', mw.authAdminApi, http(api.personPostRelations.browse));
+    router.get('/person-post-relations/:id', mw.authAdminApi, http(api.personPostRelations.read));
+    router.post('/person-post-relations', mw.authAdminApi, http(api.personPostRelations.add));
+    router.put('/person-post-relations/:id', mw.authAdminApi, http(api.personPostRelations.edit));
+    router.del('/person-post-relations/:id', mw.authAdminApi, http(api.personPostRelations.destroy));
+
+    router.get('/person-gallery-assets', mw.authAdminApi, http(api.personGalleryAssets.browse));
+    router.get('/person-gallery-assets/:id', mw.authAdminApi, http(api.personGalleryAssets.read));
+    router.post('/person-gallery-assets', mw.authAdminApi, createOrUpdateGalleryAsset);
+    router.put('/person-gallery-assets/:id', mw.authAdminApi, createOrUpdateGalleryAsset);
+    router.del('/person-gallery-assets/:id', mw.authAdminApi, http(api.personGalleryAssets.destroy));
 
     router.get('/estate/properties/:propertyId/posts', mw.authAdminApi, http(api.estatePropertyPosts.browse));
     router.post('/estate/properties/:propertyId/posts', mw.authAdminApi, http(api.estatePropertyPosts.add));

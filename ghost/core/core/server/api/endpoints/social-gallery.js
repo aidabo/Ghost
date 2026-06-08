@@ -11,6 +11,8 @@ const messages = {
     userRequired: 'No login user authentication, can not read gallery in this scope.',
     groupRequired: '`group_id` is required.',
     groupNotFound: 'Group not found: {groupId}.',
+    propertyRequired: '`property_id` is required.',
+    propertyNotFound: 'Estate property not found: {propertyId}.',
     noPermission: 'You are not allowed to read gallery in this group: {groupId}, user: {user}.',
     storageNoList: 'Configured storage adapter does not support gallery listing.',
     postIdRequired: '`post_id` is required.',
@@ -831,15 +833,72 @@ const resolveGroupAndCheckRead = async (frame, groupId) => {
     return group;
 };
 
+const resolvePropertyAndCheckExists = async (propertyId) => {
+    if (!propertyId) {
+        throw new errors.ValidationError({
+            message: tpl(messages.propertyRequired)
+        });
+    }
+
+    // @ts-ignore
+    const property = await models.EstateProperty.findOne({ id: propertyId });
+    if (!property) {
+        throw new errors.NotFoundError({
+            message: tpl(messages.propertyNotFound, { propertyId })
+        });
+    }
+
+    return property;
+};
+
+/**
+ * Centralized gallery scope resolution.
+ * Precedence is explicit so browser state cannot accidentally override a more specific target.
+ * Add new scopes here instead of spreading more conditionals across presign/finalize.
+ */
+const resolveGalleryScope = ({ target, groupId, propertyId }) => {
+    const normalizedTarget = String(target || '').toLowerCase().trim();
+    const normalizedGroupId = String(groupId || '').trim();
+    const normalizedPropertyId = String(propertyId || '').trim();
+
+    if (normalizedTarget === 'property' || normalizedPropertyId) {
+        return {
+            scope: 'property',
+            propertyId: normalizedPropertyId,
+            groupId: null
+        };
+    }
+
+    if (normalizedTarget === 'group' || normalizedGroupId) {
+        return {
+            scope: 'group',
+            propertyId: null,
+            groupId: normalizedGroupId
+        };
+    }
+
+    return {
+        scope: 'user',
+        propertyId: null,
+        groupId: null
+    };
+};
+
 const resolveUploadContext = async (frame) => {
     const mediaStore = storage.getStorage('media');
     const userId = frame.options?.context?.user;
     const groupId = getFrameValue(frame, 'group_id');
+    const target = getFrameValue(frame, 'target');
+    const propertyId = getFrameValue(frame, 'property_id');
     const tag = await socialMediaAssets.resolveTag(models.Base.knex, frame);
+    const resolvedScope = resolveGalleryScope({target, groupId, propertyId});
 
     logging.info('[social-gallery] resolveUploadContext: start', {
         userId: userId || null,
         groupId: groupId || null,
+        target: target || null,
+        scope: resolvedScope.scope,
+        propertyId: resolvedScope.propertyId || null,
         hasTag: Boolean(tag),
         hasGetTargetDir: typeof mediaStore?.getTargetDir === 'function'
     });
@@ -854,7 +913,28 @@ const resolveUploadContext = async (frame) => {
         root
     });
 
-    if (groupId) {
+    // Property target: gallery/properties/{property-id}/
+    if (resolvedScope.scope === 'property') {
+        if (!userId) {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.userRequired)
+            });
+        }
+
+        await resolvePropertyAndCheckExists(resolvedScope.propertyId);
+        const baseDir = path.posix.join(root, 'gallery', 'properties', resolvedScope.propertyId);
+        return {
+            mediaStore,
+            targetDir: mediaStore.getTargetDir(baseDir),
+            userId: userId || null,
+            groupId: null,
+            propertyId: resolvedScope.propertyId,
+            ownerScope: 'property',
+            tag
+        };
+    }
+
+    if (resolvedScope.scope === 'group') {
         if (!userId) {
             throw new errors.NoPermissionError({
                 message: tpl(messages.userRequired)
@@ -862,10 +942,10 @@ const resolveUploadContext = async (frame) => {
         }
 
         // @ts-ignore
-        const group = await models.SocialGroup.findOne({ id: groupId });
+        const group = await models.SocialGroup.findOne({id: resolvedScope.groupId});
         if (!group) {
             throw new errors.NotFoundError({
-                message: tpl(messages.groupNotFound, { groupId })
+                message: tpl(messages.groupNotFound, {groupId: resolvedScope.groupId})
             });
         }
 
@@ -873,26 +953,18 @@ const resolveUploadContext = async (frame) => {
         const allowed = await models.SocialGroup.canAccessGroup(group, userId, 'write');
         if (!allowed) {
             throw new errors.NoPermissionError({
-                message: tpl(messages.noPermission, { groupId, user: userId })
+                message: tpl(messages.noPermission, {groupId: resolvedScope.groupId, user: userId})
             });
         }
 
-        // @ts-ignore
-        logging.info('[social-gallery] resolveUploadContext: before group alias', {
-            groupId,
-            userId
-        });
-        const groupAlias = await models.SocialGroup.ensureMediaFolderAlias(groupId);
-        logging.info('[social-gallery] resolveUploadContext: group alias resolved', {
-            groupId,
-            groupAlias
-        });
+        const groupAlias = await models.SocialGroup.ensureMediaFolderAlias(resolvedScope.groupId);
         const baseDir = path.posix.join(root, 'gallery', 'groups', groupAlias);
         return {
             mediaStore,
             targetDir: mediaStore.getTargetDir(baseDir),
             userId,
-            groupId,
+            groupId: resolvedScope.groupId,
+            ownerScope: 'group',
             tag
         };
     }
@@ -903,22 +975,64 @@ const resolveUploadContext = async (frame) => {
         });
     }
 
-    logging.info('[social-gallery] resolveUploadContext: before user alias', {
-        userId
-    });
     const userAlias = await models.User.ensureMediaFolderAlias(userId);
-    logging.info('[social-gallery] resolveUploadContext: user alias resolved', {
-        userId,
-        userAlias
-    });
     const baseDir = path.posix.join(root, 'gallery', 'users', userAlias);
     return {
         mediaStore,
         targetDir: mediaStore.getTargetDir(baseDir),
         userId,
         groupId: null,
+        ownerScope: 'user',
         tag
     };
+};
+
+const resolveEstatePropertyMediaType = ({ assetType, storageKey, originalFilename }) => {
+    const normalizedAssetType = String(assetType || '').toLowerCase().trim();
+    const ext = getExtension({ name: originalFilename || storageKey });
+
+    if (normalizedAssetType === TYPE_IMAGE) {
+        return 'image';
+    }
+    if (normalizedAssetType === TYPE_VIDEO) {
+        return 'video';
+    }
+    if (ext === 'pdf') {
+        return 'pdf';
+    }
+    if (['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'rtf', 'csv', 'md'].includes(ext)) {
+        return 'document';
+    }
+
+    return 'other';
+};
+
+const linkPropertyMediaAsset = async ({ propertyId, assetId, mediaType, sortOrder = 0 }) => {
+    const knex = models.Base.knex;
+    const existing = await models.EstatePropertyMedium.findOne({
+        property_id: propertyId,
+        media_id: assetId,
+        media_type: mediaType
+    }, {
+        context: { internal: true }
+    });
+
+    if (existing) {
+        return existing.id;
+    }
+
+    const id = ObjectId().toHexString();
+    await knex('estate_property_media').insert({
+        id,
+        property_id: propertyId,
+        media_id: assetId,
+        media_type: mediaType,
+        sort_order: sortOrder,
+        is_primary: false,
+        created_at: new Date()
+    });
+
+    return id;
 };
 
 /** @type {import('@tryghost/api-framework').Controller} */
@@ -1041,6 +1155,59 @@ const controller = {
         }
     },
 
+    property: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'limit',
+            'next_cursor',
+            'type',
+            'property_id',
+            'include',
+            'page',
+            'fields',
+            'filter',
+            'order',
+            'debug'
+        ],
+        data: [
+            'id'
+        ],
+        permissions: false,
+        async query(frame) {
+            const propertyId = String(frame.data?.id || frame.options?.property_id || '').trim();
+            if (!propertyId) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.propertyRequired)
+                });
+            }
+
+            await resolvePropertyAndCheckExists(propertyId);
+
+            const mediaStore = storage.getStorage('media');
+            assertListSupported(mediaStore);
+            const root = mediaStore.pathPrefix || mediaStore.storagePath || '';
+            const baseDir = path.posix.join(root, 'gallery', 'properties', propertyId);
+            const targetDir = typeof mediaStore.getTargetDir === 'function'
+                ? mediaStore.getTargetDir(baseDir)
+                : baseDir;
+
+            const limit = parseLimit(frame.options?.limit);
+            const nextCursor = frame.options?.next_cursor || null;
+            const type = parseType(frame.options?.type);
+            const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
+            const listed = await listByPrefix(mediaStore, targetDir, limit, nextCursor, type);
+
+            listed.meta.scope = 'property';
+            listed.meta.property_id = propertyId;
+            listed.meta.type = type;
+            listed.meta.orderby = `${orderBy.field}:${orderBy.direction}`;
+
+            return listed;
+        }
+    },
+
     presign: {
         headers: {
             cacheInvalidate: false
@@ -1054,7 +1221,9 @@ const controller = {
             'filename',
             'content_type',
             'content_length',
-            'original_filename'
+            'original_filename',
+            'target',
+            'property_id'
         ],
         permissions: false,
         async query(frame) {
@@ -1106,9 +1275,10 @@ const controller = {
                 filename,
                 uniqueKey,
                 targetDir: uploadContext.targetDir || null,
-                ownerScope: uploadContext.groupId ? 'group' : 'user',
+                ownerScope: uploadContext.ownerScope || (uploadContext.groupId ? 'group' : 'user'),
                 userId: uploadContext.userId || null,
-                groupId: uploadContext.groupId || null
+                groupId: uploadContext.groupId || null,
+                propertyId: uploadContext.propertyId || null
             });
             let presigned;
             try {
@@ -1162,7 +1332,8 @@ const controller = {
                     headers: presigned.headers || {},
                     original_filename: originalFilename,
                     asset_type: assetType,
-                    owner_scope: uploadContext.groupId ? 'group' : 'user',
+                    owner_scope: uploadContext.ownerScope || (uploadContext.groupId ? 'group' : 'user'),
+                    property_id: uploadContext.propertyId || null,
                     user_id: uploadContext.userId || null,
                     group_id: uploadContext.groupId || null,
                     job_id: String(getFrameValue(frame, 'job_id') || '').trim() || null,
@@ -1187,6 +1358,7 @@ const controller = {
         },
         options: [
             'group_id',
+            'property_id',
             'job_id',
             'tag',
             'tag_slug',
@@ -1223,6 +1395,7 @@ const controller = {
             const assetType = [TYPE_IMAGE, TYPE_VIDEO, TYPE_AUDIO, TYPE_FILE].includes(requestedAssetType)
                 ? requestedAssetType
                 : inferAssetTypeByKey(storageKey);
+            const propertyId = String(getFrameValue(frame, 'property_id') || '').trim() || null;
 
             let assetId;
             try {
@@ -1237,10 +1410,27 @@ const controller = {
                     jobId,
                     userId: uploadContext.userId,
                     groupId: uploadContext.groupId,
+                    propertyId: uploadContext.propertyId || propertyId,
+                    ownerScope: uploadContext.ownerScope,
                     tag: uploadContext.tag
                 });
             } catch (err) {
                 wrapStorageError(messages.finalizeFailed, { storageKey }, err);
+            }
+
+            const finalPropertyId = uploadContext.propertyId || propertyId;
+            let propertyMediaId = null;
+            if (finalPropertyId && uploadContext.ownerScope === 'property') {
+                const mediaType = resolveEstatePropertyMediaType({
+                    assetType,
+                    storageKey,
+                    originalFilename
+                });
+                propertyMediaId = await linkPropertyMediaAsset({
+                    propertyId: finalPropertyId,
+                    assetId,
+                    mediaType
+                });
             }
 
             return {
@@ -1254,11 +1444,13 @@ const controller = {
                     original_filename: originalFilename || null,
                     job_id: jobId,
                     asset_type: assetType,
-                    owner_scope: uploadContext.groupId ? 'group' : 'user',
+                    owner_scope: uploadContext.ownerScope || (uploadContext.groupId ? 'group' : 'user'),
+                    property_id: finalPropertyId,
                     user_id: uploadContext.userId || null,
                     group_id: uploadContext.groupId || null,
                     category: uploadContext.tag?.name || null,
-                    category_slug: uploadContext.tag?.slug || null
+                    category_slug: uploadContext.tag?.slug || null,
+                    property_media_id: propertyMediaId || null
                 }]
             };
         }

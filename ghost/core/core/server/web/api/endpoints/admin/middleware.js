@@ -49,10 +49,21 @@ const notImplemented = function notImplemented(req, res, next) {
         db: ['POST'],
         settings: ['GET'],
         oembed: ['GET'],
-        social: ['GET', 'POST', 'DELETE', 'PUT']
+        social: ['GET', 'POST', 'DELETE', 'PUT'],
+        // person: ['GET', 'POST', 'PUT', 'DELETE'],
+        // // 'person-stories': ['GET', 'POST', 'PUT', 'DELETE'],
+        // // 'person-graph': ['POST'],
+        // persons: ['GET', 'POST', 'PUT', 'DELETE'],
+        // 'person-roles': ['GET', 'POST', 'PUT', 'DELETE'],
+        // 'person-life-events': ['GET', 'POST', 'PUT', 'DELETE'],
+        // 'person-story-series': ['GET', 'POST', 'PUT', 'DELETE'],
+        // 'person-story-episodes': ['GET', 'POST', 'PUT', 'DELETE'],
+        // 'person-relations': ['GET', 'POST', 'PUT', 'DELETE'],
+        // 'person-post-relations': ['GET', 'POST', 'PUT', 'DELETE'],
+        // 'person-gallery-assets': ['GET', 'POST', 'PUT', 'DELETE']
     };
 
-    const match = req.url.match(/^\/(\w+)\/?/);
+    const match = req.url.match(/^\/([\w-]+)\/?/);
 
     if (match) {
         const entity = match[1];

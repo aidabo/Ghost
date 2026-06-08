@@ -333,6 +333,52 @@ module.exports = {
         return apiFramework.pipeline(require('./estate-settings'), localUtils);
     },
 
+    // person story admin endpoints
+    get personStories() {
+        return apiFramework.pipeline(require('./person-stories'), localUtils);
+    },
+
+    // person graph admin endpoints
+    get persons() {
+        return apiFramework.pipeline(require('./person-graph').persons, localUtils);
+    },
+
+    get personRoles() {
+        return apiFramework.pipeline(require('./person-graph').personroles, localUtils);
+    },
+
+    get personLifeEvents() {
+        return apiFramework.pipeline(require('./person-graph').personlifeevents, localUtils);
+    },
+
+    get personStorySeries() {
+        return apiFramework.pipeline(require('./person-graph').personstoryseries, localUtils);
+    },
+
+    get personStoryEpisodes() {
+        return apiFramework.pipeline(require('./person-graph').personstoryepisodes, localUtils);
+    },
+
+    get personRelations() {
+        return apiFramework.pipeline(require('./person-graph').personrelations, localUtils);
+    },
+
+    get personPostRelations() {
+        return apiFramework.pipeline(require('./person-graph').personpostrelations, localUtils);
+    },
+
+    get personGalleryAssets() {
+        return apiFramework.pipeline(require('./person-graph').persongalleryassets, localUtils);
+    },
+
+    get personGraphPosts() {
+        return apiFramework.pipeline(require('./person-graph-posts'), localUtils);
+    },
+
+    get personGraphGalleryAssets() {
+        return apiFramework.pipeline(require('./person-graph-gallery-assets'), localUtils);
+    },
+
     /**
      * Content API Controllers
      *
@@ -401,6 +447,44 @@ module.exports = {
 
     get estateInquiriesPublic() {
         return apiFramework.pipeline(require('./estate-inquiries-public'), localUtils, 'content');
+    },
+
+    // person story content endpoints
+    get personStoriesPublic() {
+        return apiFramework.pipeline(require('./person-stories-public'), localUtils, 'content');
+    },
+
+    // person graph content endpoints
+    get personsPublic() {
+        return apiFramework.pipeline(require('./person-graph-public').persons, localUtils, 'content');
+    },
+
+    get personRolesPublic() {
+        return apiFramework.pipeline(require('./person-graph-public').personroles, localUtils, 'content');
+    },
+
+    get personLifeEventsPublic() {
+        return apiFramework.pipeline(require('./person-graph-public').personlifeevents, localUtils, 'content');
+    },
+
+    get personStorySeriesPublic() {
+        return apiFramework.pipeline(require('./person-graph-public').personstoryseries, localUtils, 'content');
+    },
+
+    get personStoryEpisodesPublic() {
+        return apiFramework.pipeline(require('./person-graph-public').personstoryepisodes, localUtils, 'content');
+    },
+
+    get personRelationsPublic() {
+        return apiFramework.pipeline(require('./person-graph-public').personrelations, localUtils, 'content');
+    },
+
+    get personPostRelationsPublic() {
+        return apiFramework.pipeline(require('./person-graph-public').personpostrelations, localUtils, 'content');
+    },
+
+    get personGalleryAssetsPublic() {
+        return apiFramework.pipeline(require('./person-graph-public').persongalleryassets, localUtils, 'content');
     }
 
 };

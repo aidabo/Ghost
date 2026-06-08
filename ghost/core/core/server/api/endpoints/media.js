@@ -202,7 +202,7 @@ const controller = {
             const filePath = await mediaStore.save(uploadFile, targetDir || undefined);
 
             const mediaType = resolveUploadedMediaAssetType(uploadFile);
-            await socialMediaAssets.upsertAsset({
+            const assetId = await socialMediaAssets.upsertAsset({
                 knex: models.Base.knex,
                 store: mediaStore,
                 url: filePath,
@@ -217,7 +217,8 @@ const controller = {
 
             return {
                 filePath,
-                thumbnailPath
+                thumbnailPath,
+                id: assetId
             };
         }
     },

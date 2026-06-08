@@ -7,6 +7,7 @@ const EstatePropertyMedium = ghostBookshelf.Model.extend({
     defaults() {
         return {
             id: ObjectId().toHexString(),
+            media_id: '',
             media_type: 'image',
             sort_order: 0,
             is_primary: false
@@ -21,7 +22,7 @@ const EstatePropertyMedium = ghostBookshelf.Model.extend({
         return this.belongsTo('SocialMediaAsset', 'media_id');
     }
 }, {
-    permittedAttributes: ['id', 'property_id', 'media_id', 'media_type', 'sort_order', 'caption', 'is_primary', 'created_at'],
+    permittedAttributes: ['id', 'property_id', 'media_id', 'media_type', 'sort_order', 'caption', 'is_primary', 'created_at', 'url'],
 
     relationships: ['property', 'media']
 });

@@ -7,7 +7,7 @@ const messages = {
 };
 
 const controller = {
-    docName: 'estatepropertymedia',
+    docName: 'estatepropertymediums',
 
     browse: {
         headers: {
@@ -47,7 +47,12 @@ const controller = {
             action: 'add'
         },
         async query(frame) {
-            return await models.EstatePropertyMedium.add(frame.data.estatepropertymedia[0], frame.options);
+            const data = frame.data.estatepropertymediums[0];
+            // Inject property_id from URL route param
+            if (frame.options.property_id && !data.property_id) {
+                data.property_id = frame.options.property_id;
+            }
+            return await models.EstatePropertyMedium.add(data, frame.options);
         }
     },
 
@@ -74,7 +79,7 @@ const controller = {
                 });
             }
 
-            return await models.EstatePropertyMedium.edit(frame.data.estatepropertymedia[0], frame.options);
+            return await models.EstatePropertyMedium.edit(frame.data.estatepropertymediums[0], frame.options);
         }
     },
 

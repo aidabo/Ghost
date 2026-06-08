@@ -21,7 +21,11 @@ const nonePublicAuth = (apiConfig, frame) => {
     debug('apiConfig', JSON.stringify(apiConfig));
 
     let singular;
-    if (apiConfig.docName.match(/ies$/)) {
+    if (apiConfig.permissionObject) {
+        singular = apiConfig.permissionObject;
+    } else if (apiConfig.docName.match(/series$/)) {
+        singular = apiConfig.docName;
+    } else if (apiConfig.docName.match(/ies$/)) {
         singular = apiConfig.docName.replace(/ies$/, 'y');
     } else {
         singular = apiConfig.docName.replace(/s$/, '');
