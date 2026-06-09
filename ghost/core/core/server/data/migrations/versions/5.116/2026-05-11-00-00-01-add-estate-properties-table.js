@@ -4,7 +4,7 @@ module.exports = addTable('estate_properties', {
     id: {type: 'string', maxlength: 24, nullable: false, primary: true},
 
     // Status and classification
-    status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft', validations: {isIn: [['published', 'draft', 'sold', 'rented']]}},
+    status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft', validations: {isIn: [['published', 'draft', 'working', 'contracted', 'booked', 'invalid']]}},
     property_type: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'sale', validations: {isIn: [['sale', 'rent', 'investment']]}},
 
     // Pricing
