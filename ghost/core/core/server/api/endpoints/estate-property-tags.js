@@ -47,7 +47,11 @@ const controller = {
             action: 'add'
         },
         async query(frame) {
-            return await models.EstatePropertyTag.add(frame.data.estatepropertytags[0], frame.options);
+            const data = frame.data.estatepropertytags[0];
+            if (frame.options.property_id && !data.property_id) {
+                data.property_id = frame.options.property_id;
+            }
+            return await models.EstatePropertyTag.add(data, frame.options);
         }
     },
 

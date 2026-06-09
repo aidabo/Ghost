@@ -712,9 +712,17 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, limit, nextCurs
     let query = buildAssetTableQuery(true);
 
     if (scope === 'group') {
-        query = query.andWhere('sma.group_id', groupId);
+        query = query.andWhere('sma.group_id', groupId).whereNotExists(function () {
+            this.select(1)
+                .from('estate_property_media as epm')
+                .whereRaw('epm.media_id = sma.id');
+        });
     } else {
-        query = query.andWhere('sma.user_id', userId).whereNull('sma.group_id');
+        query = query.andWhere('sma.user_id', userId).whereNull('sma.group_id').whereNotExists(function () {
+            this.select(1)
+                .from('estate_property_media as epm')
+                .whereRaw('epm.media_id = sma.id');
+        });
     }
 
     if (type !== TYPE_ALL) {
@@ -746,9 +754,17 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, limit, nextCurs
         query = buildAssetTableQuery(false);
 
         if (scope === 'group') {
-            query = query.andWhere('sma.group_id', groupId);
+            query = query.andWhere('sma.group_id', groupId).whereNotExists(function () {
+                this.select(1)
+                    .from('estate_property_media as epm')
+                    .whereRaw('epm.media_id = sma.id');
+            });
         } else {
-            query = query.andWhere('sma.user_id', userId).whereNull('sma.group_id');
+            query = query.andWhere('sma.user_id', userId).whereNull('sma.group_id').whereNotExists(function () {
+                this.select(1)
+                    .from('estate_property_media as epm')
+                    .whereRaw('epm.media_id = sma.id');
+            });
         }
 
         if (type !== TYPE_ALL) {
