@@ -25,7 +25,41 @@ const controller = {
             'limit',
             'order',
             'page',
-            'debug'
+            'debug',
+
+            'query',
+            'q',
+            'search',
+            'query_any',
+            'station_walk_minutes_max',
+            'price_min',
+            'price_max',
+            'rent_min',
+            'rent_max',
+            'area_min',
+            'area_max',
+            'deposit_min',
+            'deposit_max',
+            'key_money_min',
+            'key_money_max',
+            'yield_min',
+            'yield_max',
+            'land_area_min',
+            'land_area_max',
+            'building_area_min',
+            'building_area_max',
+            'year_built_min',
+            'year_built_max',
+            'building_age_max',
+            'nearest_station',
+            'railway_line',
+            'features',
+            'tags',
+            'source_type',
+            'source',
+            'location',
+            'property_type',
+            'status',
         ],
         validation: {
             options: {
@@ -37,7 +71,9 @@ const controller = {
             action: 'browse'
         },
         async query(frame) {
-            return await models.EstateProperty.findPage(frame.options);
+            return models.EstateProperty.hasAdvancedEstateSearchOptions(frame.options)
+                ? await models.EstateProperty.findPageWithEstateSearch(frame.options)
+                : await models.EstateProperty.findPage(frame.options);
         }
     },
 

@@ -51,7 +51,9 @@ const controller = {
             if (frame.options.property_id && !data.property_id) {
                 data.property_id = frame.options.property_id;
             }
-            return await models.EstatePropertyTag.add(data, frame.options);
+            const result = await models.EstatePropertyTag.add(data, frame.options);
+            await models.EstateProperty.reindexSearch(data.property_id, frame.options).catch(() => false);
+            return result;
         }
     },
 
@@ -79,7 +81,10 @@ const controller = {
                 });
             }
 
-            return models.EstatePropertyTag.destroy({...frame.options, require: true});
+            const propertyId = entry.get('property_id');
+            const result = await models.EstatePropertyTag.destroy({...frame.options, require: true});
+            await models.EstateProperty.reindexSearch(propertyId, frame.options).catch(() => false);
+            return result;
         }
     }
 };
