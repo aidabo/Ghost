@@ -379,6 +379,11 @@ module.exports = {
         return apiFramework.pipeline(require('./person-graph-gallery-assets'), localUtils);
     },
 
+    // person media admin endpoints
+    get personMedia() {
+        return apiFramework.pipeline(require('./person-media'), localUtils);
+    },
+
     /**
      * Content API Controllers
      *

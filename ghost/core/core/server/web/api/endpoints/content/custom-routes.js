@@ -21,34 +21,34 @@ module.exports = function customApiRoutes(router) {
     router.post('/estate/inquiries', mw.authenticatePublic, http(api.estateInquiriesPublic.add));
 
     // ## person story content routes
-    router.get('/person-stories', mw.authenticatePublic, http(api.personStoriesPublic.browse));
-    router.get('/person-stories/:id', mw.authenticatePublic, http(api.personStoriesPublic.read));
+    router.get('/person/stories', mw.authenticatePublic, http(api.personStoriesPublic.browse));
+    router.get('/person/stories/:id', mw.authenticatePublic, http(api.personStoriesPublic.read));
 
     // ## person graph content routes
-    router.get('/persons', mw.authenticatePublic, http(api.personsPublic.browse));
-    router.get('/persons/:id', mw.authenticatePublic, http(api.personsPublic.read));
-    router.get('/persons/:id/graph', mw.authenticatePublic, http(api.personsPublic.graph));
+    router.get('/person/persons', mw.authenticatePublic, http(api.personsPublic.browse));
+    router.get('/person/persons/:id', mw.authenticatePublic, http(api.personsPublic.read));
+    router.get('/person/persons/:id/graph', mw.authenticatePublic, http(api.personsPublic.graph));
 
-    router.get('/person-roles', mw.authenticatePublic, http(api.personRolesPublic.browse));
-    router.get('/person-roles/:id', mw.authenticatePublic, http(api.personRolesPublic.read));
+    router.get('/person/roles', mw.authenticatePublic, http(api.personRolesPublic.browse));
+    router.get('/person/roles/:id', mw.authenticatePublic, http(api.personRolesPublic.read));
 
-    router.get('/person-life-events', mw.authenticatePublic, http(api.personLifeEventsPublic.browse));
-    router.get('/person-life-events/:id', mw.authenticatePublic, http(api.personLifeEventsPublic.read));
+    router.get('/person/life-events', mw.authenticatePublic, http(api.personLifeEventsPublic.browse));
+    router.get('/person/life-events/:id', mw.authenticatePublic, http(api.personLifeEventsPublic.read));
 
-    router.get('/person-story-series', mw.authenticatePublic, http(api.personStorySeriesPublic.browse));
-    router.get('/person-story-series/:id', mw.authenticatePublic, http(api.personStorySeriesPublic.read));
+    router.get('/person/story-series', mw.authenticatePublic, http(api.personStorySeriesPublic.browse));
+    router.get('/person/story-series/:id', mw.authenticatePublic, http(api.personStorySeriesPublic.read));
 
-    router.get('/person-story-episodes', mw.authenticatePublic, http(api.personStoryEpisodesPublic.browse));
-    router.get('/person-story-episodes/:id', mw.authenticatePublic, http(api.personStoryEpisodesPublic.read));
+    router.get('/person/story-episodes', mw.authenticatePublic, http(api.personStoryEpisodesPublic.browse));
+    router.get('/person/story-episodes/:id', mw.authenticatePublic, http(api.personStoryEpisodesPublic.read));
 
-    router.get('/person-relations', mw.authenticatePublic, http(api.personRelationsPublic.browse));
-    router.get('/person-relations/:id', mw.authenticatePublic, http(api.personRelationsPublic.read));
+    router.get('/person/relations', mw.authenticatePublic, http(api.personRelationsPublic.browse));
+    router.get('/person/relations/:id', mw.authenticatePublic, http(api.personRelationsPublic.read));
 
-    router.get('/person-post-relations', mw.authenticatePublic, http(api.personPostRelationsPublic.browse));
-    router.get('/person-post-relations/:id', mw.authenticatePublic, http(api.personPostRelationsPublic.read));
+    router.get('/person/post-relations', mw.authenticatePublic, http(api.personPostRelationsPublic.browse));
+    router.get('/person/post-relations/:id', mw.authenticatePublic, http(api.personPostRelationsPublic.read));
 
-    router.get('/person-gallery-assets', mw.authenticatePublic, http(api.personGalleryAssetsPublic.browse));
-    router.get('/person-gallery-assets/:id', mw.authenticatePublic, http(api.personGalleryAssetsPublic.read));
+    router.get('/person/gallery-assets', mw.authenticatePublic, http(api.personGalleryAssetsPublic.browse));
+    router.get('/person/gallery-assets/:id', mw.authenticatePublic, http(api.personGalleryAssetsPublic.read));
 
     return router;
 };

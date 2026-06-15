@@ -9,6 +9,31 @@ const loadExistingPost = async (slug) => {
     return models.Post.findOne({slug}, {context: {internal: true}});
 };
 
+const htmlToLexical = (() => {
+    try {
+        return require('@tryghost/kg-html-to-lexical').htmlToLexical;
+    } catch {
+        return null;
+    }
+})();
+
+const preparePayload = (payload) => {
+    if (!payload) {
+        return payload;
+    }
+
+    // Convert html to lexical if html is provided but lexical is not
+    if (payload.html && !payload.lexical && htmlToLexical) {
+        try {
+            payload.lexical = JSON.stringify(htmlToLexical(payload.html));
+        } catch (e) {
+            // Fall back to html-only if conversion fails
+        }
+    }
+
+    return payload;
+};
+
 module.exports = {
     docName: 'posts',
     add: {
@@ -25,6 +50,7 @@ module.exports = {
                 });
             }
 
+            preparePayload(payload);
             const existing = await loadExistingPost(payload.slug);
             const options = {context: {internal: true}};
 

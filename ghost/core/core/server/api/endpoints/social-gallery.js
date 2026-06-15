@@ -872,16 +872,18 @@ const resolvePropertyAndCheckExists = async (propertyId) => {
  * Precedence is explicit so browser state cannot accidentally override a more specific target.
  * Add new scopes here instead of spreading more conditionals across presign/finalize.
  */
-const resolveGalleryScope = ({ target, groupId, propertyId }) => {
+const resolveGalleryScope = ({ target, groupId, propertyId, personId }) => {
     const normalizedTarget = String(target || '').toLowerCase().trim();
     const normalizedGroupId = String(groupId || '').trim();
     const normalizedPropertyId = String(propertyId || '').trim();
+    const normalizedPersonId = String(personId || '').trim();
 
     if (normalizedTarget === 'property' || normalizedPropertyId) {
         return {
             scope: 'property',
             propertyId: normalizedPropertyId,
-            groupId: null
+            groupId: null,
+            personId: null
         };
     }
 
@@ -889,14 +891,25 @@ const resolveGalleryScope = ({ target, groupId, propertyId }) => {
         return {
             scope: 'group',
             propertyId: null,
-            groupId: normalizedGroupId
+            groupId: normalizedGroupId,
+            personId: null
+        };
+    }
+
+    if (normalizedTarget === 'person' || normalizedPersonId) {
+        return {
+            scope: 'person',
+            propertyId: null,
+            groupId: null,
+            personId: normalizedPersonId
         };
     }
 
     return {
         scope: 'user',
         propertyId: null,
-        groupId: null
+        groupId: null,
+        personId: null
     };
 };
 
@@ -906,8 +919,9 @@ const resolveUploadContext = async (frame) => {
     const groupId = getFrameValue(frame, 'group_id');
     const target = getFrameValue(frame, 'target');
     const propertyId = getFrameValue(frame, 'property_id');
+    const personId = getFrameValue(frame, 'person_id');
     const tag = await socialMediaAssets.resolveTag(models.Base.knex, frame);
-    const resolvedScope = resolveGalleryScope({target, groupId, propertyId});
+    const resolvedScope = resolveGalleryScope({target, groupId, propertyId, personId});
 
     logging.info('[social-gallery] resolveUploadContext: start', {
         userId: userId || null,
@@ -946,6 +960,20 @@ const resolveUploadContext = async (frame) => {
             groupId: null,
             propertyId: resolvedScope.propertyId,
             ownerScope: 'property',
+            tag
+        };
+    }
+
+    // Person target: gallery/persons/{person-id}/
+    if (resolvedScope.scope === 'person' && resolvedScope.personId) {
+        const baseDir = path.posix.join(root, 'gallery', 'persons', resolvedScope.personId);
+        return {
+            mediaStore,
+            targetDir: mediaStore.getTargetDir(baseDir),
+            userId: userId || null,
+            groupId: null,
+            personId: resolvedScope.personId,
+            ownerScope: 'person',
             tag
         };
     }
@@ -1239,7 +1267,8 @@ const controller = {
             'content_length',
             'original_filename',
             'target',
-            'property_id'
+            'property_id',
+            'person_id'
         ],
         permissions: false,
         async query(frame) {
@@ -1379,6 +1408,7 @@ const controller = {
             'tag',
             'tag_slug',
             'tag_id',
+            'person_id',
             'storage_key',
             'storage_url',
             'thumbnail_storage_key',
