@@ -1484,7 +1484,7 @@ module.exports = {
     estate_properties: {
         id: { type: 'string', maxlength: 24, nullable: false, primary: true },
         status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft', validations: { isIn: [['published', 'draft', 'working', 'contracted', 'booked', 'invalid']] } },
-        property_type: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'sale' },
+        property_type: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'sale', validations: { isIn: [['sale', 'rent', 'investment']] } },
         price_sale: { type: 'bigInteger', nullable: true },
         price_rent_monthly: { type: 'bigInteger', nullable: true },
         price_deposit: { type: 'bigInteger', nullable: true },
