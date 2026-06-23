@@ -72,6 +72,29 @@ const extractGroupIdsFromFilter = (filter) => {
     return [...ids];
 };
 
+const getAllowlistedSocialGroupPostApiKeyIds = () => {
+    const rawAllowlist = process.env.SOCIAL_GROUP_POST_API_KEY_IDS;
+
+    if (!rawAllowlist) {
+        return [];
+    }
+
+    return rawAllowlist
+        .split(',')
+        .map((apiKeyId) => apiKeyId.trim())
+        .filter(Boolean);
+};
+
+const isAllowlistedSocialGroupPostApiKey = (apiKey) => {
+    const apiKeyId = apiKey?.id || apiKey?.get?.('id');
+
+    if (!apiKeyId) {
+        return false;
+    }
+
+    return getAllowlistedSocialGroupPostApiKeyIds().includes(apiKeyId);
+};
+
 const MOBILEDOC_REVISIONS_COUNT = 10;
 const POST_REVISIONS_COUNT = 25;
 const POST_REVISIONS_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
@@ -675,7 +698,10 @@ Post = ghostBookshelf.Model.extend({
     },
 
     validateGroupPostOnSaving: async function validateGroupPost(model, attrs, options) {
-        logging.info('validateGroupPostOnSaving:', JSON.stringify(options.context || {}));
+        if (isAllowlistedSocialGroupPostApiKey(options.context?.api_key)) {
+            return;
+        }
+
         if (options.context?.internal){
             return;
         }

@@ -347,6 +347,53 @@ describe('Unit: models/post', function () {
         });
     });
 
+    describe('validateGroupPostOnSaving', function () {
+        const validateGroupPostOnSaving = function validateGroupPostOnSaving(model, options) {
+            return new models.Post().validateGroupPostOnSaving(model, {}, options);
+        };
+
+        it('allows allowlisted api keys without forcing public_post', async function () {
+            const originalAllowlist = process.env.SOCIAL_GROUP_POST_API_KEY_IDS;
+            process.env.SOCIAL_GROUP_POST_API_KEY_IDS = 'allowed-api-key-id';
+
+            const model = {
+                get: sinon.stub(),
+                set: sinon.spy()
+            };
+
+            try {
+                await validateGroupPostOnSaving(model, {
+                    context: {
+                        api_key: {
+                            id: 'allowed-api-key-id'
+                        }
+                    }
+                });
+            } finally {
+                process.env.SOCIAL_GROUP_POST_API_KEY_IDS = originalAllowlist;
+            }
+
+            model.set.called.should.equal(false);
+        });
+
+        it('rejects non-allowlisted api keys without a user', async function () {
+            const originalAllowlist = process.env.SOCIAL_GROUP_POST_API_KEY_IDS;
+            process.env.SOCIAL_GROUP_POST_API_KEY_IDS = 'different-api-key-id';
+
+            try {
+                await validateGroupPostOnSaving({}, {
+                    context: {
+                        api_key: {
+                            id: 'not-allowlisted-api-key-id'
+                        }
+                    }
+                }).should.be.rejectedWith(errors.NoPermissionError);
+            } finally {
+                process.env.SOCIAL_GROUP_POST_API_KEY_IDS = originalAllowlist;
+            }
+        });
+    });
+
     describe('countRelations', function () {
         it('can include all count relations', function () {
             return models.Post.findAll({withRelated: ['count.signups', 'count.paid_conversions', 'count.clicks', 'count.sentiment', 'count.negative_feedback', 'count.positive_feedback']});
