@@ -46,6 +46,9 @@ COPY --chown=node:node ghost/core/core/shared/config/overrides.json ${GHOST_INST
 COPY --chown=node:node ghost/core/core/boot.js ${GHOST_INSTALL}/current/core
 COPY --chown=node:node ghost/core/core/server/services/social-comments ${GHOST_INSTALL}/current/core/server/services/social-comments
 COPY --chown=node:node ghost/core/core/server/adapters/scheduling/post-scheduling/PostScheduler.js ${GHOST_INSTALL}/current/core/server/adapters/scheduling/post-scheduling
+COPY --chown=node:node ghost/core/core/server/lib/common ${GHOST_INSTALL}/current/core/server/lib/common
+COPY --chown=node:node ghost/core/core/server/lib/person-graph ${GHOST_INSTALL}/current/core/server/lib/person-graph
+COPY --chown=node:node ghost/core/core/server/lib/person-story ${GHOST_INSTALL}/current/core/server/lib/person-story
 COPY --chown=node:node ghost/core/core/server/lib/lexical.js ${GHOST_INSTALL}/current/core/server/lib
 
 # Install dependencies as node user
