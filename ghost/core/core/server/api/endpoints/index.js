@@ -343,6 +343,11 @@ module.exports = {
         return apiFramework.pipeline(require('./person-graph').persons, localUtils);
     },
 
+    // publish content admin endpoints
+    get publishContent() {
+        return apiFramework.pipeline(require('./publish-content'), localUtils);
+    },
+
     get personRoles() {
         return apiFramework.pipeline(require('./person-graph').personroles, localUtils);
     },
@@ -490,6 +495,11 @@ module.exports = {
 
     get personGalleryAssetsPublic() {
         return apiFramework.pipeline(require('./person-graph-public').persongalleryassets, localUtils, 'content');
+    },
+
+    // publish content public endpoints
+    get publishContentPublic() {
+        return apiFramework.pipeline(require('./publish-content-public'), localUtils, 'content');
     }
 
 };

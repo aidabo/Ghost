@@ -284,5 +284,12 @@ module.exports = function customApiRoutes(router) {
     router.get('/estate/settings/:key', mw.authAdminApi, http(api.estateSettings.read));
     router.put('/estate/settings/:key', mw.authAdminApi, http(api.estateSettings.edit));
 
+    // ## publish content admin routes
+    router.get('/publish/content', mw.authAdminApi, http(api.publishContent.browse));
+    router.get('/publish/content/:id', mw.authAdminApi, http(api.publishContent.read));
+    router.post('/publish/content', mw.authAdminApi, http(api.publishContent.add));
+    router.put('/publish/content/:id', mw.authAdminApi, http(api.publishContent.edit));
+    router.del('/publish/content/:id', mw.authAdminApi, http(api.publishContent.destroy));
+
     return router;
 };

@@ -50,5 +50,9 @@ module.exports = function customApiRoutes(router) {
     router.get('/person/gallery-assets', mw.authenticatePublic, http(api.personGalleryAssetsPublic.browse));
     router.get('/person/gallery-assets/:id', mw.authenticatePublic, http(api.personGalleryAssetsPublic.read));
 
+    // ## publish content routes
+    router.get('/publish/content', mw.authenticatePublic, http(api.publishContentPublic.browse));
+    router.get('/publish/content/:id', mw.authenticatePublic, http(api.publishContentPublic.read));
+
     return router;
 };

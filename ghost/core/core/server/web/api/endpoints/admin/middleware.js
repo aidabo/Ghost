@@ -50,6 +50,7 @@ const notImplemented = function notImplemented(req, res, next) {
         settings: ['GET'],
         oembed: ['GET'],
         social: ['GET', 'POST', 'DELETE', 'PUT'],
+        publish: ['GET', 'POST', 'PUT', 'DELETE'],
         // person: ['GET', 'POST', 'PUT', 'DELETE'],
         // // 'person-stories': ['GET', 'POST', 'PUT', 'DELETE'],
         // // 'person-graph': ['POST'],
