@@ -21,6 +21,28 @@ export default class GhKoenigEditorLexical extends Component {
     @tracked titleIsHovered = false;
     @tracked titleIsFocused = false;
 
+    insertableMediaMimeTypes = new Set([
+        'image/gif',
+        'image/jpg',
+        'image/jpeg',
+        'image/png',
+        'image/svg+xml',
+        'image/webp',
+        'video/mp4',
+        'video/webm',
+        'video/ogg',
+        'video/quicktime',
+        'audio/mp3',
+        'audio/mpeg',
+        'audio/ogg',
+        'audio/wav',
+        'audio/vnd.wav',
+        'audio/wave',
+        'audio/x-wav',
+        'audio/mp4',
+        'audio/x-m4a',
+    ]);
+
     get title() {
         return this.args.title === '(Untitled)' ? '' : this.args.title;
     }
@@ -71,9 +93,22 @@ export default class GhKoenigEditorLexical extends Component {
 
     @action
     editorPaneDrop(event) {
-        if (event.dataTransfer.files.length > 0) {
+        const files = Array.from(event.dataTransfer?.files || []);
+        const mediaFiles = files.filter((file) => {
+            const mimeType = String(file?.type || '').toLowerCase();
+            if (mimeType && this.insertableMediaMimeTypes.has(mimeType)) {
+                return true;
+            }
+
+            const name = String(file?.name || '').toLowerCase();
+            return /\.(gif|jpe?g|png|svgz?|webp|mp4|webm|ogg|ogv|mov|mp3|wav|m4a)(\?|#|$)/.test(name);
+        });
+
+        if (mediaFiles.length > 0) {
             event.preventDefault();
-            this.editorAPI?.insertFiles(Array.from(event.dataTransfer.files));
+            // Keep the Lexical media insertion path so video cards render with
+            // the card-owned poster/preview behavior instead of a raw HTML blob.
+            this.editorAPI?.insertFiles(mediaFiles);
         }
     }
 
