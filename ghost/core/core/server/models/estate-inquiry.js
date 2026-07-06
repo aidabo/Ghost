@@ -14,6 +14,11 @@ const EstateInquiry = ghostBookshelf.Model.extend({
 
     property() {
         return this.belongsTo('EstateProperty', 'property_id');
+    },
+
+    // One inquiry can reference many properties (single- or multi-property inquiry).
+    inquiryProperties() {
+        return this.hasMany('EstateInquiryProperty', 'inquiry_id');
     }
 }, {
     orderDefaultOptions() {
@@ -30,7 +35,13 @@ const EstateInquiry = ghostBookshelf.Model.extend({
         'created_at', 'updated_at'
     ],
 
-    relationships: ['property']
+    relationships: ['property', 'inquiryProperties'],
+
+    relationshipConfig: {
+        inquiryProperties: {
+            editable: true
+        }
+    }
 });
 
 module.exports = {

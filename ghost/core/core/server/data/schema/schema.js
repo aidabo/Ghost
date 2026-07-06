@@ -1256,6 +1256,7 @@ module.exports = {
     },
     social_components: {
         id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        slug: { type: 'string', maxlength: 191, nullable: true, unique: true },
         type: { type: 'string', maxlength: 60, nullable: false, index: true },
         title: { type: 'string', maxlength: 191, nullable: false },
         tag: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'tags.id', setNullDelete: true },
@@ -1529,6 +1530,8 @@ module.exports = {
         land_leasehold: { type: 'string', maxlength: 50, nullable: true },
         fixtures_and_fittings: { type: 'text', maxlength: 5000, nullable: true },
         reins_listing_number: { type: 'string', maxlength: 100, nullable: true, index: true },
+        internal_inquiry_id: { type: 'string', maxlength: 100, nullable: true, index: true },
+        registrant_notes: { type: 'text', maxlength: 5000, nullable: true },
 
         // Source tracking fields (used by ghostWriter.ts registration pipeline)
         source: { type: 'string', maxlength: 50, nullable: true, index: true },
@@ -1758,6 +1761,20 @@ module.exports = {
         updated_at: { type: 'dateTime', nullable: true },
         '@@INDEXES@@': [
             ['status'],
+            ['property_id']
+        ]
+    },
+
+    estate_inquiry_properties: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        inquiry_id: { type: 'string', maxlength: 24, nullable: false, references: 'estate_inquiries.id', cascadeDelete: true },
+        property_id: { type: 'string', maxlength: 24, nullable: true, references: 'estate_properties.id', setNullDelete: true },
+        internal_inquiry_id: { type: 'string', maxlength: 100, nullable: true },
+        property_name: { type: 'string', maxlength: 500, nullable: true },
+        address: { type: 'string', maxlength: 1000, nullable: true },
+        created_at: { type: 'dateTime', nullable: false },
+        '@@INDEXES@@': [
+            ['inquiry_id'],
             ['property_id']
         ]
     },
@@ -2116,5 +2133,32 @@ module.exports = {
         is_primary: { type: 'bool', nullable: true, defaultTo: false },
         created_at: { type: 'dateTime', nullable: false },
         updated_at: { type: 'dateTime', nullable: true }
+    },
+
+    social_ai_dzi_jobs: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        user_id: { type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true, index: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', setNullDelete: true },
+        status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued', index: true },
+        progress: { type: 'integer', nullable: false, unsigned: true, defaultTo: 0 },
+        source_path: { type: 'string', maxlength: 2000, nullable: false },
+        source_name: { type: 'string', maxlength: 500, nullable: true },
+        publication_name: { type: 'string', maxlength: 500, nullable: false },
+        edition: { type: 'string', maxlength: 500, nullable: false },
+        pages: { type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true },
+        error: { type: 'string', maxlength: 2000, nullable: true },
+        claim_worker_id: { type: 'string', maxlength: 191, nullable: true },
+        claim_expires_at: { type: 'dateTime', nullable: true },
+        created_at: { type: 'dateTime', nullable: false },
+        created_by: { type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true },
+        updated_at: { type: 'dateTime', nullable: false },
+        updated_by: { type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true },
+        started_at: { type: 'dateTime', nullable: true },
+        completed_at: { type: 'dateTime', nullable: true },
+        '@@INDEXES@@': [
+            ['status'],
+            ['user_id', 'status'],
+            ['status', 'claim_expires_at']
+        ]
     }
 };

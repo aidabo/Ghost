@@ -27,7 +27,10 @@ const controller = {
             action: 'browse'
         },
         async query(frame) {
-            return await models.EstateInquiry.findPage(frame.options);
+            return await models.EstateInquiry.findPage({
+                ...frame.options,
+                withRelated: [...new Set([...(frame.options.withRelated || []), 'inquiryProperties'])]
+            });
         }
     },
 
@@ -45,7 +48,10 @@ const controller = {
             action: 'read'
         },
         async query(frame) {
-            const entry = await models.EstateInquiry.findOne(frame.data, frame.options);
+            const entry = await models.EstateInquiry.findOne(frame.data, {
+                ...frame.options,
+                withRelated: [...new Set([...(frame.options.withRelated || []), 'inquiryProperties'])]
+            });
 
             if (!entry) {
                 throw new errors.NotFoundError({
