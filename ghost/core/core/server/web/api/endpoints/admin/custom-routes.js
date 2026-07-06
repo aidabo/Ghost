@@ -188,6 +188,15 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/media/jobs/:id/progress', mw.authAdminApi, http(api.socialAiMediaJobs.progress));
     router.post('/social/ai/media/jobs/:id/complete', mw.authAdminApi, http(api.socialAiMediaJobs.complete));
     router.post('/social/ai/media/jobs/:id/fail', mw.authAdminApi, http(api.socialAiMediaJobs.fail));
+    // ## social ai dzi jobs
+    router.get('/social/ai/dzi/jobs', mw.authAdminApi, http(api.socialAiDziJobs.browse));
+    router.get('/social/ai/dzi/jobs/:id', mw.authAdminApi, http(api.socialAiDziJobs.read));
+    router.post('/social/ai/dzi/jobs', mw.authAdminApi, http(api.socialAiDziJobs.add));
+    router.post('/social/ai/dzi/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiDziJobs.cancel));
+    router.post('/social/ai/dzi/jobs/claim', mw.authAdminApi, http(api.socialAiDziJobs.claim));
+    router.post('/social/ai/dzi/jobs/:id/progress', mw.authAdminApi, http(api.socialAiDziJobs.progress));
+    router.post('/social/ai/dzi/jobs/:id/complete', mw.authAdminApi, http(api.socialAiDziJobs.complete));
+    router.post('/social/ai/dzi/jobs/:id/fail', mw.authAdminApi, http(api.socialAiDziJobs.fail));
 
     // ## estate admin routes
     router.get('/estate/properties', mw.authAdminApi, http(api.estateProperties.browse));

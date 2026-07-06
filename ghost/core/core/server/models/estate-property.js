@@ -913,10 +913,12 @@ const EstateProperty = ghostBookshelf.Model.extend({
     tableName: 'estate_properties',
 
     defaults() {
+        const id = ObjectId().toHexString();
         return {
-            id: ObjectId().toHexString(),
+            id,
             status: 'draft',
             property_type: 'sale',
+            internal_inquiry_id: `INQ-${id}`,
             sort_order: 0,
             featured: false,
             pets_allowed: false
@@ -1157,6 +1159,7 @@ const EstateProperty = ghostBookshelf.Model.extend({
         'expected_yield', 'current_yield', 'expected_rent',
         'features', 'featured', 'sort_order',
         'group_id',
+        'internal_inquiry_id', 'registrant_notes',
         'source', 'source_company', 'source_url', 'source_pdf_url', 'source_id', 'registered_by',
         'created_at', 'updated_at', 'created_by', 'updated_by',
         'google_map_url', 'google_3d_url', 'google_places_data', 'mlit_summary_data', 'street_view_url', 'hazard_map_url',

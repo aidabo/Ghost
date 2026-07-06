@@ -28,7 +28,8 @@ const messages = {
     presignFailed: 'Failed to create presigned upload URL for "{filename}".',
     finalizeFailed: 'Failed to finalize uploaded gallery asset for key "{storageKey}".',
     assetNotFound: 'Gallery asset not found for key "{storageKey}".',
-    tagNotFound: 'Tag not found for the supplied tag value.'
+    tagNotFound: 'Tag not found for the supplied tag value.',
+    deepzoomJobIdRequired: '`job_id` is required for deepzoom gallery uploads.'
 };
 
 const TYPE_ALL = 'all';
@@ -905,6 +906,15 @@ const resolveGalleryScope = ({ target, groupId, propertyId, personId }) => {
         };
     }
 
+    if (normalizedTarget === 'deepzoom') {
+        return {
+            scope: 'deepzoom',
+            propertyId: null,
+            groupId: null,
+            personId: null
+        };
+    }
+
     return {
         scope: 'user',
         propertyId: null,
@@ -974,6 +984,27 @@ const resolveUploadContext = async (frame) => {
             groupId: null,
             personId: resolvedScope.personId,
             ownerScope: 'person',
+            tag
+        };
+    }
+
+    // Deep Zoom target: gallery/deepzoom/{24-char-hex-job-id}/
+    if (resolvedScope.scope === 'deepzoom') {
+        if (!userId) {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.userRequired)
+            });
+        }
+
+        const jobId = String(getFrameValue(frame, 'job_id') || ObjectId().toHexString()).trim();
+        const baseDir = path.posix.join(root, 'gallery', 'deepzoom', jobId);
+        return {
+            mediaStore,
+            targetDir: mediaStore.getTargetDir(baseDir),
+            userId,
+            groupId: null,
+            jobId,
+            ownerScope: 'deepzoom',
             tag
         };
     }
@@ -1381,7 +1412,7 @@ const controller = {
                     property_id: uploadContext.propertyId || null,
                     user_id: uploadContext.userId || null,
                     group_id: uploadContext.groupId || null,
-                    job_id: String(getFrameValue(frame, 'job_id') || '').trim() || null,
+                    job_id: String(uploadContext.jobId || getFrameValue(frame, 'job_id') || '').trim() || null,
                     category: uploadContext.tag?.name || null,
                     category_slug: uploadContext.tag?.slug || null,
                     content_type: contentType,

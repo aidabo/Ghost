@@ -11,6 +11,14 @@ const TAG_ID_REGEX = /^[a-f0-9]{24}$/;
 const SocialComponent = ghostBookshelf.Model.extend({
     tableName: 'social_components',
 
+    permittedAttributes() {
+        return [
+            'id', 'slug', 'type', 'title', 'tag', 'excerpt', 'image',
+            'attributes', 'layout', 'source', 'group_id', 'status',
+            'published_at', 'created_at', 'created_by', 'updated_at', 'updated_by'
+        ];
+    },
+
     defaults() {
         return {
             id: ObjectId().toHexString()

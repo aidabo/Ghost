@@ -306,6 +306,10 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-media-jobs'), localUtils);
     },
 
+    get socialAiDziJobs() {
+        return apiFramework.pipeline(require('./social-ai-dzi-jobs'), localUtils);
+    },
+
     //custom end
 
     // estate admin endpoints
