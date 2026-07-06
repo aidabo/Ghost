@@ -92,25 +92,41 @@ async function getEstateSearchRedisClient() {
     }
 }
 
-function buildEstateSearchCacheKey(options = {}) {
+// 自由テキスト検索フィールド: 全角/半角・㎡・空白・大小文字を吸収して
+// 同義クエリ（例: `７０㎡` と `70㎡`）が同じキャッシュキーを共有できるようにする。
+const ESTATE_SEARCH_CACHE_TEXT_KEYS = new Set([
+    'query', 'q', 'search', 'query_any', 'location', 'floor_plan',
+    'nearest_station', 'railway_line', 'features', 'tags'
+]);
+
+function normalizeEstateCacheValue(key, value) {
+    const raw = String(value);
+    // テキスト検索キーはパースと同じ正規化で畳み込む。
+    // それ以外（filter/order/数値レンジ等）は NFKC+trim のみで全角数字だけ吸収し、
+    // 構造化値の意味を変えないようにする。
+    return ESTATE_SEARCH_CACHE_TEXT_KEYS.has(key)
+        ? normalizeSearchText(raw)
+        : raw.normalize('NFKC').trim();
+}
+
+function collectNormalizedEstateCacheOptions(options = {}) {
     const normalized = {};
     for (const key of ESTATE_SEARCH_CACHE_OPTION_KEYS) {
         if (options[key] !== undefined && options[key] !== null && options[key] !== '') {
-            normalized[key] = String(options[key]);
+            normalized[key] = normalizeEstateCacheValue(key, options[key]);
         }
     }
+    return normalized;
+}
+
+function buildEstateSearchCacheKey(options = {}) {
+    const normalized = collectNormalizedEstateCacheOptions(options);
     const digest = crypto.createHash('sha1').update(JSON.stringify(normalized)).digest('hex');
     return `${ESTATE_SEARCH_CACHE_PREFIX}${digest}`;
 }
 
 function normalizeEstateSearchCacheOptions(options = {}) {
-    const normalized = {};
-    for (const key of ESTATE_SEARCH_CACHE_OPTION_KEYS) {
-        if (options[key] !== undefined && options[key] !== null && options[key] !== '') {
-            normalized[key] = String(options[key]);
-        }
-    }
-    return normalized;
+    return collectNormalizedEstateCacheOptions(options);
 }
 
 async function readEstateSearchCache(options = {}) {
@@ -534,8 +550,17 @@ function escapeRegExp(value) {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// あいまい表現（約/くらい/ぐらい/程度/前後/およそ/ほど）を数値・単位パースの前に除去する。
+// 例: 「駅まで約15分ぐらい」→「駅まで15分」。除去しないと (a) 数値前の「約」で徒歩分の
+// 正規表現がマッチせず条件化に失敗し、(b) 残った「ぐらい」等が後段 free-text LIKE の
+// 必須トークンになって過剰絞り込み（0件化）を招く。
+const ESTATE_QUERY_FILLER_PATTERN = /(?:およそ|約|くらい|ぐらい|程度|前後|ほど)/g;
+
 function parseNaturalEstateSearchQuery(query) {
-    let textQuery = normalizeSearchText(query);
+    let textQuery = normalizeSearchText(query)
+        .replace(ESTATE_QUERY_FILLER_PATTERN, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
     const conditions = [];
     const consume = (regex, build) => {
         const matches = Array.from(textQuery.matchAll(regex));
@@ -647,7 +672,7 @@ function hasAdvancedEstateSearchOptions(options = {}) {
         'query', 'q', 'search', 'query_any', 'station_walk_minutes_max', 'price_min', 'price_max', 'rent_min', 'rent_max',
         'area_min', 'area_max', 'deposit_min', 'deposit_max', 'key_money_min', 'key_money_max', 'yield_min', 'yield_max', 'land_area_min', 'land_area_max', 'building_area_min', 'building_area_max',
         'year_built_min', 'year_built_max', 'building_age_max', 'nearest_station', 'railway_line', 'features', 'tags',
-        'source_type', 'source', 'status'
+        'source_type', 'source', 'status', 'location', 'floor_plan'
     ];
     return keys.some(key => options[key] !== undefined && options[key] !== null && String(options[key]).trim() !== '');
 }
@@ -929,6 +954,89 @@ const EstateProperty = ghostBookshelf.Model.extend({
 }, {
     hasAdvancedEstateSearchOptions,
 
+    // Attach an ordered `images` array (and `feature_image`) to each property in
+    // a page/model, from estate_property_media + social_media_assets. Batch (one
+    // query for all result ids). Ordering: is_primary first, then a
+    // building-related caption/tag, then sort_order — so images[0] is the card image.
+    async attachMediaImages(pageOrModels) {
+        const models = Array.isArray(pageOrModels)
+            ? pageOrModels
+            : (pageOrModels && Array.isArray(pageOrModels.data) ? pageOrModels.data
+                : (pageOrModels && Array.isArray(pageOrModels.models) ? pageOrModels.models
+                    : (pageOrModels ? [pageOrModels] : [])));
+        const ids = models.map(m => m && m.id).filter(Boolean);
+        if (ids.length === 0) {
+            return pageOrModels;
+        }
+
+        const knex = ghostBookshelf.knex;
+        // Do NOT filter by media_type = 'image': classified images may carry a
+        // media_type like 'building' / 'floor_plan' / 'room'. Fetch all media and
+        // exclude only videos below, so every image is available to the card.
+        const rows = await knex('estate_property_media as epm')
+            .leftJoin('social_media_assets as sma', 'epm.media_id', 'sma.id')
+            .whereIn('epm.property_id', ids)
+            .select([
+                'epm.property_id', 'epm.is_primary', 'epm.caption', 'epm.sort_order', 'epm.media_type',
+                'sma.storage_url', 'sma.thumbnail_url', 'sma.asset_type', 'sma.tag_slug'
+            ]);
+
+        const buildingKeywords = ['building', 'exterior', '外観', '建物'];
+        // Detect videos by URL extension too — media_type/asset_type may be missing
+        // or misclassified (e.g. a .mp4 stored as media_type 'image').
+        const isVideoUrl = u => /\.(?:mp4|mov|m4v|webm|avi|mkv|ogv|flv|wmv)(?:[?#].*)?$/i.test(String(u || ''));
+        const byProperty = new Map();
+        for (const r of rows) {
+            const mediaTypeRaw = r.media_type || 'image';
+            const mediaType = String(mediaTypeRaw).toLowerCase();
+            const assetType = String(r.asset_type || '').toLowerCase();
+            const storageUrl = r.storage_url || '';
+            // A usable poster is a non-video thumbnail image.
+            const thumbUrl = (r.thumbnail_url && !isVideoUrl(r.thumbnail_url)) ? r.thumbnail_url : '';
+            const isVideo = mediaType.includes('video') || assetType.includes('video') || isVideoUrl(storageUrl);
+            // Keep BOTH the real media URL (for playback) and a displayable poster
+            // image. Video: url = the video, poster = thumbnail (an image) if present.
+            // Image: url = the image (fallback to a non-video thumbnail).
+            const url = isVideo ? storageUrl : (storageUrl || thumbUrl);
+            const poster = isVideo ? thumbUrl : (storageUrl || thumbUrl);
+            if (!url) {
+                continue;
+            }
+            const captionText = `${r.caption || ''} ${r.tag_slug || ''} ${mediaType}`.toLowerCase();
+            const list = byProperty.get(r.property_id) || [];
+            list.push({
+                url,                              // real media (image or video)
+                thumbnail_url: poster || url,     // displayable poster/thumbnail image
+                poster: poster || null,           // explicit poster for videos (null if none)
+                caption: r.caption || '',
+                is_primary: !!r.is_primary,
+                media_type: isVideo ? 'video' : mediaTypeRaw,
+                is_video: isVideo,
+                _building: buildingKeywords.some(k => captionText.includes(k)),
+                _order: r.sort_order == null ? 9999 : Number(r.sort_order)
+            });
+            byProperty.set(r.property_id, list);
+        }
+        for (const list of byProperty.values()) {
+            list.sort((a, b) =>
+                (Number(b.is_primary) - Number(a.is_primary)) ||
+                (Number(b._building) - Number(a._building)) ||
+                (a._order - b._order));
+        }
+        for (const model of models) {
+            if (!model || !model.id || typeof model.set !== 'function') {
+                continue;
+            }
+            const list = (byProperty.get(model.id) || []).map(({url, thumbnail_url, poster, caption, is_primary, media_type, is_video}) =>
+                ({url, thumbnail_url, poster, caption, is_primary, media_type, is_video}));
+            model.set('images', list);
+            // feature_image = single card thumbnail; must be an image (poster for videos).
+            const firstImage = list.find(e => e.thumbnail_url && !isVideoUrl(e.thumbnail_url));
+            model.set('feature_image', firstImage ? firstImage.thumbnail_url : null);
+        }
+        return pageOrModels;
+    },
+
     async reindexSearch(propertyId, options = {}) {
         const result = await upsertEstateSearchIndex(propertyId, options);
         await invalidateEstateSearchCache();
@@ -962,10 +1070,10 @@ const EstateProperty = ghostBookshelf.Model.extend({
 
     async findPageWithEstateSearch(unfilteredOptions = {}) {
         const options = this.filterOptions(unfilteredOptions, 'findPage', {extraAllowedProperties: [
-            'query', 'q', 'search', 'station_walk_minutes_max', 'price_min', 'price_max', 'rent_min', 'rent_max',
+            'query', 'q', 'search', 'query_any', 'station_walk_minutes_max', 'price_min', 'price_max', 'rent_min', 'rent_max',
             'area_min', 'area_max', 'deposit_min', 'deposit_max', 'key_money_min', 'key_money_max', 'yield_min', 'yield_max', 'land_area_min', 'land_area_max', 'building_area_min', 'building_area_max',
             'year_built_min', 'year_built_max', 'building_age_max', 'nearest_station', 'railway_line', 'features', 'tags',
-            'source_type', 'source', 'location', 'floor_plan', 'status'
+            'source_type', 'source', 'location', 'floor_plan', 'status', 'property_type'
         ]});
         const knex = ghostBookshelf.knex;
         if (!await hasSearchIndexTables(knex)) {

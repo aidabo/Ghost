@@ -56,6 +56,7 @@ const controller = {
             'source_type',
             'source',
             'location',
+            'floor_plan',
             'property_type',
             'status',
         ],
@@ -66,18 +67,35 @@ const controller = {
         },
         permissions: true,
         async query(frame) {
-            const filter = frame.options.filter
-                ? `status:published+(${frame.options.filter})`
-                : 'status:published';
+            const clauses = ['status:published'];
+            if (frame.options.filter) {
+                clauses.push(`(${frame.options.filter})`);
+            }
+            // Fold structured equality filters into NQL so they apply on the plain
+            // findPage path (full estate_properties table) as well as the index path.
+            if (frame.options.property_type) {
+                const types = String(frame.options.property_type)
+                    .split(',')
+                    .map(value => value.trim())
+                    .filter(Boolean);
+                if (types.length === 1) {
+                    clauses.push(`property_type:${types[0]}`);
+                } else if (types.length > 1) {
+                    clauses.push(`property_type:[${types.join(',')}]`);
+                }
+            }
+            const filter = clauses.join('+');
 
             const options = {
                 ...frame.options,
                 filter
             };
 
-            return models.EstateProperty.hasAdvancedEstateSearchOptions(options)
-                ? await models.EstateProperty.findPageWithEstateSearch(options)
-                : await models.EstateProperty.findPage(options);
+            const result = await (models.EstateProperty.hasAdvancedEstateSearchOptions(options)
+                ? models.EstateProperty.findPageWithEstateSearch(options)
+                : models.EstateProperty.findPage(options));
+            await models.EstateProperty.attachMediaImages(result);
+            return result;
         }
     },
 
@@ -124,6 +142,7 @@ const controller = {
             'source_type',
             'source',
             'location',
+            'floor_plan',
             'property_type',
             'status',
         ],
@@ -134,18 +153,35 @@ const controller = {
         },
         permissions: true,
         async query(frame) {
-            const filter = frame.options.filter
-                ? `status:published+(${frame.options.filter})`
-                : 'status:published';
+            const clauses = ['status:published'];
+            if (frame.options.filter) {
+                clauses.push(`(${frame.options.filter})`);
+            }
+            // Fold structured equality filters into NQL so they apply on the plain
+            // findPage path (full estate_properties table) as well as the index path.
+            if (frame.options.property_type) {
+                const types = String(frame.options.property_type)
+                    .split(',')
+                    .map(value => value.trim())
+                    .filter(Boolean);
+                if (types.length === 1) {
+                    clauses.push(`property_type:${types[0]}`);
+                } else if (types.length > 1) {
+                    clauses.push(`property_type:[${types.join(',')}]`);
+                }
+            }
+            const filter = clauses.join('+');
 
             const options = {
                 ...frame.options,
                 filter
             };
 
-            return models.EstateProperty.hasAdvancedEstateSearchOptions(options)
-                ? await models.EstateProperty.findPageWithEstateSearch(options)
-                : await models.EstateProperty.findPage(options);
+            const result = await (models.EstateProperty.hasAdvancedEstateSearchOptions(options)
+                ? models.EstateProperty.findPageWithEstateSearch(options)
+                : models.EstateProperty.findPage(options));
+            await models.EstateProperty.attachMediaImages(result);
+            return result;
         }
     },
 
@@ -179,6 +215,7 @@ const controller = {
                 });
             }
 
+            await models.EstateProperty.attachMediaImages(entry);
             return entry;
         }
     }
