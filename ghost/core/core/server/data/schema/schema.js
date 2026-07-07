@@ -1753,6 +1753,7 @@ module.exports = {
         message: { type: 'text', maxlength: 10000, nullable: true },
         inquiry_type: { type: 'string', maxlength: 50, nullable: true, defaultTo: 'general' },
         status: { type: 'string', maxlength: 20, nullable: false, defaultTo: 'unread' },
+        reference_code: { type: 'string', maxlength: 20, nullable: true, unique: true },
         referrer_url: { type: 'string', maxlength: 2000, nullable: true },
         metadata: { type: 'text', maxlength: 10000, nullable: true },
         user_agent: { type: 'string', maxlength: 500, nullable: true },
