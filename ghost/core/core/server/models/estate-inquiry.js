@@ -30,7 +30,7 @@ const EstateInquiry = ghostBookshelf.Model.extend({
     permittedAttributes: [
         'id', 'property_id',
         'name', 'email', 'phone', 'message',
-        'inquiry_type', 'status',
+        'inquiry_type', 'status', 'reference_code',
         'referrer_url', 'metadata', 'user_agent', 'ip_address',
         'created_at', 'updated_at'
     ],
