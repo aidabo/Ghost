@@ -1744,6 +1744,20 @@ module.exports = {
         ]
     },
 
+    estate_property_staff: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        property_id: { type: 'string', maxlength: 24, nullable: false, references: 'estate_properties.id' },
+        user_id: { type: 'string', maxlength: 24, nullable: false, references: 'users.id' },
+        role: { type: 'string', maxlength: 100, nullable: true, defaultTo: '担当者' },
+        sort_order: { type: 'integer', nullable: true, defaultTo: 0 },
+        is_primary: { type: 'bool', nullable: true, defaultTo: false },
+        created_at: { type: 'dateTime', nullable: false },
+        updated_at: { type: 'dateTime', nullable: true },
+        '@@INDEXES@@': [
+            ['property_id', 'user_id']
+        ]
+    },
+
     estate_inquiries: {
         id: { type: 'string', maxlength: 24, nullable: false, primary: true },
         property_id: { type: 'string', maxlength: 24, nullable: true, references: 'estate_properties.id' },

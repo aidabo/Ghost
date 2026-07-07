@@ -934,6 +934,10 @@ const EstateProperty = ghostBookshelf.Model.extend({
         return this.hasMany('EstatePropertyTag', 'property_id');
     },
 
+    staff() {
+        return this.hasMany('EstatePropertyStaff', 'property_id');
+    },
+
     tags() {
         return this.belongsToMany('Tag', 'estate_property_tags', 'property_id', 'tag_id');
     },
@@ -952,6 +956,10 @@ const EstateProperty = ghostBookshelf.Model.extend({
 
     ghostPosts() {
         return this.belongsToMany('Post', 'estate_property_posts', 'property_id', 'post_id');
+    },
+
+    staffUsers() {
+        return this.belongsToMany('User', 'estate_property_staff', 'property_id', 'user_id');
     }
 }, {
     hasAdvancedEstateSearchOptions,
@@ -1172,12 +1180,35 @@ const EstateProperty = ghostBookshelf.Model.extend({
         'mlit_data'
     ],
 
-    relationships: ['posts', 'propertyTags', 'tags', 'media', 'inquiries', 'socialMediaAssets', 'ghostPosts'],
+    relationships: ['posts', 'propertyTags', 'staff', 'tags', 'media', 'inquiries', 'socialMediaAssets', 'ghostPosts', 'staffUsers'],
 
-    includeRelations: ['posts', 'tags', 'media', 'inquiries', 'socialMediaAssets'],
+    includeRelations: ['posts', 'staff', 'tags', 'media', 'inquiries', 'socialMediaAssets', 'staffUsers'],
 
     add: async function add(data, unfilteredOptions) {
         const saved = await ghostBookshelf.Model.add.call(this, data, unfilteredOptions);
+        const creatorId = String(saved.get('created_by') || '').trim();
+        if (creatorId) {
+            await ghostBookshelf.knex.schema.hasTable('estate_property_staff').then(async (exists) => {
+                if (!exists) {
+                    return;
+                }
+                const existing = await ghostBookshelf.knex('estate_property_staff')
+                    .where({property_id: saved.id, user_id: creatorId})
+                    .first('id');
+                if (!existing) {
+                    await ghostBookshelf.knex('estate_property_staff').insert({
+                        id: ObjectId().toHexString(),
+                        property_id: saved.id,
+                        user_id: creatorId,
+                        role: '登録者',
+                        sort_order: 0,
+                        is_primary: true,
+                        created_at: new Date(),
+                        updated_at: new Date()
+                    }).catch(() => false);
+                }
+            }).catch(() => false);
+        }
         await upsertEstateSearchIndex(saved.id, unfilteredOptions).catch(() => false);
         await invalidateEstateSearchCache();
         return saved;
@@ -1192,7 +1223,7 @@ const EstateProperty = ghostBookshelf.Model.extend({
 
     destroy: function destroy(unfilteredOptions) {
         const options = this.filterOptions(unfilteredOptions, 'destroy', {extraAllowedProperties: ['id']});
-        options.withRelated = ['ghostPosts', 'tags', 'media', 'inquiries'];
+        options.withRelated = ['ghostPosts', 'tags', 'media', 'inquiries', 'staffUsers'];
 
         const destroyEstateProperty = async () => {
             const property = await this.forge({id: options.id})
@@ -1236,8 +1267,16 @@ const EstateProperty = ghostBookshelf.Model.extend({
             if (property.related('socialMediaAssets')) {
                 await property.related('socialMediaAssets').detach(null, options);
             }
+            if (property.related('staffUsers')) {
+                await property.related('staffUsers').detach(null, options);
+            }
 
             await ghostBookshelf.knex('estate_inquiries')
+                .where({property_id: property.id})
+                .transacting(options.transacting)
+                .del();
+
+            await ghostBookshelf.knex('estate_property_staff')
                 .where({property_id: property.id})
                 .transacting(options.transacting)
                 .del();

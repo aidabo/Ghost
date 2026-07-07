@@ -284,6 +284,10 @@ module.exports = function customApiRoutes(router) {
     router.put('/estate/properties/:propertyId/media/:id', mw.authAdminApi, http(api.estatePropertyMedia.edit));
     router.del('/estate/properties/:propertyId/media/:id', mw.authAdminApi, http(api.estatePropertyMedia.destroy));
 
+    router.get('/estate/properties/:propertyId/staff', mw.authAdminApi, http(api.estatePropertyStaff.browse));
+    router.post('/estate/properties/:propertyId/staff', mw.authAdminApi, http(api.estatePropertyStaff.add));
+    router.del('/estate/properties/:propertyId/staff/:id', mw.authAdminApi, http(api.estatePropertyStaff.destroy));
+
     router.get('/estate/inquiries', mw.authAdminApi, http(api.estateInquiries.browse));
     router.get('/estate/inquiries/:id', mw.authAdminApi, http(api.estateInquiries.read));
     router.put('/estate/inquiries/:id', mw.authAdminApi, http(api.estateInquiries.edit));

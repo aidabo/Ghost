@@ -39,6 +39,11 @@ const PERMISSIONS = [
     {name: 'Edit estate property media', action: 'edit', object: 'estatepropertymedium'},
     {name: 'Delete estate property media', action: 'destroy', object: 'estatepropertymedium'},
 
+    // Property staff junction
+    {name: 'Browse estate property staff', action: 'browse', object: 'estatepropertystaff'},
+    {name: 'Add estate property staff', action: 'add', object: 'estatepropertystaff'},
+    {name: 'Delete estate property staff', action: 'destroy', object: 'estatepropertystaff'},
+
     // Inquiries
     {name: 'Browse estate inquiries', action: 'browse', object: 'estateinquiry'},
     {name: 'Read estate inquiries', action: 'read', object: 'estateinquiry'},

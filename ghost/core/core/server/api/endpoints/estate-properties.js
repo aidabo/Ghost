@@ -8,7 +8,7 @@ const messages = {
 };
 
 const ALLOWED_INCLUDES = [
-    'posts', 'propertyTags', 'tags', 'media', 'socialMediaAssets', 'ghostPosts'
+    'posts', 'propertyTags', 'staff', 'staffUsers', 'tags', 'media', 'socialMediaAssets', 'ghostPosts'
 ];
 
 const controller = {

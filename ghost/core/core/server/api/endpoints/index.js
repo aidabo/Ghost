@@ -329,6 +329,10 @@ module.exports = {
         return apiFramework.pipeline(require('./estate-property-media'), localUtils);
     },
 
+    get estatePropertyStaff() {
+        return apiFramework.pipeline(require('./estate-property-staff'), localUtils);
+    },
+
     get estateInquiries() {
         return apiFramework.pipeline(require('./estate-inquiries'), localUtils);
     },
