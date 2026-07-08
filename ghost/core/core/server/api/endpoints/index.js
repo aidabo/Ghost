@@ -467,6 +467,10 @@ module.exports = {
         return apiFramework.pipeline(require('./estate-inquiries-public'), localUtils, 'content');
     },
 
+    get estateAgentContactPublic() {
+        return apiFramework.pipeline(require('./estate-agent-contact-public'), localUtils, 'content');
+    },
+
     // person story content endpoints
     get personStoriesPublic() {
         return apiFramework.pipeline(require('./person-stories-public'), localUtils, 'content');

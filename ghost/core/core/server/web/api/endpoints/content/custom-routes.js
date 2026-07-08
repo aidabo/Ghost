@@ -20,6 +20,7 @@ module.exports = function customApiRoutes(router) {
     router.get('/estate/properties/:id', mw.authenticatePublic, http(api.estatePropertiesPublic.read));
     router.post('/estate/inquiries', mw.authenticatePublic, http(api.estateInquiriesPublic.add));
     router.post('/estate/inquiries/:id/resend-confirmation', mw.authenticatePublic, http(api.estateInquiriesPublic.resendConfirmation));
+    router.post('/estate/agent-contact', mw.authenticatePublic, http(api.estateAgentContactPublic.add));
 
     // ## person story content routes
     router.get('/person/stories', mw.authenticatePublic, http(api.personStoriesPublic.browse));
