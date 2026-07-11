@@ -1155,7 +1155,7 @@ const EstateProperty = ghostBookshelf.Model.extend({
 
     permittedAttributes: [
         'id', 'status', 'property_type',
-        'price_sale', 'price_rent_monthly', 'price_management_fee',
+        'price_sale', 'price_valuation', 'price_rent_monthly', 'price_management_fee',
         'price_deposit', 'price_key_money', 'price_maintenance_fee', 'price_other_fees',
         'floor_plan', 'floor_area', 'land_area', 'building_area',
         'year_built', 'floors_total', 'floor_number',
