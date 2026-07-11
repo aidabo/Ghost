@@ -1738,6 +1738,7 @@ module.exports = {
         sort_order: { type: 'integer', nullable: true, defaultTo: 0 },
         caption: { type: 'string', maxlength: 500, nullable: true },
         is_primary: { type: 'bool', nullable: true, defaultTo: false },
+        is_selected: { type: 'bool', nullable: true, defaultTo: false },
         created_at: { type: 'dateTime', nullable: false },
         '@@INDEXES@@': [
             ['property_id', 'media_id', 'media_type']

@@ -987,7 +987,7 @@ const EstateProperty = ghostBookshelf.Model.extend({
             .leftJoin('social_media_assets as sma', 'epm.media_id', 'sma.id')
             .whereIn('epm.property_id', ids)
             .select([
-                'epm.property_id', 'epm.is_primary', 'epm.caption', 'epm.sort_order', 'epm.media_type',
+                'epm.property_id', 'epm.is_primary', 'epm.is_selected', 'epm.caption', 'epm.sort_order', 'epm.media_type',
                 'sma.storage_url', 'sma.thumbnail_url', 'sma.asset_type', 'sma.tag_slug'
             ]);
 
@@ -1020,6 +1020,7 @@ const EstateProperty = ghostBookshelf.Model.extend({
                 poster: poster || null,           // explicit poster for videos (null if none)
                 caption: r.caption || '',
                 is_primary: !!r.is_primary,
+                is_selected: !!r.is_selected,
                 media_type: isVideo ? 'video' : mediaTypeRaw,
                 is_video: isVideo,
                 _building: buildingKeywords.some(k => captionText.includes(k)),
@@ -1037,8 +1038,8 @@ const EstateProperty = ghostBookshelf.Model.extend({
             if (!model || !model.id || typeof model.set !== 'function') {
                 continue;
             }
-            const list = (byProperty.get(model.id) || []).map(({url, thumbnail_url, poster, caption, is_primary, media_type, is_video}) =>
-                ({url, thumbnail_url, poster, caption, is_primary, media_type, is_video}));
+            const list = (byProperty.get(model.id) || []).map(({url, thumbnail_url, poster, caption, is_primary, is_selected, media_type, is_video}) =>
+                ({url, thumbnail_url, poster, caption, is_primary, is_selected, media_type, is_video}));
             model.set('images', list);
             // feature_image = single card thumbnail; must be an image (poster for videos).
             const firstImage = list.find(e => e.thumbnail_url && !isVideoUrl(e.thumbnail_url));

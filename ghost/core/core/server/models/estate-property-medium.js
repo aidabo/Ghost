@@ -10,7 +10,8 @@ const EstatePropertyMedium = ghostBookshelf.Model.extend({
             media_id: '',
             media_type: 'image',
             sort_order: 0,
-            is_primary: false
+            is_primary: false,
+            is_selected: false
         };
     },
 
@@ -22,7 +23,7 @@ const EstatePropertyMedium = ghostBookshelf.Model.extend({
         return this.belongsTo('SocialMediaAsset', 'media_id');
     }
 }, {
-    permittedAttributes: ['id', 'property_id', 'media_id', 'media_type', 'sort_order', 'caption', 'is_primary', 'created_at', 'url'],
+    permittedAttributes: ['id', 'property_id', 'media_id', 'media_type', 'sort_order', 'caption', 'is_primary', 'is_selected', 'created_at', 'url'],
 
     relationships: ['property', 'media']
 });
