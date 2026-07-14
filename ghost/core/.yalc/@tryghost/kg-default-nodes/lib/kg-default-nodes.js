@@ -18,6 +18,7 @@ import * as product from './nodes/product/ProductNode';
 import * as embed from './nodes/embed/EmbedNode';
 import * as email from './nodes/email/EmailNode';
 import * as gallery from './nodes/gallery/GalleryNode';
+import * as slider from './nodes/slider/SliderNode';
 import * as emailCta from './nodes/email-cta/EmailCtaNode';
 import * as signup from './nodes/signup/SignupNode';
 import * as collection from './nodes/collection/CollectionNode';
@@ -54,6 +55,7 @@ export * from './nodes/product/ProductNode';
 export * from './nodes/embed/EmbedNode';
 export * from './nodes/email/EmailNode';
 export * from './nodes/gallery/GalleryNode';
+export * from './nodes/slider/SliderNode';
 export * from './nodes/email-cta/EmailCtaNode';
 export * from './nodes/signup/SignupNode';
 export * from './nodes/collection/CollectionNode';
@@ -117,6 +119,7 @@ export const DEFAULT_NODES = [
     embed.EmbedNode,
     email.EmailNode,
     gallery.GalleryNode,
+    slider.SliderNode,
     emailCta.EmailCtaNode,
     signup.SignupNode,
     collection.CollectionNode,

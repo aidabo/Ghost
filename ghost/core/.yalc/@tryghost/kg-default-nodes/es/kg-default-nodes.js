@@ -4517,6 +4517,243 @@ function $isGalleryNode(node) {
   return node instanceof GalleryNode;
 }
 
+function readSliderSlide(element, index) {
+  const kind = element.dataset?.kind || element.dataset?.mediaKind || 'image';
+  const caption = readCaptionFromElement(element);
+  const audio = element.querySelector('audio');
+  if (kind === 'audio' || audio) {
+    if (!audio?.src && !audio?.getAttribute('src') && !audio?.currentSrc) {
+      return null;
+    }
+    const audioSrc = audio.getAttribute('src') || audio.currentSrc || audio.src;
+    return {
+      id: element.dataset?.id || `slider-${index + 1}`,
+      kind: 'audio',
+      src: audioSrc,
+      fileName: element.dataset?.fileName || '',
+      mimeType: element.dataset?.mimeType || audio.querySelector('source')?.type || audio.type || '',
+      duration: Number(element.dataset?.duration || 0) || 0,
+      thumbnailSrc: '',
+      caption
+    };
+  }
+  if (kind === 'video') {
+    const video = element.querySelector('video');
+    if (!video?.src && !video?.getAttribute('src') && !video?.currentSrc) {
+      return null;
+    }
+    const videoSrc = video.getAttribute('src') || video.currentSrc || video.src;
+    return {
+      id: element.dataset?.id || `slider-${index + 1}`,
+      kind: 'video',
+      src: videoSrc,
+      fileName: element.dataset?.fileName || '',
+      mimeType: element.dataset?.mimeType || video.querySelector('source')?.type || video.type || '',
+      width: Number(video.getAttribute('width') || element.dataset?.width || 0) || null,
+      height: Number(video.getAttribute('height') || element.dataset?.height || 0) || null,
+      duration: Number(element.dataset?.duration || 0) || 0,
+      thumbnailSrc: element.dataset?.thumbnailSrc || video.getAttribute('poster') || '',
+      caption
+    };
+  }
+  const img = element.querySelector('img');
+  if (!img?.src && !img?.getAttribute('src') && !img?.currentSrc) {
+    return null;
+  }
+  const image = readImageAttributesFromElement(img);
+  return {
+    id: element.dataset?.id || `slider-${index + 1}`,
+    kind: 'image',
+    src: image.src || img.getAttribute('src') || img.currentSrc || img.src,
+    fileName: element.dataset?.fileName || (img.getAttribute('src') || img.currentSrc || img.src).match(/[^/]*$/)?.[0] || `slide-${index + 1}`,
+    width: image.width,
+    height: image.height,
+    alt: image.alt || '',
+    caption
+  };
+}
+function parseSliderNode(SliderNode) {
+  return {
+    figure: nodeElem => {
+      if (!nodeElem.classList?.contains('kg-slider-card')) {
+        return null;
+      }
+      return {
+        conversion(domNode) {
+          const slides = Array.from(domNode.querySelectorAll('.kg-slider-slide')).map((slide, index) => readSliderSlide(slide, index)).filter(Boolean);
+          const node = new SliderNode({
+            slides
+          });
+          return {
+            node
+          };
+        },
+        priority: 1
+      };
+    }
+  };
+}
+
+function isValidSlide(slide) {
+  return slide && slide.kind && slide.src;
+}
+function escapeText(text) {
+  return String(text || '');
+}
+function renderSlide(document, slide) {
+  const slideFigure = document.createElement('figure');
+  slideFigure.setAttribute('class', 'kg-slider-slide');
+  slideFigure.setAttribute('data-kind', slide.kind || 'image');
+  if (slide.id) {
+    slideFigure.setAttribute('data-id', slide.id);
+  }
+  if (slide.fileName) {
+    slideFigure.setAttribute('data-file-name', slide.fileName);
+  }
+  if (slide.mimeType) {
+    slideFigure.setAttribute('data-mime-type', slide.mimeType);
+  }
+  if (slide.duration) {
+    slideFigure.setAttribute('data-duration', `${slide.duration}`);
+  }
+  if (slide.thumbnailSrc) {
+    slideFigure.setAttribute('data-thumbnail-src', slide.thumbnailSrc);
+  }
+  if (slide.kind === 'video') {
+    const media = document.createElement('div');
+    media.setAttribute('class', 'kg-slider-media');
+    const video = document.createElement('video');
+    const thumbnailSrc = slide.thumbnailSrc || '';
+    video.setAttribute('controls', '');
+    video.setAttribute('preload', 'metadata');
+    video.setAttribute('playsinline', '');
+    video.setAttribute('src', slide.src);
+    if (thumbnailSrc) {
+      video.setAttribute('poster', thumbnailSrc);
+      video.setAttribute('data-thumbnail-src', thumbnailSrc);
+      video.style.background = `transparent url('${thumbnailSrc}') 50% 50% / cover no-repeat`;
+    }
+    if (slide.width) {
+      video.setAttribute('width', `${slide.width}`);
+    }
+    if (slide.height) {
+      video.setAttribute('height', `${slide.height}`);
+    }
+    media.appendChild(video);
+    slideFigure.appendChild(media);
+  } else if (slide.kind === 'audio') {
+    const audio = document.createElement('audio');
+    audio.setAttribute('controls', '');
+    audio.setAttribute('preload', 'metadata');
+    audio.setAttribute('src', slide.src);
+    slideFigure.appendChild(audio);
+  } else {
+    const media = document.createElement('div');
+    media.setAttribute('class', 'kg-slider-media');
+    const img = document.createElement('img');
+    img.setAttribute('src', slide.src);
+    img.setAttribute('loading', 'lazy');
+    img.setAttribute('alt', slide.alt || '');
+    if (slide.width) {
+      img.setAttribute('width', `${slide.width}`);
+    }
+    if (slide.height) {
+      img.setAttribute('height', `${slide.height}`);
+    }
+    media.appendChild(img);
+    slideFigure.appendChild(media);
+  }
+  if (slide.caption) {
+    const figcaption = document.createElement('figcaption');
+    figcaption.textContent = escapeText(slide.caption);
+    slideFigure.appendChild(figcaption);
+  }
+  return slideFigure;
+}
+function renderSliderNode(node, options = {}) {
+  addCreateDocumentOption(options);
+  const document = options.createDocument();
+  const validSlides = Array.isArray(node.slides) ? node.slides.filter(isValidSlide) : [];
+  if (!validSlides.length) {
+    return renderEmptyContainer(document);
+  }
+  const figure = document.createElement('figure');
+  figure.setAttribute('class', 'kg-card kg-slider-card kg-width-wide');
+  const track = document.createElement('div');
+  track.setAttribute('class', 'kg-slider-track');
+  figure.appendChild(track);
+  validSlides.forEach(slide => {
+    track.appendChild(renderSlide(document, slide));
+  });
+  return {
+    element: figure
+  };
+}
+
+/* eslint-disable ghost/filenames/match-exported-class */
+function normalizeSlides(slides = []) {
+  if (!Array.isArray(slides)) {
+    return [];
+  }
+  return slides.map(slide => {
+    if (!slide || !slide.kind || !slide.src) {
+      return null;
+    }
+    return {
+      id: slide.id || '',
+      kind: slide.kind,
+      src: slide.src,
+      fileName: slide.fileName || '',
+      mimeType: slide.mimeType || '',
+      width: slide.width ?? null,
+      height: slide.height ?? null,
+      duration: slide.duration || 0,
+      thumbnailSrc: slide.thumbnailSrc || '',
+      alt: slide.alt || '',
+      caption: slide.caption || ''
+    };
+  }).filter(Boolean);
+}
+class SliderNode extends generateDecoratorNode({
+  nodeType: 'slider',
+  properties: [{
+    name: 'slides',
+    default: []
+  }]
+}) {
+  static get urlTransformMap() {
+    return {};
+  }
+  constructor(dataset = {}, key) {
+    super({
+      ...dataset,
+      slides: normalizeSlides(dataset.slides)
+    }, key);
+  }
+  static importDOM() {
+    return parseSliderNode(this);
+  }
+  exportJSON() {
+    return {
+      type: 'slider',
+      version: 1,
+      slides: normalizeSlides(this.slides)
+    };
+  }
+  exportDOM(options = {}) {
+    return renderSliderNode(this, options);
+  }
+  hasEditMode() {
+    return false;
+  }
+}
+const $createSliderNode = dataset => {
+  return new SliderNode(dataset);
+};
+function $isSliderNode(node) {
+  return node instanceof SliderNode;
+}
+
 function renderEmailCtaNode(node, options = {}) {
   addCreateDocumentOption(options);
   const document = options.createDocument();
@@ -5852,7 +6089,7 @@ const DEFAULT_CONFIG = {
 };
 
 // export convenience objects for use elsewhere
-const DEFAULT_NODES = [ExtendedTextNode, extendedTextNodeReplacement, ExtendedHeadingNode, extendedHeadingNodeReplacement, ExtendedQuoteNode, extendedQuoteNodeReplacement, CodeBlockNode, ImageNode, MarkdownNode, VideoNode, AudioNode, CalloutNode, CallToActionNode, AsideNode, HorizontalRuleNode, HtmlNode, FileNode, ToggleNode, ButtonNode, HeaderNode, BookmarkNode, PaywallNode, ProductNode, EmbedNode, EmailNode, GalleryNode, EmailCtaNode, SignupNode, CollectionNode, MultiColumnNode, TableNode, TableRowNode, TableCellNode, TKNode, AtLinkNode, AtLinkSearchNode, ZWNJNode];
+const DEFAULT_NODES = [ExtendedTextNode, extendedTextNodeReplacement, ExtendedHeadingNode, extendedHeadingNodeReplacement, ExtendedQuoteNode, extendedQuoteNodeReplacement, CodeBlockNode, ImageNode, MarkdownNode, VideoNode, AudioNode, CalloutNode, CallToActionNode, AsideNode, HorizontalRuleNode, HtmlNode, FileNode, ToggleNode, ButtonNode, HeaderNode, BookmarkNode, PaywallNode, ProductNode, EmbedNode, EmailNode, GalleryNode, SliderNode, EmailCtaNode, SignupNode, CollectionNode, MultiColumnNode, TableNode, TableRowNode, TableCellNode, TKNode, AtLinkNode, AtLinkSearchNode, ZWNJNode];
 
-export { $createAsideNode, $createAtLinkNode, $createAtLinkSearchNode, $createAudioNode, $createBookmarkNode, $createButtonNode, $createCallToActionNode, $createCalloutNode, $createCodeBlockNode, $createCollectionNode, $createEmailCtaNode, $createEmailNode, $createEmbedNode, $createFileNode, $createGalleryNode, $createHeaderNode, $createHorizontalRuleNode, $createHtmlNode, $createImageNode, $createMarkdownNode, $createMultiColumnNode, $createPaywallNode, $createProductNode, $createSignupNode, $createTKNode, $createToggleNode, $createVideoNode, $createZWNJNode, $isAsideNode, $isAtLinkNode, $isAtLinkSearchNode, $isAudioNode, $isBookmarkNode, $isButtonNode, $isCallToActionNode, $isCalloutNode, $isCodeBlockNode, $isCollectionNode, $isEmailCtaNode, $isEmailNode, $isEmbedNode, $isFileNode, $isGalleryNode, $isHeaderNode, $isHorizontalRuleNode, $isHtmlNode, $isImageNode, $isKoenigCard, $isMarkdownNode, $isMultiColumnNode, $isPaywallNode, $isProductNode, $isSignupNode, $isTKNode, $isToggleNode, $isVideoNode, $isZWNJNode, AsideNode, AtLinkNode, AtLinkSearchNode, AudioNode, BookmarkNode, ButtonNode, CallToActionNode, CalloutNode, CodeBlockNode, CollectionNode, DEFAULT_CONFIG, DEFAULT_NODES, EmailCtaNode, EmailNode, EmbedNode, ExtendedHeadingNode, ExtendedQuoteNode, ExtendedTextNode, FileNode, GalleryNode, HeaderNode, HorizontalRuleNode, HtmlNode, ImageNode, KoenigDecoratorNode, MarkdownNode, MultiColumnNode, PaywallNode, ProductNode, SignupNode, TKNode, ToggleNode, VideoNode, ZWNJNode, extendedHeadingNodeReplacement, extendedQuoteNodeReplacement, extendedTextNodeReplacement, serializers, utils };
+export { $createAsideNode, $createAtLinkNode, $createAtLinkSearchNode, $createAudioNode, $createBookmarkNode, $createButtonNode, $createCallToActionNode, $createCalloutNode, $createCodeBlockNode, $createCollectionNode, $createEmailCtaNode, $createEmailNode, $createEmbedNode, $createFileNode, $createGalleryNode, $createHeaderNode, $createHorizontalRuleNode, $createHtmlNode, $createImageNode, $createMarkdownNode, $createMultiColumnNode, $createPaywallNode, $createProductNode, $createSignupNode, $createSliderNode, $createTKNode, $createToggleNode, $createVideoNode, $createZWNJNode, $isAsideNode, $isAtLinkNode, $isAtLinkSearchNode, $isAudioNode, $isBookmarkNode, $isButtonNode, $isCallToActionNode, $isCalloutNode, $isCodeBlockNode, $isCollectionNode, $isEmailCtaNode, $isEmailNode, $isEmbedNode, $isFileNode, $isGalleryNode, $isHeaderNode, $isHorizontalRuleNode, $isHtmlNode, $isImageNode, $isKoenigCard, $isMarkdownNode, $isMultiColumnNode, $isPaywallNode, $isProductNode, $isSignupNode, $isSliderNode, $isTKNode, $isToggleNode, $isVideoNode, $isZWNJNode, AsideNode, AtLinkNode, AtLinkSearchNode, AudioNode, BookmarkNode, ButtonNode, CallToActionNode, CalloutNode, CodeBlockNode, CollectionNode, DEFAULT_CONFIG, DEFAULT_NODES, EmailCtaNode, EmailNode, EmbedNode, ExtendedHeadingNode, ExtendedQuoteNode, ExtendedTextNode, FileNode, GalleryNode, HeaderNode, HorizontalRuleNode, HtmlNode, ImageNode, KoenigDecoratorNode, MarkdownNode, MultiColumnNode, PaywallNode, ProductNode, SignupNode, SliderNode, TKNode, ToggleNode, VideoNode, ZWNJNode, extendedHeadingNodeReplacement, extendedQuoteNodeReplacement, extendedTextNodeReplacement, serializers, utils };
 //# sourceMappingURL=kg-default-nodes.js.map
