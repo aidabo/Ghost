@@ -140,6 +140,7 @@ const upsertAsset = async ({
     assetType,
     originalFilename,
     jobId,
+    dziJobId,
     userId,
     groupId,
     propertyId,
@@ -171,6 +172,7 @@ const upsertAsset = async ({
             user_id: userId || null,
             group_id: groupId || null,
             job_id: normalizeJobId(jobId),
+            dzi_job_id: normalizeJobId(dziJobId),
             tag_id: tag?.id || null,
             tag_slug: tag?.slug || null,
             updated_at: now
@@ -185,6 +187,7 @@ const upsertAsset = async ({
             user_id: payload.user_id,
             group_id: payload.group_id,
             job_id: payload.job_id,
+            dzi_job_id: payload.dzi_job_id,
             tag_id: payload.tag_id,
             tag_slug: payload.tag_slug,
             updated_at: payload.updated_at
@@ -221,15 +224,26 @@ const upsertAsset = async ({
                 (err?.code === 'SQLITE_ERROR' && message.includes('job_id')) ||
                 message.includes('unknown column') ||
                 message.includes('has no column named job_id');
+            // dzi_job_id is a newer column; before its migration runs, an insert
+            // including it fails with unknown/no-such-column. Detect ONLY that
+            // (both the missing-column signal AND the column name) so we drop it
+            // from the retry payload — a broader match would silently strip a
+            // valid dzi_job_id whenever any unrelated column error occurred.
+            const isMissingDziJobIdColumn =
+                (message.includes('unknown column') || message.includes('has no column named')) &&
+                message.includes('dzi_job_id');
             const isMissingStorageKeyHashColumn = isMissingStorageKeyHashColumnError(err);
 
-            if (!isMissingThumbnailColumn && !isMissingJobIdColumn && !isMissingStorageKeyHashColumn) {
+            if (!isMissingThumbnailColumn && !isMissingJobIdColumn && !isMissingDziJobIdColumn && !isMissingStorageKeyHashColumn) {
                 throw err;
             }
 
             const fallbackPayload = {
                 ...(isMissingThumbnailColumn || isMissingJobIdColumn ? legacyPayload : payload)
             };
+            if (isMissingDziJobIdColumn) {
+                delete fallbackPayload.dzi_job_id;
+            }
             if (isMissingStorageKeyHashColumn) {
                 delete fallbackPayload.storage_key_hash;
             }

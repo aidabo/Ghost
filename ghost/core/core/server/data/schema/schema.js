@@ -1306,6 +1306,12 @@ module.exports = {
         user_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'users.id', cascadeDelete: true },
         group_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true },
         job_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_ai_media_jobs.id', setNullDelete: true },
+        // Deep Zoom source-PDF link. A plain indexed link, NOT a FK: the upload
+        // flow finalizes the source-PDF asset BEFORE the social_ai_dzi_jobs row
+        // is created, so a FK here would always fail its referential check at
+        // insert time. Cleanup is done explicitly in the DZI destroy endpoint
+        // (delete assets WHERE dzi_job_id = <job>), not via ON DELETE CASCADE.
+        dzi_job_id: { type: 'string', maxlength: 24, nullable: true, index: true },
         tag_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'tags.id', setNullDelete: true },
         tag_slug: { type: 'string', maxlength: 191, nullable: true, index: true },
         created_at: { type: 'dateTime', nullable: false },

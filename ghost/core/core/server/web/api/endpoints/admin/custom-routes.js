@@ -197,6 +197,7 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/dzi/jobs/:id/progress', mw.authAdminApi, http(api.socialAiDziJobs.progress));
     router.post('/social/ai/dzi/jobs/:id/complete', mw.authAdminApi, http(api.socialAiDziJobs.complete));
     router.post('/social/ai/dzi/jobs/:id/fail', mw.authAdminApi, http(api.socialAiDziJobs.fail));
+    router.del('/social/ai/dzi/jobs/:id', mw.authAdminApi, http(api.socialAiDziJobs.destroy));
 
     // ## estate admin routes
     router.get('/estate/properties', mw.authAdminApi, http(api.estateProperties.browse));

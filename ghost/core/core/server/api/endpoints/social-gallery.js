@@ -1436,6 +1436,7 @@ const controller = {
             'group_id',
             'property_id',
             'job_id',
+            'dzi_job_id',
             'tag',
             'tag_slug',
             'tag_id',
@@ -1456,6 +1457,7 @@ const controller = {
             const requestedAssetType = String(getFrameValue(frame, 'asset_type') || '').trim().toLowerCase();
             const originalFilename = sanitizeFileName(getFrameValue(frame, 'original_filename'));
             const jobId = String(getFrameValue(frame, 'job_id') || '').trim() || null;
+            const dziJobId = String(getFrameValue(frame, 'dzi_job_id') || '').trim() || null;
 
             if (!storageKey) {
                 throw new errors.ValidationError({
@@ -1485,6 +1487,7 @@ const controller = {
                     assetType,
                     originalFilename,
                     jobId,
+                    dziJobId,
                     userId: uploadContext.userId,
                     groupId: uploadContext.groupId,
                     propertyId: uploadContext.propertyId || propertyId,
@@ -1520,6 +1523,7 @@ const controller = {
                     thumbnail_url: thumbnailStorageUrl || null,
                     original_filename: originalFilename || null,
                     job_id: jobId,
+                    dzi_job_id: dziJobId,
                     asset_type: assetType,
                     owner_scope: uploadContext.ownerScope || (uploadContext.groupId ? 'group' : 'user'),
                     property_id: finalPropertyId,
