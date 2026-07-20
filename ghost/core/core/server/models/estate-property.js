@@ -842,7 +842,7 @@ function resolveStorageKeyRef(store, rawValue) {
 }
 
 async function cleanupGalleryFiles(propertyId, assets) {
-    const propertyPrefix = `gallery/properties/${String(propertyId || '').trim()}`;
+    const propertyPrefix = `gallery/properties/${String(propertyId || '').trim()}/`;
     if (!propertyPrefix) {
         return;
     }
@@ -1259,6 +1259,10 @@ const EstateProperty = ghostBookshelf.Model.extend({
                     .select(['id', 'storage_url', 'thumbnail_url'])
                 : [];
 
+            const postIds = property.related('ghostPosts')
+                ? property.related('ghostPosts').toJSON().map(post => String(post.id || '').trim()).filter(Boolean)
+                : [];
+
             if (property.related('ghostPosts')) {
                 await property.related('ghostPosts').detach(null, options);
             }
@@ -1272,6 +1276,11 @@ const EstateProperty = ghostBookshelf.Model.extend({
                 await property.related('staffUsers').detach(null, options);
             }
 
+            await ghostBookshelf.knex('estate_property_media')
+                .where({property_id: property.id})
+                .transacting(options.transacting)
+                .del();
+
             await ghostBookshelf.knex('estate_inquiries')
                 .where({property_id: property.id})
                 .transacting(options.transacting)
@@ -1283,19 +1292,46 @@ const EstateProperty = ghostBookshelf.Model.extend({
                 .del();
 
             if (assets.length > 0) {
+                const deletableAssetIds = [];
+                for (const asset of assets) {
+                    const remainingMedia = await ghostBookshelf.knex('estate_property_media')
+                        .where({media_id: asset.id})
+                        .transacting(options.transacting)
+                        .count('* as count')
+                        .first();
+                    if (Number(remainingMedia?.count || 0) === 0) {
+                        deletableAssetIds.push(asset.id);
+                    }
+                }
+
                 await ghostBookshelf.knex('social_media_assets')
-                    .whereIn('id', assets.map((asset) => asset.id))
+                    .whereIn('id', deletableAssetIds)
                     .transacting(options.transacting)
                     .del();
             }
 
-            await ghostBookshelf.Model.destroy.call(this, options);
+            for (const postId of postIds) {
+                const remainingPropertyLinks = await ghostBookshelf.knex('estate_property_posts')
+                    .where({post_id: postId})
+                    .transacting(options.transacting)
+                    .count('* as count')
+                    .first();
+                if (Number(remainingPropertyLinks?.count || 0) === 0) {
+                    const {Post} = require('./post');
+                    await Post.destroy({id: postId, transacting: options.transacting});
+                }
+            }
+
             if (await hasSearchIndexTables(ghostBookshelf.knex)) {
                 await ghostBookshelf.knex(ESTATE_SEARCH_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
                 if (await ghostBookshelf.knex.schema.hasTable(ESTATE_STATION_INDEX_TABLE)) {
                     await ghostBookshelf.knex(ESTATE_STATION_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
                 }
             }
+            // Search index rows reference the property and must be removed before
+            // deleting the parent row. Keeping this inside the same transaction
+            // preserves the all-or-nothing delete behavior.
+            await ghostBookshelf.Model.destroy.call(this, options);
             await invalidateEstateSearchCache();
 
             return assets;
