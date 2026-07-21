@@ -10,7 +10,10 @@ const SocialAiDziJob = ghostBookshelf.Model.extend({
         return {
             id: ObjectId().toHexString(),
             status: 'queued',
-            progress: 0
+            progress: 0,
+            // New jobs are private until an authorized user explicitly
+            // publishes the completed DZI edition.
+            is_public: false
         };
     },
 

@@ -316,6 +316,9 @@ const controller = {
             // @ts-ignore
             const added = await models.SocialAiDziJob.add({
                 ...payloadInput,
+                // Publication is an explicit post-completion action. The
+                // database column is NOT NULL, so never pass NULL on create.
+                is_public: payloadInput.is_public ?? false,
                 user_id: targetUserId || currentUserId,
                 group_id: groupId
             }, frame.options);
