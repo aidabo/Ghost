@@ -58,6 +58,7 @@ const serializeRow = (row) => ({
     edition: row.edition,
     pages: row.pages ? JSON.parse(row.pages) : [],
     preview_url: row.preview_url || null,
+    is_public: Boolean(row.is_public),
     error: row.error || null,
     claim_worker_id: row.claim_worker_id || null,
     claim_expires_at: row.claim_expires_at || null,
@@ -577,6 +578,37 @@ const controller = {
 
             const next = await loadRowOrThrow(knex, row.id);
             return serializeRow(next);
+        }
+    },
+
+    // @ts-ignore
+    publish: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const knex = models.Base.knex;
+            const row = await loadRowOrThrow(knex, getJobId(frame));
+            await assertCanReadRow({frame, row});
+            if (row.status !== 'completed') {
+                throw new errors.ValidationError({message: tpl(messages.invalidTransition)});
+            }
+            const now = nowMySql();
+            await knex(TABLE).where({id: row.id}).update({is_public: true, updated_at: now, updated_by: row.updated_by || row.user_id});
+            return serializeRow(await loadRowOrThrow(knex, row.id));
+        }
+    },
+
+    // @ts-ignore
+    unpublish: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const knex = models.Base.knex;
+            const row = await loadRowOrThrow(knex, getJobId(frame));
+            await assertCanReadRow({frame, row});
+            const now = nowMySql();
+            await knex(TABLE).where({id: row.id}).update({is_public: false, updated_at: now, updated_by: row.updated_by || row.user_id});
+            return serializeRow(await loadRowOrThrow(knex, row.id));
         }
     },
 

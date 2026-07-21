@@ -191,6 +191,8 @@ module.exports = function customApiRoutes(router) {
     // ## social ai dzi jobs
     router.get('/social/ai/dzi/jobs', mw.authAdminApi, http(api.socialAiDziJobs.browse));
     router.get('/social/ai/dzi/jobs/:id', mw.authAdminApi, http(api.socialAiDziJobs.read));
+    router.post('/social/ai/dzi/jobs/:id/publish', mw.authAdminApi, http(api.socialAiDziJobs.publish));
+    router.post('/social/ai/dzi/jobs/:id/unpublish', mw.authAdminApi, http(api.socialAiDziJobs.unpublish));
     router.post('/social/ai/dzi/jobs', mw.authAdminApi, http(api.socialAiDziJobs.add));
     router.post('/social/ai/dzi/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiDziJobs.cancel));
     router.post('/social/ai/dzi/jobs/claim', mw.authAdminApi, http(api.socialAiDziJobs.claim));
