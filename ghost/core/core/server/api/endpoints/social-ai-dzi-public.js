@@ -10,9 +10,18 @@ const serialize = row => ({
     status: row.status,
     pages: row.pages ? JSON.parse(row.pages) : [],
     preview_url: row.preview_url || null,
+    created_at: row.created_at || null,
     completed_at: row.completed_at || null,
     is_public: true
 });
+
+// The API framework serializes Bookshelf models. Returning plain knex rows
+// here produces empty objects in the Content API response, so wrap the already
+// sanitized values in the DZI model before returning them. Do not return the
+// raw job row: it contains user/group ownership and source storage paths.
+const asPublicCollection = rows => models.SocialAiDziJob.collection(
+    rows.map(row => new models.SocialAiDziJob(serialize(row)))
+);
 
 const controller = {
     docName: 'socialaidzijobs',
@@ -28,7 +37,7 @@ const controller = {
                 .orderBy('completed_at', 'desc')
                 .limit(limit)
                 .offset((page - 1) * limit);
-            return rows.map(serialize);
+            return asPublicCollection(rows);
         }
     },
     read: {
@@ -39,7 +48,7 @@ const controller = {
             const id = frame.data?.id || frame.options?.id;
             const row = await models.Base.knex('social_ai_dzi_jobs').where({id, status: 'completed', is_public: true}).first();
             if (!row) throw new errors.NotFoundError({message: tpl('DZI job not found.')});
-            return serialize(row);
+            return new models.SocialAiDziJob(serialize(row));
         }
     }
 };
