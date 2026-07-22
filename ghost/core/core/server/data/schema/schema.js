@@ -1608,6 +1608,7 @@ module.exports = {
         transaction_type: { type: 'string', maxlength: 50, nullable: true },
         source_type: { type: 'string', maxlength: 50, nullable: true },
         status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft' },
+        featured: { type: 'bool', nullable: false, defaultTo: false },
         prefecture: { type: 'string', maxlength: 50, nullable: true },
         city: { type: 'string', maxlength: 100, nullable: true },
         ward: { type: 'string', maxlength: 100, nullable: true },

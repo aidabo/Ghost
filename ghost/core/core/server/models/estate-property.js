@@ -21,7 +21,7 @@ const ESTATE_SEARCH_CACHE_OPTION_KEYS = [
     'land_area_min', 'land_area_max', 'building_area_min', 'building_area_max',
     'year_built_min', 'year_built_max', 'building_age_max', 'nearest_station', 'railway_line',
     'features', 'tags', 'source_type', 'source', 'location', 'floor_plan', 'status',
-    'property_type', 'page', 'limit', 'order'
+    'property_type', 'featured', 'page', 'limit', 'order'
 ];
 
 let estateSearchRedisClient;
@@ -413,6 +413,7 @@ async function buildEstateSearchIndexRows(knex, propertyId) {
         transaction_type: property.property_type || null,
         source_type: property.source || property.registered_by || null,
         status: property.status || 'draft',
+        featured: property.featured === true || property.featured === 1 || String(property.featured || '').toLowerCase() === 'true',
         prefecture: property.prefecture || null,
         city: property.city || null,
         ward: property.ward || null,
@@ -672,7 +673,7 @@ function hasAdvancedEstateSearchOptions(options = {}) {
         'query', 'q', 'search', 'query_any', 'station_walk_minutes_max', 'price_min', 'price_max', 'rent_min', 'rent_max',
         'area_min', 'area_max', 'deposit_min', 'deposit_max', 'key_money_min', 'key_money_max', 'yield_min', 'yield_max', 'land_area_min', 'land_area_max', 'building_area_min', 'building_area_max',
         'year_built_min', 'year_built_max', 'building_age_max', 'nearest_station', 'railway_line', 'features', 'tags',
-        'source_type', 'source', 'status', 'location', 'floor_plan'
+        'source_type', 'source', 'status', 'location', 'floor_plan', 'featured'
     ];
     return keys.some(key => options[key] !== undefined && options[key] !== null && String(options[key]).trim() !== '');
 }
@@ -772,6 +773,11 @@ function applyEstateSearchFilters(qb, options = {}) {
     }
     if (options.status) qb.whereIn('ep.status', String(options.status).split(',').map(v => v.trim()).filter(Boolean));
     if (options.property_type) qb.whereIn('ep.property_type', String(options.property_type).split(',').map(v => v.trim()).filter(Boolean));
+    if (options.featured !== undefined && options.featured !== null && String(options.featured).trim() !== '') {
+        const value = String(options.featured).trim().toLowerCase();
+        if (['true', '1'].includes(value)) qb.where('si.featured', true);
+        if (['false', '0'].includes(value)) qb.where('si.featured', false);
+    }
     if (options.source_type || options.source) qb.whereIn('si.source_type', String(options.source_type || options.source).split(',').map(v => v.trim()).filter(Boolean));
     if (options.location) addWhereLike(qb, ['si.address_text', 'si.normalized_text'], [normalizeSearchText(options.location)]);
     if (options.nearest_station || options.railway_line || Number(options.station_walk_minutes_max) > 0 || naturalStationFilters.stationName || naturalStationFilters.railwayLine || Number(naturalStationFilters.walkMax) > 0) {
@@ -1084,7 +1090,7 @@ const EstateProperty = ghostBookshelf.Model.extend({
             'query', 'q', 'search', 'query_any', 'station_walk_minutes_max', 'price_min', 'price_max', 'rent_min', 'rent_max',
             'area_min', 'area_max', 'deposit_min', 'deposit_max', 'key_money_min', 'key_money_max', 'yield_min', 'yield_max', 'land_area_min', 'land_area_max', 'building_area_min', 'building_area_max',
             'year_built_min', 'year_built_max', 'building_age_max', 'nearest_station', 'railway_line', 'features', 'tags',
-            'source_type', 'source', 'location', 'floor_plan', 'status', 'property_type'
+            'source_type', 'source', 'location', 'floor_plan', 'status', 'property_type', 'featured'
         ]});
         const knex = ghostBookshelf.knex;
         if (!await hasSearchIndexTables(knex)) {

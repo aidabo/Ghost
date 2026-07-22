@@ -58,6 +58,7 @@ const controller = {
             'location',
             'floor_plan',
             'property_type',
+            'featured',
             'status',
         ],
         validation: {
@@ -144,6 +145,7 @@ const controller = {
             'location',
             'floor_plan',
             'property_type',
+            'featured',
             'status',
         ],
         validation: {

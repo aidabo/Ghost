@@ -59,6 +59,7 @@ const controller = {
             'source',
             'location',
             'property_type',
+            'featured',
             'status',
         ],
         validation: {
