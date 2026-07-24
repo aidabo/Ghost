@@ -262,9 +262,13 @@ const isMissingThumbnailColumnError = (err) => {
         message.includes('has no column named thumbnail_');
 };
 
+// Sanitize filename for safe S3 object key. Preserves CJK characters
+// (hiragana/katakana U+3040-30FF, CJK unified U+3400-9FFF) and common
+// safe punctuation so non-Latin filenames remain readable.
+// NOTE: Keep in sync with content/adapters/storage/s3/src/index.js.
 const sanitizeFileName = (value) => {
     const raw = String(value || '').trim();
-    const base = path.basename(raw).replace(/[^\w.\-()+\u3040-\u30ff\u3400-\u9fff]/g, '_');
+    const base = path.basename(raw).replace(/[^\w.\-()+\u3040-\u30ff\u3400-\u9fff]/g, '-');
     return base || 'upload.bin';
 };
 
