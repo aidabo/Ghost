@@ -48,17 +48,24 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
-// Recipients: each property's primary staff (is_primary); if a property has no
-// primary, fall back to all of its staff. Returns distinct user emails.
-async function collectStaffEmails(propertyIds) {
-    if (!propertyIds || propertyIds.length === 0) {
-        return [];
-    }
-    const rows = await db.knex('estate_property_staff as s')
-        .join('users as u', 's.user_id', 'u.id')
-        .whereIn('s.property_id', propertyIds)
-        .whereNotNull('u.email')
-        .select('s.property_id', 's.is_primary', 'u.email');
+function takeAgentUserId(data) {
+    const agentUserId = String(data.agent_user_id || '').trim();
+    delete data.agent_user_id;
+    return agentUserId;
+}
+
+// Recipients: the explicitly selected valuation staff plus each property's
+// primary staff (or all property staff when no primary exists). If neither path
+// resolves, use the configured estate inbox. Only server-resolved addresses are
+// accepted; the public request never supplies a recipient email.
+async function collectStaffEmails(propertyIds, agentUserId) {
+    const rows = propertyIds && propertyIds.length > 0
+        ? await db.knex('estate_property_staff as s')
+            .join('users as u', 's.user_id', 'u.id')
+            .whereIn('s.property_id', propertyIds)
+            .whereNotNull('u.email')
+            .select('s.property_id', 's.is_primary', 'u.email')
+        : [];
 
     const byProperty = new Map();
     for (const row of rows) {
@@ -75,6 +82,26 @@ async function collectStaffEmails(propertyIds) {
             if (row.email) {
                 emails.set(String(row.email).toLowerCase(), row.email);
             }
+        }
+    }
+
+    const selectedUserId = String(agentUserId || '').trim();
+    if (selectedUserId) {
+        const selectedUser = await db.knex('users')
+            .where({id: selectedUserId, status: 'active'})
+            .whereNotNull('email')
+            .first('email');
+        if (selectedUser && selectedUser.email) {
+            emails.set(String(selectedUser.email).toLowerCase(), selectedUser.email);
+        } else {
+            logging.warn(`estate inquiry: agent_user_id ${selectedUserId} did not resolve to an active user with an email; using the default inbox when configured.`);
+        }
+    }
+
+    if (emails.size === 0) {
+        const fallback = String(process.env.ESTATE_AGENT_INBOX || '').trim();
+        if (fallback) {
+            emails.set(fallback.toLowerCase(), fallback);
         }
     }
     return [...emails.values()];
@@ -115,17 +142,23 @@ async function recordNotificationStatus(inquiryId, status) {
 // Customer confirmation email (also reused by the resend action). Never throws.
 async function sendCustomerConfirmationEmail(mailer, inquiry, inquiryProperties) {
     const reference = inquiry.reference_code || '';
+    const isValuation = inquiry.inquiry_type === 'valuation';
+    const subject = isValuation
+        ? `査定依頼を受け付けました（${reference}）`
+        : `お問い合わせを受け付けました（${reference}）`;
+    const propertySection = inquiryProperties.length > 0
+        ? `<p><strong>対象物件:</strong></p>${renderPropertyListHtml(inquiryProperties)}`
+        : '';
     try {
         await mailer.send({
             to: inquiry.email,
-            subject: `お問い合わせを受け付けました（${reference}）`,
+            subject,
             html: `
                 <p>${escapeHtml(inquiry.name || '')} 様</p>
-                <p>この度はお問い合わせいただきありがとうございます。以下の内容で受け付けました。</p>
+                <p>${isValuation ? 'この度は査定をご依頼いただきありがとうございます。以下の内容で受け付けました。' : 'この度はお問い合わせいただきありがとうございます。以下の内容で受け付けました。'}</p>
                 <p><strong>受付番号:</strong> ${escapeHtml(reference)}</p>
-                <p><strong>対象物件:</strong></p>
-                ${renderPropertyListHtml(inquiryProperties)}
-                <p>担当者より折り返しご連絡いたします。</p>
+                ${propertySection}
+                <p>${isValuation ? '査定担当者' : '担当者'}より折り返しご連絡いたします。</p>
             `
         });
         return {ok: true, to: inquiry.email};
@@ -138,28 +171,31 @@ async function sendCustomerConfirmationEmail(mailer, inquiry, inquiryProperties)
 // Notify the property staff and confirm to the customer. Best-effort: never throws,
 // each email is independent (one failure never blocks the other), and the outcome
 // is logged + recorded on the inquiry so failures (incl. the customer email) are visible.
-async function sendInquiryNotifications({inquiryId, inquiry, inquiryProperties, propertyIds}) {
+async function sendInquiryNotifications({inquiryId, inquiry, inquiryProperties, propertyIds, agentUserId}) {
     const mailer = new GhostMailer();
     const reference = inquiry.reference_code || '';
     const propertyListHtml = renderPropertyListHtml(inquiryProperties);
     const messageHtml = escapeHtml(inquiry.message || '').replace(/\n/g, '<br/>');
+    const isValuation = inquiry.inquiry_type === 'valuation';
+    const propertySection = inquiryProperties.length > 0
+        ? `<p><strong>対象物件:</strong></p>${propertyListHtml}`
+        : '';
     const status = {staff: null, customer: null};
 
     try {
-        const staffEmails = await collectStaffEmails(propertyIds);
+        const staffEmails = await collectStaffEmails(propertyIds, agentUserId);
         if (staffEmails.length > 0) {
             await mailer.send({
                 to: staffEmails.join(', '),
                 replyTo: inquiry.email || undefined,
-                subject: `【物件お問い合わせ】${reference} ${inquiry.name || ''}`,
+                subject: `【${isValuation ? '査定依頼' : '物件お問い合わせ'}】${reference} ${inquiry.name || ''}`,
                 html: `
-                    <p>物件のお問い合わせを受け付けました。</p>
+                    <p>${isValuation ? '所有物件の査定依頼を受け付けました。' : '物件のお問い合わせを受け付けました。'}</p>
                     <p><strong>受付番号:</strong> ${escapeHtml(reference)}</p>
                     <p><strong>お客様:</strong> ${escapeHtml(inquiry.name)}<br/>
                        Email: ${escapeHtml(inquiry.email)}<br/>
                        電話: ${escapeHtml(inquiry.phone || '-')}</p>
-                    <p><strong>対象物件:</strong></p>
-                    ${propertyListHtml}
+                    ${propertySection}
                     <p><strong>メッセージ:</strong><br/>${messageHtml}</p>
                 `
             });
@@ -191,6 +227,10 @@ const controller = {
         permissions: true,
         async query(frame) {
             const data = frame.data.estateinquiries[0];
+
+            // `agent_user_id` selects a server-side staff recipient and is not a
+            // column on estate_inquiries, so remove it before persisting the model.
+            const agentUserId = takeAgentUserId(data);
 
             // Collect requested property ids (explicit list, or the single property_id).
             const requestedIds = [...new Set(
@@ -270,7 +310,7 @@ const controller = {
             // the outcome (a failed customer email is recorded on metadata and returned,
             // letting the UI prompt the customer to correct the address and resend). A
             // mail failure never throws — the inquiry is already committed.
-            await sendInquiryNotifications({inquiryId, inquiry: data, inquiryProperties, propertyIds: requestedIds})
+            await sendInquiryNotifications({inquiryId, inquiry: data, inquiryProperties, propertyIds: requestedIds, agentUserId})
                 .catch(err => logging.error(err));
 
             return models.EstateInquiry.findOne(
