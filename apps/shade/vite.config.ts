@@ -46,12 +46,29 @@ export default (function viteConfig() {
                 include: [/packages/, /node_modules/]
             },
             rollupOptions: {
-                external: (source) => {
+                external: (source, _importer, isResolved) => {
+                    // Bundle validator into shade's output — adminX-settings pins validator@7
+                    // (no es/ path) which conflicts with shade's validator@13, so hoisting
+                    // fails and adminX's Vite can't resolve the external import at runtime.
+                    // The check must cover both the bare specifier (isResolved=false) and
+                    // the absolute resolved path (isResolved=true) since Rollup calls this
+                    // function at both stages.
+                    if (isResolved) {
+                        if (source.includes('/node_modules/validator/')) {
+                            return false;
+                        }
+                        return source.includes('node_modules');
+                    }
+
                     if (source.startsWith('@/')) {
                         return false;
                     }
 
                     if (source.startsWith('.')) {
+                        return false;
+                    }
+
+                    if (source === 'validator' || source.startsWith('validator/')) {
                         return false;
                     }
 
