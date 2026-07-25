@@ -1332,6 +1332,8 @@ module.exports = {
         model: { type: 'string', maxlength: 191, nullable: true },
         response_mode: { type: 'string', maxlength: 50, nullable: true },
         visibility: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'private', index: true },
+        is_pinned: { type: 'bool', nullable: false, defaultTo: false },
+        is_marked: { type: 'bool', nullable: false, defaultTo: false },
         created_at: { type: 'dateTime', nullable: false, index: true },
         updated_at: { type: 'dateTime', nullable: false, index: true },
         '@@INDEXES@@': [

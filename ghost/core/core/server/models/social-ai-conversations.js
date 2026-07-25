@@ -9,7 +9,9 @@ const SocialAiConversation = ghostBookshelf.Model.extend({
     defaults() {
         return {
             id: ObjectId().toHexString(),
-            visibility: 'private'
+            visibility: 'private',
+            is_pinned: false,
+            is_marked: false
         };
     },
 

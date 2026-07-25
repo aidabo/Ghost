@@ -271,6 +271,8 @@ const controller = {
                 model: row.model,
                 response_mode: row.response_mode,
                 visibility: row.visibility,
+                is_pinned: Boolean(row.is_pinned),
+                is_marked: Boolean(row.is_marked),
                 created_at: row.created_at,
                 updated_at: row.updated_at
             }));
@@ -363,6 +365,8 @@ const controller = {
                 model: conversation.model,
                 response_mode: conversation.response_mode,
                 visibility: conversation.visibility,
+                is_pinned: Boolean(conversation.is_pinned),
+                is_marked: Boolean(conversation.is_marked),
                 created_at: conversation.created_at,
                 updated_at: conversation.updated_at,
                 messages: formatMessageRows(messageRows),
@@ -561,9 +565,90 @@ const controller = {
                 model: conversation.model,
                 response_mode: conversation.response_mode,
                 visibility: conversation.visibility,
+                is_pinned: Boolean(conversation.is_pinned),
+                is_marked: Boolean(conversation.is_marked),
                 created_at: conversation.created_at,
                 updated_at: conversation.updated_at,
                 saved_message_ids: messageIds
+            };
+        }
+    },
+
+    edit: {
+        headers: { cacheInvalidate: false },
+        options: [
+            'group_id',
+            'user_id'
+        ],
+        data: ['id', 'is_pinned', 'is_marked', 'title'],
+        permissions: false,
+        async query(frame) {
+            const knex = models.Base.knex;
+            const targetUserId = await resolveTargetUserId(frame);
+            const conversationId = String(frame.data?.id || '').trim();
+            if (!conversationId) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.conversationIdRequired)
+                });
+            }
+
+            const conversation = await knex(CONVERSATIONS_TABLE)
+                .where({ id: conversationId })
+                .first();
+
+            if (!conversation) {
+                throw new errors.NotFoundError({
+                    message: tpl(messages.notFound)
+                });
+            }
+
+            if (conversation.user_id !== targetUserId) {
+                const currentUserId = getCurrentUserId(frame);
+                const currentIntegrationId = getCurrentIntegrationId(frame);
+                const isAllowed = Boolean(currentIntegrationId) || await isAdminUser(currentUserId);
+                if (!isAllowed) {
+                    throw new errors.NoPermissionError({
+                        message: tpl(messages.noPermission)
+                    });
+                }
+            }
+
+            const updates = {};
+            if (Object.prototype.hasOwnProperty.call(frame.data, 'is_pinned')) {
+                updates.is_pinned = Boolean(frame.data.is_pinned);
+            }
+            if (Object.prototype.hasOwnProperty.call(frame.data, 'is_marked')) {
+                updates.is_marked = Boolean(frame.data.is_marked);
+            }
+            if (Object.prototype.hasOwnProperty.call(frame.data, 'title')) {
+                const newTitle = String(frame.data.title || '').trim();
+                if (newTitle) {
+                    updates.title = newTitle;
+                }
+            }
+
+            if (Object.keys(updates).length === 0) {
+                return {
+                    id: conversation.id,
+                    is_pinned: Boolean(conversation.is_pinned),
+                    is_marked: Boolean(conversation.is_marked)
+                };
+            }
+
+            await knex(CONVERSATIONS_TABLE)
+                .where({ id: conversationId })
+                .update(updates);
+
+            const updated = await knex(CONVERSATIONS_TABLE)
+                .where({ id: conversationId })
+                .first();
+
+            return {
+                id: updated.id,
+                is_pinned: Boolean(updated.is_pinned),
+                is_marked: Boolean(updated.is_marked),
+                title: updated.title,
+                updated_at: updated.updated_at
             };
         }
     },
