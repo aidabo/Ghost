@@ -1879,8 +1879,8 @@ module.exports = {
     },
 
     publish_posts: {
-        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
-        post_id: {type: 'string', maxlength: 24, nullable: false, unique: true, references: 'posts.id'},
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        post_id: { type: 'string', maxlength: 24, nullable: false, unique: true, references: 'posts.id' },
         content_type: {
             type: 'string',
             maxlength: 50,
@@ -1890,12 +1890,12 @@ module.exports = {
                 isIn: [['news', 'government', 'publication', 'comic', 'entertainment']]
             }
         },
-        section: {type: 'string', maxlength: 200, nullable: true},
-        featured: {type: 'bool', nullable: false, defaultTo: false},
-        metadata_json: {type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true},
-        sort_order: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
-        created_at: {type: 'dateTime', nullable: false},
-        updated_at: {type: 'dateTime', nullable: true},
+        section: { type: 'string', maxlength: 200, nullable: true },
+        featured: { type: 'bool', nullable: false, defaultTo: false },
+        metadata_json: { type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true },
+        sort_order: { type: 'integer', nullable: false, unsigned: true, defaultTo: 0 },
+        created_at: { type: 'dateTime', nullable: false },
+        updated_at: { type: 'dateTime', nullable: true },
         '@@INDEXES@@': [
             ['content_type'],
             ['featured'],
@@ -2187,5 +2187,35 @@ module.exports = {
             ['user_id', 'status'],
             ['status', 'claim_expires_at']
         ]
-    }
+    },
+
+    // Denormalized keyword-search index for core posts (mirrors the estate search
+    // index pattern). One row per post.
+    // - `search_text` = title + excerpt + tags + author + body (the combined blob;
+    //   FULLTEXT-searched as "search everything", body included for now — monitor
+    //   size in production and cap the body portion later if needed).
+    // - per-field columns (title/excerpt/tag/author) support field-restricted search.
+    // FULLTEXT(ngram) indexes (combined on `search_text` + one per field) are added
+    // by a raw migration (schema.js @@INDEXES@@ cannot express WITH PARSER ngram).
+    // Regular index on (status, published_at) for facet/sort. Source of truth is
+    // `posts`; rows are upserted on post save.
+    post_search_index: {
+        post_id: { type: 'string', maxlength: 24, nullable: false, primary: true, references: 'posts.id', cascadeDelete: true },
+        search_text: { type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true },
+        title_text: { type: 'string', maxlength: 2000, nullable: true },
+        excerpt_text: { type: 'text', maxlength: 65535, nullable: true },
+        tag_text: { type: 'text', maxlength: 65535, nullable: true },
+        author_text: { type: 'string', maxlength: 1000, nullable: true },
+        status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft' },
+        visibility: { type: 'string', maxlength: 50, nullable: true },
+        featured: { type: 'bool', nullable: false, defaultTo: false },
+        published_at: { type: 'dateTime', nullable: true },
+        updated_at: { type: 'dateTime', nullable: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true },
+        author_ids: { type: 'text', maxlength: 65535, nullable: true },
+        '@@INDEXES@@': [
+            ['status', 'published_at']
+        ]
+    },
+
 };

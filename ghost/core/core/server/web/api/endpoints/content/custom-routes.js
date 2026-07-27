@@ -14,6 +14,12 @@ module.exports = function customApiRoutes(router) {
     router.get('/social/components', mw.authenticatePublic, http(api.socialComponentsPublic.browse));
     router.get('/social/components/:id', mw.authenticatePublic, http(api.socialComponentsPublic.read));
 
+    // ## post search index (public: published + public)
+    // NOTE: mounted under /search/* — NOT /posts/* — because the core `/posts/:id`
+    // route above is registered before customApi() and would otherwise capture
+    // `/posts/search-index` as id="search-index" (422 on the 24-hex id validator).
+    router.get('/search/posts', mw.authenticatePublic, http(api.postsSearchIndexPublic.search));
+
     // ## estate content routes
     router.get('/estate/properties', mw.authenticatePublic, http(api.estatePropertiesPublic.browse));
     router.get('/estate/properties/search', mw.authenticatePublic, http(api.estatePropertiesPublic.search));

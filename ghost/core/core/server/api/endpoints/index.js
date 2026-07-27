@@ -316,6 +316,11 @@ module.exports = {
 
     //custom end
 
+    // post search index (admin: includes drafts / non-public)
+    get postsSearchIndex() {
+        return apiFramework.pipeline(require('./posts-search-index'), localUtils);
+    },
+
     // estate admin endpoints
     get estateProperties() {
         return apiFramework.pipeline(require('./estate-properties'), localUtils);
@@ -460,6 +465,11 @@ module.exports = {
 
     get socialComponentsPublic() {
         return apiFramework.pipeline(require('./social-components-public'), localUtils, 'social');
+    },
+
+    // post search index (public: published + public only)
+    get postsSearchIndexPublic() {
+        return apiFramework.pipeline(require('./posts-search-index-public'), localUtils, 'content');
     },
 
     // estate content endpoints

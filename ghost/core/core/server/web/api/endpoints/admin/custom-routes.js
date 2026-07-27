@@ -46,6 +46,12 @@ const createOrUpdateGalleryAsset = async (req, res, next) => {
  */
 module.exports = function customApiRoutes(router) {
     // bookmarks
+    // post search index (admin: includes drafts / non-public, for logged-in surfaces)
+    // NOTE: mounted under /search/* — NOT /posts/* — because the core `/posts/:id`
+    // route is registered before customApi() and would otherwise capture
+    // `/posts/search-index` as id="search-index" (422 on the 24-hex id validator).
+    router.get('/search/posts', mw.authAdminApi, http(api.postsSearchIndex.search));
+
     router.get('/social/bookmarks', mw.authAdminApi, http(api.socialBookmarks.browse));
     router.get('/social/bookmarks/:id', mw.authAdminApi, http(api.socialBookmarks.read));
     router.post('/social/bookmarks', mw.authAdminApi, http(api.socialBookmarks.add));
