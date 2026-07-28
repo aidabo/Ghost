@@ -1350,7 +1350,7 @@ Post = ghostBookshelf.Model.extend({
             filter = filter ? `${filter}+(public_post:true)` : '(public_post:true)';
         }
 
-        logging.info('Post.defaultFilters', filter, JSON.stringify(options.context || {}));
+        logging.debug('Post.defaultFilters', filter, JSON.stringify(options.context || {}));
         return filter;
     },
 
@@ -1461,7 +1461,7 @@ Post = ghostBookshelf.Model.extend({
     },
 
     validateGroupPostOnFetch: async function validateGroupPostOnFetch(options) {
-        logging.info('validateGroupPostOnFetch', JSON.stringify(options));
+        logging.debug('validateGroupPostOnFetch', JSON.stringify(options));
         if (options.context?.internal){
             return;
         }
