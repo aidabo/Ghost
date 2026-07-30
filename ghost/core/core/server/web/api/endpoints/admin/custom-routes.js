@@ -118,6 +118,12 @@ module.exports = function customApiRoutes(router) {
     router.put('/social/components/:id', mw.authAdminApi, http(api.socialComponents.edit));
     router.del('/social/components/:id', mw.authAdminApi, http(api.socialComponents.destroy));
 
+    router.get('/social/charts', mw.authAdminApi, http(api.socialCharts.browse));
+    router.get('/social/charts/:id', mw.authAdminApi, http(api.socialCharts.read));
+    router.post('/social/charts', mw.authAdminApi, http(api.socialCharts.add));
+    router.put('/social/charts/:id', mw.authAdminApi, http(api.socialCharts.edit));
+    router.del('/social/charts/:id', mw.authAdminApi, http(api.socialCharts.destroy));
+
     router.get('/social/postcomponents', mw.authAdminApi, http(api.socialPostComponents.browse));
     router.get('/social/postcomponents/:id', mw.authAdminApi, http(api.socialPostComponents.read));
     router.post('/social/postcomponents', mw.authAdminApi, http(api.socialPostComponents.add));

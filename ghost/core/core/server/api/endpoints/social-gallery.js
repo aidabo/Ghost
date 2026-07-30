@@ -1294,6 +1294,7 @@ const controller = {
         options: [
             'group_id',
             'job_id',
+            'social_chart_id',
             'tag',
             'tag_slug',
             'tag_id',
@@ -1417,6 +1418,7 @@ const controller = {
                     user_id: uploadContext.userId || null,
                     group_id: uploadContext.groupId || null,
                     job_id: String(uploadContext.jobId || getFrameValue(frame, 'job_id') || '').trim() || null,
+                    social_chart_id: String(getFrameValue(frame, 'social_chart_id') || '').trim() || null,
                     category: uploadContext.tag?.name || null,
                     category_slug: uploadContext.tag?.slug || null,
                     content_type: contentType,
@@ -1441,6 +1443,7 @@ const controller = {
             'property_id',
             'job_id',
             'dzi_job_id',
+            'social_chart_id',
             'tag',
             'tag_slug',
             'tag_id',
@@ -1462,6 +1465,7 @@ const controller = {
             const originalFilename = sanitizeFileName(getFrameValue(frame, 'original_filename'));
             const jobId = String(getFrameValue(frame, 'job_id') || '').trim() || null;
             const dziJobId = String(getFrameValue(frame, 'dzi_job_id') || '').trim() || null;
+            const socialChartId = String(getFrameValue(frame, 'social_chart_id') || '').trim() || null;
 
             if (!storageKey) {
                 throw new errors.ValidationError({
@@ -1492,6 +1496,7 @@ const controller = {
                     originalFilename,
                     jobId,
                     dziJobId,
+                    socialChartId,
                     userId: uploadContext.userId,
                     groupId: uploadContext.groupId,
                     propertyId: uploadContext.propertyId || propertyId,
@@ -1528,6 +1533,7 @@ const controller = {
                     original_filename: originalFilename || null,
                     job_id: jobId,
                     dzi_job_id: dziJobId,
+                    social_chart_id: socialChartId,
                     asset_type: assetType,
                     owner_scope: uploadContext.ownerScope || (uploadContext.groupId ? 'group' : 'user'),
                     property_id: finalPropertyId,

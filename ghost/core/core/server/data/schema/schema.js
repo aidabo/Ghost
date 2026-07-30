@@ -1273,6 +1273,23 @@ module.exports = {
         updated_at: { type: 'dateTime', nullable: false },
         updated_by: { type: 'string', maxlength: 24, nullable: true }
     },
+    social_charts: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        slug: { type: 'string', maxlength: 191, nullable: true, unique: true },
+        title: { type: 'string', maxlength: 191, nullable: false },
+        excerpt: { type: 'string', maxlength: 500, nullable: true },
+        image: { type: 'string', maxlength: 500, nullable: true },
+        chart_props: { type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true },
+        status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft', validations: { isIn: [['published', 'draft']] } },
+        published_at: { type: 'dateTime', nullable: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true, index: true },
+        category: { type: 'string', maxlength: 100, nullable: true },
+        thumbnail: { type: 'string', maxlength: 2000, nullable: true },
+        created_at: { type: 'dateTime', nullable: false },
+        created_by: { type: 'string', maxlength: 24, nullable: false },
+        updated_at: { type: 'dateTime', nullable: false },
+        updated_by: { type: 'string', maxlength: 24, nullable: true }
+    },
     social_post_components: {
         id: { type: 'string', maxlength: 24, nullable: false, primary: true },
         post_id: { type: 'string', maxlength: 24, nullable: false, references: 'posts.id' },
@@ -1305,6 +1322,7 @@ module.exports = {
         owner_scope: { type: 'string', maxlength: 20, nullable: false, index: true },
         user_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'users.id', cascadeDelete: true },
         group_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true },
+        // Media job ID. A plain indexed link
         job_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_ai_media_jobs.id', setNullDelete: true },
         // Deep Zoom source-PDF link. A plain indexed link, NOT a FK: the upload
         // flow finalizes the source-PDF asset BEFORE the social_ai_dzi_jobs row
@@ -1312,6 +1330,10 @@ module.exports = {
         // insert time. Cleanup is done explicitly in the DZI destroy endpoint
         // (delete assets WHERE dzi_job_id = <job>), not via ON DELETE CASCADE.
         dzi_job_id: { type: 'string', maxlength: 24, nullable: true, index: true },
+        // Chart thumbnail link. A plain indexed link, NOT a FK: same reason as
+        // dzi_job_id — the asset is created before the thumbnail URL is written
+        // back to social_charts. Cleanup is handled explicitly by the host.
+        social_chart_id: { type: 'string', maxlength: 24, nullable: true, index: true },
         tag_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'tags.id', setNullDelete: true },
         tag_slug: { type: 'string', maxlength: 191, nullable: true, index: true },
         created_at: { type: 'dateTime', nullable: false },

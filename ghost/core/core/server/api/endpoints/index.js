@@ -254,6 +254,10 @@ module.exports = {
         return apiFramework.pipeline(require('./social-components'), localUtils);
     },
 
+    get socialCharts() {
+        return apiFramework.pipeline(require('./social-charts'), localUtils);
+    },
+
     get socialPostComponents() {
         return apiFramework.pipeline(require('./social-post-components'), localUtils);
     },
@@ -465,6 +469,10 @@ module.exports = {
 
     get socialComponentsPublic() {
         return apiFramework.pipeline(require('./social-components-public'), localUtils, 'social');
+    },
+
+    get socialChartsPublic() {
+        return apiFramework.pipeline(require('./social-charts-public'), localUtils, 'social');
     },
 
     // post search index (public: published + public only)

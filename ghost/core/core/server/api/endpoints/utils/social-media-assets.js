@@ -141,6 +141,7 @@ const upsertAsset = async ({
     originalFilename,
     jobId,
     dziJobId,
+    socialChartId,
     userId,
     groupId,
     propertyId,
@@ -173,6 +174,7 @@ const upsertAsset = async ({
             group_id: groupId || null,
             job_id: normalizeJobId(jobId),
             dzi_job_id: normalizeJobId(dziJobId),
+            social_chart_id: normalizeJobId(socialChartId),
             tag_id: tag?.id || null,
             tag_slug: tag?.slug || null,
             updated_at: now
@@ -188,6 +190,7 @@ const upsertAsset = async ({
             group_id: payload.group_id,
             job_id: payload.job_id,
             dzi_job_id: payload.dzi_job_id,
+            social_chart_id: payload.social_chart_id,
             tag_id: payload.tag_id,
             tag_slug: payload.tag_slug,
             updated_at: payload.updated_at
@@ -232,9 +235,12 @@ const upsertAsset = async ({
             const isMissingDziJobIdColumn =
                 (message.includes('unknown column') || message.includes('has no column named')) &&
                 message.includes('dzi_job_id');
+            const isMissingSocialChartIdColumn =
+                (message.includes('unknown column') || message.includes('has no column named')) &&
+                message.includes('social_chart_id');
             const isMissingStorageKeyHashColumn = isMissingStorageKeyHashColumnError(err);
 
-            if (!isMissingThumbnailColumn && !isMissingJobIdColumn && !isMissingDziJobIdColumn && !isMissingStorageKeyHashColumn) {
+            if (!isMissingThumbnailColumn && !isMissingJobIdColumn && !isMissingDziJobIdColumn && !isMissingSocialChartIdColumn && !isMissingStorageKeyHashColumn) {
                 throw err;
             }
 
@@ -243,6 +249,9 @@ const upsertAsset = async ({
             };
             if (isMissingDziJobIdColumn) {
                 delete fallbackPayload.dzi_job_id;
+            }
+            if (isMissingSocialChartIdColumn) {
+                delete fallbackPayload.social_chart_id;
             }
             if (isMissingStorageKeyHashColumn) {
                 delete fallbackPayload.storage_key_hash;

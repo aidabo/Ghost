@@ -14,6 +14,9 @@ module.exports = function customApiRoutes(router) {
     router.get('/social/components', mw.authenticatePublic, http(api.socialComponentsPublic.browse));
     router.get('/social/components/:id', mw.authenticatePublic, http(api.socialComponentsPublic.read));
 
+    router.get('/social/charts', mw.authenticatePublic, http(api.socialChartsPublic.browse));
+    router.get('/social/charts/:id', mw.authenticatePublic, http(api.socialChartsPublic.read));
+
     // ## post search index (public: published + public)
     // NOTE: mounted under /search/* — NOT /posts/* — because the core `/posts/:id`
     // route above is registered before customApi() and would otherwise capture
