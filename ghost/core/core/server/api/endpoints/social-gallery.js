@@ -877,11 +877,12 @@ const resolvePropertyAndCheckExists = async (propertyId) => {
  * Precedence is explicit so browser state cannot accidentally override a more specific target.
  * Add new scopes here instead of spreading more conditionals across presign/finalize.
  */
-const resolveGalleryScope = ({ target, groupId, propertyId, personId }) => {
+const resolveGalleryScope = ({ target, groupId, propertyId, personId, chartId }) => {
     const normalizedTarget = String(target || '').toLowerCase().trim();
     const normalizedGroupId = String(groupId || '').trim();
     const normalizedPropertyId = String(propertyId || '').trim();
     const normalizedPersonId = String(personId || '').trim();
+    const normalizedChartId = String(chartId || '').trim();
 
     if (normalizedTarget === 'property' || normalizedPropertyId) {
         return {
@@ -919,6 +920,16 @@ const resolveGalleryScope = ({ target, groupId, propertyId, personId }) => {
         };
     }
 
+    if (normalizedTarget === 'chart' || normalizedChartId) {
+        return {
+            scope: 'chart',
+            propertyId: null,
+            groupId: null,
+            personId: null,
+            chartId: normalizedChartId
+        };
+    }
+
     return {
         scope: 'user',
         propertyId: null,
@@ -934,8 +945,9 @@ const resolveUploadContext = async (frame) => {
     const target = getFrameValue(frame, 'target');
     const propertyId = getFrameValue(frame, 'property_id');
     const personId = getFrameValue(frame, 'person_id');
+    const chartId = getFrameValue(frame, 'social_chart_id');
     const tag = await socialMediaAssets.resolveTag(models.Base.knex, frame);
-    const resolvedScope = resolveGalleryScope({target, groupId, propertyId, personId});
+    const resolvedScope = resolveGalleryScope({target, groupId, propertyId, personId, chartId});
 
     logging.info('[social-gallery] resolveUploadContext: start', {
         userId: userId || null,
@@ -1009,6 +1021,26 @@ const resolveUploadContext = async (frame) => {
             groupId: null,
             jobId,
             ownerScope: 'deepzoom',
+            tag
+        };
+    }
+
+    // Chart target: gallery/charts/{social-chart-id}/  (owner_scope = 'chart')
+    if (resolvedScope.scope === 'chart') {
+        if (!userId) {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.userRequired)
+            });
+        }
+
+        const cid = String(resolvedScope.chartId || getFrameValue(frame, 'social_chart_id') || '').trim();
+        const baseDir = path.posix.join(root, 'gallery', 'charts', cid || 'unknown');
+        return {
+            mediaStore,
+            targetDir: mediaStore.getTargetDir(baseDir),
+            userId,
+            groupId: null,
+            ownerScope: 'chart',
             tag
         };
     }
