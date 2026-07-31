@@ -182,5 +182,8 @@ temp*.sql
 .yarncachecopy
 
 /ghost/core/content.origin/
-ghost/core/core/shared/config/env/config.development.json 
+ghost/core/core/shared/config/env/config.development.json
+ghost/core/core/shared/config/env/*.json
 .omx/
+.omc/
+yalc.lock
