@@ -318,6 +318,14 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-dzi-public'), localUtils, 'content');
     },
 
+    get socialAiChartJobs() {
+        return apiFramework.pipeline(require('./social-ai-chart-jobs'), localUtils);
+    },
+
+    get socialAiProjects() {
+        return apiFramework.pipeline(require('./social-ai-projects'), localUtils);
+    },
+
     //custom end
 
     // post search index (admin: includes drafts / non-public)

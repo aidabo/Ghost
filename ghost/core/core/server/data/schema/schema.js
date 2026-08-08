@@ -1334,6 +1334,11 @@ module.exports = {
         // dzi_job_id — the asset is created before the thumbnail URL is written
         // back to social_charts. Cleanup is handled explicitly by the host.
         social_chart_id: { type: 'string', maxlength: 24, nullable: true, index: true },
+        // Chart-job artifact link. A plain indexed link, NOT a FK: chart-job
+        // artifacts are written by the worker BEFORE the job's asset rows are
+        // linked (worker has no browser session). Cleanup is handled explicitly
+        // by the chart-jobs destroy endpoint (delete assets WHERE chart_job_id = <job>).
+        chart_job_id: { type: 'string', maxlength: 24, nullable: true, index: true },
         tag_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'tags.id', setNullDelete: true },
         tag_slug: { type: 'string', maxlength: 191, nullable: true, index: true },
         created_at: { type: 'dateTime', nullable: false },
@@ -2208,6 +2213,84 @@ module.exports = {
             ['status'],
             ['user_id', 'status'],
             ['status', 'claim_expires_at']
+        ]
+    },
+
+    social_ai_chart_jobs: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        // Leading step type (image-fetch / csv-create / …), for display & filtering.
+        type: { type: 'string', maxlength: 100, nullable: false, defaultTo: 'image-fetch' },
+        status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued', index: true },
+        // Ordered step array: [{id, type, status, payload, result, artifacts, error, history, progress}].
+        // Job-level status is DERIVED from steps in the endpoint.
+        steps: { type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true },
+        payload: { type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true },
+        result: { type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true },
+        progress: { type: 'integer', nullable: false, unsigned: true, defaultTo: 0 },
+        source_path: { type: 'string', maxlength: 2000, nullable: true },
+        preview_url: { type: 'string', maxlength: 2000, nullable: true },
+        error: { type: 'string', maxlength: 2000, nullable: true },
+        claim_worker_id: { type: 'string', maxlength: 191, nullable: true },
+        claim_expires_at: { type: 'dateTime', nullable: true },
+        user_id: { type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true, index: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', setNullDelete: true },
+        // Generic project container (P1 — plan §0-1/§2-2). Plain indexed, NOT
+        // a FK: project deletion cascades explicitly in the endpoint (M7).
+        // Null = legacy MVP job (kept compatible, plan §9-3).
+        project_id: { type: 'string', maxlength: 24, nullable: true, index: true },
+        created_at: { type: 'dateTime', nullable: false },
+        created_by: { type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true },
+        updated_at: { type: 'dateTime', nullable: false },
+        updated_by: { type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true },
+        started_at: { type: 'dateTime', nullable: true },
+        completed_at: { type: 'dateTime', nullable: true },
+        '@@INDEXES@@': [
+            ['status'],
+            ['type', 'status'],
+            ['user_id', 'status'],
+            ['status', 'claim_expires_at']
+        ]
+    },
+
+    social_ai_projects: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        name: { type: 'string', maxlength: 191, nullable: false },
+        description: { type: 'text', maxlength: 2000, nullable: true },
+        // tags: JSON array (series: "01-China" etc. as tags — keeps the table
+        // generic, plan §3-1). LIKE-scan searchable; normalized table only if a
+        // tag-search requirement appears (review L3).
+        tags: { type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true },
+        // Derived from the project's jobs (no jobs → draft / any queued|running
+        // → active / all terminal → completed), kept in sync by
+        // recalcProjectStatus (review M2).
+        status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft', index: true },
+        user_id: { type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true, index: true },
+        group_id: { type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', setNullDelete: true },
+        created_at: { type: 'dateTime', nullable: false },
+        created_by: { type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true },
+        updated_at: { type: 'dateTime', nullable: false },
+        updated_by: { type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true },
+        '@@INDEXES@@': [
+            ['status'],
+            ['user_id', 'status']
+        ]
+    },
+
+    social_ai_chart_job_media: {
+        id: { type: 'string', maxlength: 24, nullable: false, primary: true },
+        chart_job_id: { type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_ai_chart_jobs.id', cascadeDelete: true },
+        media_id: { type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_media_assets.id', cascadeDelete: true },
+        role: { type: 'string', maxlength: 20, nullable: false, defaultTo: 'output', index: true },
+        source_kind: { type: 'string', maxlength: 20, nullable: true },
+        step_id: { type: 'string', maxlength: 64, nullable: true },
+        person_name: { type: 'string', maxlength: 191, nullable: true, index: true },
+        sort_order: { type: 'integer', nullable: false, unsigned: true, defaultTo: 0 },
+        caption: { type: 'string', maxlength: 2000, nullable: true },
+        created_at: { type: 'dateTime', nullable: false },
+        '@@INDEXES@@': [
+            ['chart_job_id', 'role', 'sort_order'],
+            ['chart_job_id', 'person_name'],
+            ['media_id']
         ]
     },
 

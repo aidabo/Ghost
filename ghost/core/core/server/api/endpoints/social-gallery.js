@@ -677,7 +677,7 @@ const listByPrefix = async (store, prefix, limit, nextCursor, type) => {
     };
 };
 
-const listByAssetTable = async ({ scope, userId, groupId, jobId, limit, nextCursor, type, orderBy }) => {
+const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, limit, nextCursor, type, orderBy }) => {
     const knex = models.Base.knex;
     const cursor = parseDbNextCursor(nextCursor);
     const sortField = orderBy?.field === 'updated_at' ? 'updated_at' : 'created_at';
@@ -722,6 +722,25 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, limit, nextCurs
                 .from('estate_property_media as epm')
                 .whereRaw('epm.media_id = sma.id');
         });
+    } else if (scope === 'chart_jobs') {
+        // Chart-job artifacts are written by the worker (Admin JWT) with a null
+        // user_id, so ownership is scoped through the OWNING chart job (user_id).
+        // Also allow rows the caller uploaded directly. Without this, any signed-in
+        // user could enumerate every user's chart-job artifacts (IDOR).
+        query = query
+            .where(function () {
+                this.where('sma.user_id', userId).orWhereExists(function () {
+                    this.select(1)
+                        .from('social_ai_chart_jobs as caj')
+                        .whereRaw('caj.id = sma.chart_job_id')
+                        .andWhere('caj.user_id', userId);
+                });
+            })
+            .whereNotExists(function () {
+                this.select(1)
+                    .from('estate_property_media as epm')
+                    .whereRaw('epm.media_id = sma.id');
+            });
     } else {
         query = query.andWhere('sma.user_id', userId).whereNull('sma.group_id').whereNotExists(function () {
             this.select(1)
@@ -736,6 +755,10 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, limit, nextCurs
 
     if (jobId) {
         query = query.andWhere('sma.job_id', jobId);
+    }
+
+    if (chartJobId) {
+        query = query.andWhere('sma.chart_job_id', chartJobId);
     }
 
     if (cursor) {
@@ -920,6 +943,17 @@ const resolveGalleryScope = ({ target, groupId, propertyId, personId, chartId })
         };
     }
 
+    // Chart-job artifacts (CSV・images・manifest) uploaded from the host UI.
+    // Folder name is `chart_jobs` (user-specified), NOT the table name.
+    if (normalizedTarget === 'chart_jobs' || normalizedTarget === 'chartjob') {
+        return {
+            scope: 'chart_jobs',
+            propertyId: null,
+            groupId: null,
+            personId: null
+        };
+    }
+
     if (normalizedTarget === 'chart' || normalizedChartId) {
         return {
             scope: 'chart',
@@ -1021,6 +1055,34 @@ const resolveUploadContext = async (frame) => {
             groupId: null,
             jobId,
             ownerScope: 'deepzoom',
+            tag
+        };
+    }
+
+    // Chart-job target: gallery/chart_jobs/{24-char-hex-job-id}/  (owner_scope = 'chart_jobs')
+    if (resolvedScope.scope === 'chart_jobs') {
+        if (!userId) {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.userRequired)
+            });
+        }
+
+        // The chart job id is issued by the backend (job model); an upload must reference an
+        // existing job. Do NOT invent a random id here — that orphans the artifacts.
+        const jobId = String(getFrameValue(frame, 'job_id') || getFrameValue(frame, 'chart_job_id') || '').trim();
+        if (!/^[a-f0-9]{24}$/i.test(jobId)) {
+            throw new errors.BadRequestError({
+                message: 'job_id (24-char chart job id) is required for chart_jobs uploads.'
+            });
+        }
+        const baseDir = path.posix.join(root, 'gallery', 'chart_jobs', jobId);
+        return {
+            mediaStore,
+            targetDir: mediaStore.getTargetDir(baseDir),
+            userId,
+            groupId: null,
+            jobId,
+            ownerScope: 'chart_jobs',
             tag
         };
     }
@@ -1200,6 +1262,58 @@ const controller = {
             listed.meta.type = type;
             listed.meta.orderby = `${orderBy.field}:${orderBy.direction}`;
 
+            return listed;
+        }
+    },
+
+    // Chart-job artifacts: owner_scope='chart_jobs' rows registered by the
+    // worker via link-assets (or uploaded by the host UI). Requires a browser
+    // session; optional chart_job_id filter scopes to one job.
+    chartjobs: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'limit',
+            'next_cursor',
+            'type',
+            'chart_job_id',
+            'include',
+            'page',
+            'fields',
+            'filter',
+            'order',
+            'debug'
+        ],
+        permissions: false,
+        async query(frame) {
+            const userId = frame.options?.context?.user;
+            if (!userId) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.userRequired)
+                });
+            }
+
+            const limit = parseLimit(frame.options?.limit);
+            const nextCursor = frame.options?.next_cursor || null;
+            const type = parseType(frame.options?.type);
+            const chartJobId = String(frame.options?.chart_job_id || '').trim() || null;
+            const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
+
+            const listed = await listByAssetTable({
+                scope: 'chart_jobs',
+                userId,
+                groupId: null,
+                jobId: null,
+                chartJobId,
+                limit,
+                nextCursor,
+                type,
+                orderBy
+            });
+            listed.meta.scope = 'chart_jobs';
+            listed.meta.chart_job_id = chartJobId;
+            listed.meta.type = type;
             return listed;
         }
     },
@@ -1475,6 +1589,7 @@ const controller = {
             'property_id',
             'job_id',
             'dzi_job_id',
+            'chart_job_id',
             'social_chart_id',
             'tag',
             'tag_slug',
@@ -1497,6 +1612,7 @@ const controller = {
             const originalFilename = sanitizeFileName(getFrameValue(frame, 'original_filename'));
             const jobId = String(getFrameValue(frame, 'job_id') || '').trim() || null;
             const dziJobId = String(getFrameValue(frame, 'dzi_job_id') || '').trim() || null;
+            const chartJobId = String(getFrameValue(frame, 'chart_job_id') || '').trim() || null;
             const socialChartId = String(getFrameValue(frame, 'social_chart_id') || '').trim() || null;
 
             if (!storageKey) {
@@ -1528,6 +1644,7 @@ const controller = {
                     originalFilename,
                     jobId,
                     dziJobId,
+                    chartJobId,
                     socialChartId,
                     userId: uploadContext.userId,
                     groupId: uploadContext.groupId,

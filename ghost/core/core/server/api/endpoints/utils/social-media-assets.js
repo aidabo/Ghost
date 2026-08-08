@@ -142,6 +142,7 @@ const upsertAsset = async ({
     jobId,
     dziJobId,
     socialChartId,
+    chartJobId,
     userId,
     groupId,
     propertyId,
@@ -175,6 +176,7 @@ const upsertAsset = async ({
             job_id: normalizeJobId(jobId),
             dzi_job_id: normalizeJobId(dziJobId),
             social_chart_id: normalizeJobId(socialChartId),
+            chart_job_id: normalizeJobId(chartJobId),
             tag_id: tag?.id || null,
             tag_slug: tag?.slug || null,
             updated_at: now

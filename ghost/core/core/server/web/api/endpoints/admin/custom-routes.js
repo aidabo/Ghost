@@ -138,6 +138,8 @@ module.exports = function customApiRoutes(router) {
     router.del('/social/userlogs/:id', mw.authAdminApi, http(api.socialUserLogs.destroy));
 
     // ## gallery
+    router.get('/social/gallery/chartjobs', mw.authAdminApi, http(api.socialGallery.chartjobs));
+    router.get('/social/gallery/chartjobs/', mw.authAdminApi, http(api.socialGallery.chartjobs));
     router.get('/social/gallery/user', mw.authAdminApi, http(api.socialGallery.user));
     router.get('/social/gallery/user/', mw.authAdminApi, http(api.socialGallery.user));
     router.get('/social/gallery/group', mw.authAdminApi, http(api.socialGallery.group));
@@ -212,6 +214,24 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/dzi/jobs/:id/complete', mw.authAdminApi, http(api.socialAiDziJobs.complete));
     router.post('/social/ai/dzi/jobs/:id/fail', mw.authAdminApi, http(api.socialAiDziJobs.fail));
     router.del('/social/ai/dzi/jobs/:id', mw.authAdminApi, http(api.socialAiDziJobs.destroy));
+    // ## social ai chart jobs
+    router.get('/social/ai/chart/jobs', mw.authAdminApi, http(api.socialAiChartJobs.browse));
+    router.get('/social/ai/chart/jobs/:id', mw.authAdminApi, http(api.socialAiChartJobs.read));
+    router.post('/social/ai/chart/jobs', mw.authAdminApi, http(api.socialAiChartJobs.add));
+    router.post('/social/ai/chart/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiChartJobs.cancel));
+    router.post('/social/ai/chart/jobs/claim', mw.authAdminApi, http(api.socialAiChartJobs.claim));
+    router.post('/social/ai/chart/jobs/:id/progress', mw.authAdminApi, http(api.socialAiChartJobs.progress));
+    router.post('/social/ai/chart/jobs/:id/complete', mw.authAdminApi, http(api.socialAiChartJobs.complete));
+    router.post('/social/ai/chart/jobs/:id/fail', mw.authAdminApi, http(api.socialAiChartJobs.fail));
+    router.post('/social/ai/chart/jobs/:id/link-assets', mw.authAdminApi, http(api.socialAiChartJobs.linkAssets));
+    router.post('/social/ai/chart/jobs/:id/rerun', mw.authAdminApi, http(api.socialAiChartJobs.rerun));
+    router.del('/social/ai/chart/jobs/:id', mw.authAdminApi, http(api.socialAiChartJobs.destroy));
+    // ## social ai chart projects (generic work container, P1 — chart-scoped jobs hang off the general project path)
+    router.get('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.browse));
+    router.post('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.add));
+    router.get('/social/ai/projects/:id', mw.authAdminApi, http(api.socialAiProjects.read));
+    router.put('/social/ai/projects/:id', mw.authAdminApi, http(api.socialAiProjects.edit));
+    router.del('/social/ai/projects/:id', mw.authAdminApi, http(api.socialAiProjects.destroy));
 
     // ## estate admin routes
     router.get('/estate/properties', mw.authAdminApi, http(api.estateProperties.browse));
