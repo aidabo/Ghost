@@ -29,7 +29,10 @@ const messages = {
     finalizeFailed: 'Failed to finalize uploaded gallery asset for key "{storageKey}".',
     assetNotFound: 'Gallery asset not found for key "{storageKey}".',
     tagNotFound: 'Tag not found for the supplied tag value.',
-    deepzoomJobIdRequired: '`job_id` is required for deepzoom gallery uploads.'
+    deepzoomJobIdRequired: '`job_id` is required for deepzoom gallery uploads.',
+    assetIdRequired: '`id` is required.',
+    assetRowNotFound: 'Gallery asset not found: {id}.',
+    noAssetPermission: 'You are not allowed to delete this gallery asset.'
 };
 
 const TYPE_ALL = 'all';
@@ -1771,6 +1774,94 @@ const controller = {
                     category_slug: resolvedTag?.slug || null,
                     updated_at: now
                 }]
+            };
+        }
+    },
+
+    // Delete ONE gallery asset (social_media_assets row) by id — used by the
+    // chart-job gallery "delete" icon to drop a wrong/unwanted image. Mirrors
+    // the per-asset cleanup of the chart-job destroy: best-effort S3 object
+    // removal, then the DB row (junction social_ai_chart_job_media cascades via
+    // the chart_job_id FK). Ownership is scoped through the OWNING chart job so
+    // worker-written rows (null user_id) cannot be enumerated/deleted by others.
+    destroyAsset: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'id'
+        ],
+        data: [
+            'id'
+        ],
+        permissions: false,
+        async query(frame) {
+            const userId = frame.options?.context?.user;
+            if (!userId) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.userRequired)
+                });
+            }
+            const id = String(frame.data?.id || frame.options?.id || '').trim();
+            if (!id) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.assetIdRequired)
+                });
+            }
+
+            const knex = models.Base.knex;
+            const row = await knex('social_media_assets')
+                .where({id})
+                .first('id', 'user_id', 'chart_job_id', 'storage_key', 'thumbnail_storage_key');
+            if (!row) {
+                throw new errors.NotFoundError({
+                    message: tpl(messages.assetRowNotFound, {id})
+                });
+            }
+
+            // IDOR guard: caller must own the row directly, or own the chart job
+            // that produced it (worker rows carry a null user_id + chart_job_id).
+            let owned = String(row.user_id || '') === String(userId);
+            if (!owned && row.chart_job_id) {
+                const job = await knex('social_ai_chart_jobs')
+                    .where({id: row.chart_job_id})
+                    .first('user_id');
+                owned = Boolean(job && String(job.user_id || '') === String(userId));
+            }
+            if (!owned) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.noAssetPermission)
+                });
+            }
+
+            // Best-effort S3 cleanup — must not block the DB delete.
+            try {
+                const mediaStore = storage.getStorage('media');
+                if (mediaStore && typeof mediaStore.delete === 'function') {
+                    const deleteKey = async (key) => {
+                        const clean = String(key || '').replace(/^\/+/, '').trim();
+                        if (!clean) {
+                            return;
+                        }
+                        const parts = clean.split('/');
+                        const name = parts.pop();
+                        const dir = parts.join('/');
+                        await mediaStore.delete(name, dir);
+                    };
+                    await deleteKey(row.storage_key);
+                    if (row.thumbnail_storage_key) {
+                        await deleteKey(row.thumbnail_storage_key);
+                    }
+                }
+            } catch (err) {
+                logging.warn(`[social-gallery] asset S3 cleanup failed for ${id}: ${err?.message || err}`);
+            }
+
+            // Delete the row; junction social_ai_chart_job_media cascades on FK.
+            await knex('social_media_assets').where({id}).del();
+
+            return {
+                data: [{id, deleted: true}]
             };
         }
     }
