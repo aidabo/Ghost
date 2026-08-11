@@ -523,6 +523,141 @@ const controller = {
                 deleted_jobs: deletedJobs.length
             };
         }
+    },
+
+    // Clear a project's job MEDIA to reclaim S3 space after completion, KEEPING
+    // the job rows (decision #4). Deletes the project's social_media_assets rows
+    // (junction cascades on media_id FK), marks each job result.cleared so the
+    // job page stops showing the (now gone) artifacts, then best-effort empties
+    // the S3 folders. include_artifacts=false keeps the published artifacts/.
+    clearArtifacts: {
+        options: ['id', 'include_artifacts'],
+        permissions: false,
+        async query(frame) {
+            const knex = models.Base.knex;
+            const row = await loadRowOrThrow(knex, frame.options?.id);
+            await assertCanWriteRow({ frame, row });
+
+            // Default true: clear published media too (user chose media deletion
+            // for space). Pass include_artifacts=false to keep artifacts/.
+            const includeArtifacts = String(frame.options?.include_artifacts ?? 'true') !== 'false';
+            const clearedJobs = [];
+            const clearedAt = new Date();
+
+            await knex.transaction(async (trx) => {
+                for (const family of JOB_FAMILIES) {
+                    const active = await trx(family.jobsTable)
+                        .where({project_id: row.id})
+                        .whereIn('status', ['queued', 'running'])
+                        .select('id');
+                    if (active.length > 0) {
+                        throw new errors.ValidationError({
+                            message: tpl(messages.activeJobs)
+                        });
+                    }
+
+                    const childJobs = await trx(family.jobsTable)
+                        .where({project_id: row.id})
+                        .select('id', 'result');
+                    const childIds = childJobs.map((j) => j.id);
+                    if (childIds.length === 0) {
+                        continue;
+                    }
+
+                    // Delete the project's media rows: direct project uploads
+                    // (project_id) + job-linked + working/gallery paths. Junction
+                    // rows cascade via the media_id FK. Jobs are KEPT.
+                    const galleryLikes = childIds.map(() => 'storage_key LIKE ?');
+                    const galleryParams = childIds.flatMap((cid) => [`%gallery/chart_jobs/${cid}/%`]);
+                    const jobAreaLikes = childIds.map(() => 'storage_key LIKE ?');
+                    const jobAreaParams = childIds.flatMap((cid) => [`%/jobs/${cid}/%`]);
+                    await trx('social_media_assets')
+                        .where(function () {
+                            this.where('project_id', row.id)
+                                .orWhereIn(family.linkColumn, childIds)
+                                .orWhereRaw(`(${jobAreaLikes.join(' OR ')})`, jobAreaParams)
+                                .orWhereRaw(`(${galleryLikes.join(' OR ')})`, galleryParams);
+                        })
+                        .del();
+
+                    // Mark each job cleared (job row stays; UI hides artifacts).
+                    for (const j of childJobs) {
+                        let result = {};
+                        try {
+                            result = j.result ? JSON.parse(j.result) : {};
+                        } catch (err) {
+                            result = {};
+                        }
+                        if (!result || typeof result !== 'object') {
+                            result = {};
+                        }
+                        result.cleared = true;
+                        result.cleared_at = clearedAt.toISOString();
+                        await trx(family.jobsTable).where({id: j.id}).update({result: JSON.stringify(result)});
+                    }
+                    clearedJobs.push(...childIds);
+                }
+            });
+
+            // Best-effort S3 emptying AFTER the transaction (objects have no FK,
+            // so failures must never roll back the DB clear).
+            const mediaStore = storage.getStorage('media');
+            const emptyPrefix = async (prefix) => {
+                const clean = String(prefix || '').replace(/^\/+/, '');
+                if (!clean || !mediaStore) {
+                    return 0;
+                }
+                try {
+                    if (typeof mediaStore.deletePrefix === 'function') {
+                        return await mediaStore.deletePrefix(clean);
+                    }
+                    // Fallback for adapters without bulk delete (filesystem/local).
+                    if (typeof mediaStore.list === 'function' && typeof mediaStore.delete === 'function') {
+                        let cursor = null;
+                        let count = 0;
+                        do {
+                            const listed = await mediaStore.list({prefix: clean, limit: 1000, continuationToken: cursor});
+                            const items = Array.isArray(listed?.items) ? listed.items : [];
+                            for (const item of items) {
+                                const key = String(item.key || item.path || '').replace(/^\/+/, '');
+                                if (!key) {
+                                    continue;
+                                }
+                                const parts = key.split('/');
+                                const name = parts.pop();
+                                await mediaStore.delete(name, parts.join('/'));
+                                count += 1;
+                            }
+                            cursor = listed?.nextCursor || null;
+                        } while (cursor);
+                        return count;
+                    }
+                } catch (err) {
+                    logging.warn(`[social-ai-projects] clear S3 cleanup failed for ${clean}: ${err?.message || err}`);
+                }
+                return 0;
+            };
+
+            const root = (mediaStore && (mediaStore.pathPrefix || mediaStore.storagePath)) || '';
+            const withRoot = (p) => [root, p].filter(Boolean).join('/').replace(/\/+/g, '/');
+            let deletedObjects = 0;
+            for (const cid of clearedJobs) {
+                deletedObjects += await emptyPrefix(withRoot(`gallery/chart_jobs/${cid}/`));
+            }
+            deletedObjects += await emptyPrefix(withRoot(`gallery/chart_projects/${row.id}/`));
+            // Worker areas live under the chart-jobs/{projectId}/ prefix (same bucket).
+            deletedObjects += await emptyPrefix(`chart-jobs/${row.id}/jobs/`);
+            if (includeArtifacts) {
+                deletedObjects += await emptyPrefix(`chart-jobs/${row.id}/artifacts/`);
+            }
+
+            return {
+                ...serializeRow(row),
+                cleared_jobs: clearedJobs.length,
+                deleted_objects: deletedObjects,
+                include_artifacts: includeArtifacts
+            };
+        }
     }
 };
 

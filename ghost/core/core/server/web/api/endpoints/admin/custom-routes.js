@@ -140,6 +140,9 @@ module.exports = function customApiRoutes(router) {
     // ## gallery
     router.get('/social/gallery/chartjobs', mw.authAdminApi, http(api.socialGallery.chartjobs));
     router.get('/social/gallery/chartjobs/', mw.authAdminApi, http(api.socialGallery.chartjobs));
+    // Project-scoped gallery (all media of a project).
+    router.get('/social/gallery/project', mw.authAdminApi, http(api.socialGallery.project));
+    router.get('/social/gallery/project/', mw.authAdminApi, http(api.socialGallery.project));
     // Delete ONE gallery asset (social_media_assets) by id — chart-job gallery delete icon.
     router.delete('/social/gallery/assets/:id', mw.authAdminApi, http(api.socialGallery.destroyAsset));
     router.delete('/social/gallery/assets/:id/', mw.authAdminApi, http(api.socialGallery.destroyAsset));
@@ -157,6 +160,9 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/gallery/presign/', mw.authAdminApi, http(api.socialGallery.presign));
     router.post('/social/gallery/finalize', mw.authAdminApi, http(api.socialGallery.finalize));
     router.post('/social/gallery/finalize/', mw.authAdminApi, http(api.socialGallery.finalize));
+    // Copy one of the caller's gallery assets into a project (user gallery -> project).
+    router.post('/social/gallery/copy-to-project', mw.authAdminApi, http(api.socialGallery.copyToProject));
+    router.post('/social/gallery/copy-to-project/', mw.authAdminApi, http(api.socialGallery.copyToProject));
     router.post('/social/gallery/sync-tags', mw.authAdminApi, http(api.socialGallery.syncTags));
     router.post('/social/gallery/sync-tags/', mw.authAdminApi, http(api.socialGallery.syncTags));
     router.put('/social/gallery/tag', mw.authAdminApi, http(api.socialGallery.updateTag));
@@ -235,6 +241,9 @@ module.exports = function customApiRoutes(router) {
     router.get('/social/ai/projects/:id', mw.authAdminApi, http(api.socialAiProjects.read));
     router.put('/social/ai/projects/:id', mw.authAdminApi, http(api.socialAiProjects.edit));
     router.del('/social/ai/projects/:id', mw.authAdminApi, http(api.socialAiProjects.destroy));
+    // Clear a project's job media (S3 space) — keeps job rows, marks them cleared.
+    router.post('/social/ai/projects/:id/clear-artifacts', mw.authAdminApi, http(api.socialAiProjects.clearArtifacts));
+    router.post('/social/ai/projects/:id/clear-artifacts/', mw.authAdminApi, http(api.socialAiProjects.clearArtifacts));
 
     // ## estate admin routes
     router.get('/estate/properties', mw.authAdminApi, http(api.estateProperties.browse));

@@ -1339,6 +1339,10 @@ module.exports = {
         // linked (worker has no browser session). Cleanup is handled explicitly
         // by the chart-jobs destroy endpoint (delete assets WHERE chart_job_id = <job>).
         chart_job_id: { type: 'string', maxlength: 24, nullable: true, index: true },
+        // Plain indexed link to social_ai_chart_projects (NOT a FK, same reasoning
+        // as chart_job_id). Lets project-scoped gallery, direct project uploads and
+        // the "clear project artifacts" action target rows by project_id directly.
+        project_id: { type: 'string', maxlength: 24, nullable: true, index: true },
         tag_id: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'tags.id', setNullDelete: true },
         tag_slug: { type: 'string', maxlength: 191, nullable: true, index: true },
         created_at: { type: 'dateTime', nullable: false },

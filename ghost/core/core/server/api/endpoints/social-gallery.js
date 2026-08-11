@@ -32,7 +32,10 @@ const messages = {
     deepzoomJobIdRequired: '`job_id` is required for deepzoom gallery uploads.',
     assetIdRequired: '`id` is required.',
     assetRowNotFound: 'Gallery asset not found: {id}.',
-    noAssetPermission: 'You are not allowed to delete this gallery asset.'
+    noAssetPermission: 'You are not allowed to delete this gallery asset.',
+    projectRequired: '`project_id` is required.',
+    projectNotFound: 'Project not found: {projectId}.',
+    noProjectPermission: 'You are not allowed to access this project gallery.'
 };
 
 const TYPE_ALL = 'all';
@@ -680,7 +683,7 @@ const listByPrefix = async (store, prefix, limit, nextCursor, type) => {
     };
 };
 
-const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, limit, nextCursor, type, orderBy }) => {
+const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, projectId, limit, nextCursor, type, orderBy }) => {
     const knex = models.Base.knex;
     const cursor = parseDbNextCursor(nextCursor);
     const sortField = orderBy?.field === 'updated_at' ? 'updated_at' : 'created_at';
@@ -762,6 +765,19 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, lim
 
     if (chartJobId) {
         query = query.andWhere('sma.chart_job_id', chartJobId);
+    }
+
+    if (projectId) {
+        // Project artifacts = rows tagged directly (project_id, e.g. direct
+        // uploads) OR produced by a job of this project (chart_job_id -> project).
+        query = query.andWhere(function () {
+            this.where('sma.project_id', projectId).orWhereExists(function () {
+                this.select(1)
+                    .from('social_ai_chart_jobs as pcaj')
+                    .whereRaw('pcaj.id = sma.chart_job_id')
+                    .andWhere('pcaj.project_id', projectId);
+            });
+        });
     }
 
     if (cursor) {
@@ -903,12 +919,26 @@ const resolvePropertyAndCheckExists = async (propertyId) => {
  * Precedence is explicit so browser state cannot accidentally override a more specific target.
  * Add new scopes here instead of spreading more conditionals across presign/finalize.
  */
-const resolveGalleryScope = ({ target, groupId, propertyId, personId, chartId }) => {
+const resolveGalleryScope = ({ target, groupId, propertyId, personId, chartId, projectId }) => {
     const normalizedTarget = String(target || '').toLowerCase().trim();
     const normalizedGroupId = String(groupId || '').trim();
     const normalizedPropertyId = String(propertyId || '').trim();
     const normalizedPersonId = String(personId || '').trim();
     const normalizedChartId = String(chartId || '').trim();
+    const normalizedProjectId = String(projectId || '').trim();
+
+    // Chart project target: gallery/chart_projects/{projectId}/. Uploaded directly
+    // into a project (owner_scope 'chart_jobs' + project_id) so the project gallery
+    // and "clear artifacts" pick it up. Used to bring in other agents' outputs.
+    if (normalizedTarget === 'project' || normalizedTarget === 'chart_project') {
+        return {
+            scope: 'project',
+            propertyId: null,
+            groupId: null,
+            personId: null,
+            projectId: normalizedProjectId
+        };
+    }
 
     if (normalizedTarget === 'property' || normalizedPropertyId) {
         return {
@@ -983,8 +1013,9 @@ const resolveUploadContext = async (frame) => {
     const propertyId = getFrameValue(frame, 'property_id');
     const personId = getFrameValue(frame, 'person_id');
     const chartId = getFrameValue(frame, 'social_chart_id');
+    const projectId = getFrameValue(frame, 'project_id');
     const tag = await socialMediaAssets.resolveTag(models.Base.knex, frame);
-    const resolvedScope = resolveGalleryScope({target, groupId, propertyId, personId, chartId});
+    const resolvedScope = resolveGalleryScope({target, groupId, propertyId, personId, chartId, projectId});
 
     logging.info('[social-gallery] resolveUploadContext: start', {
         userId: userId || null,
@@ -1058,6 +1089,47 @@ const resolveUploadContext = async (frame) => {
             groupId: null,
             jobId,
             ownerScope: 'deepzoom',
+            tag
+        };
+    }
+
+    // Chart project target: gallery/chart_projects/{projectId}/ (owner_scope
+    // 'chart_jobs' + project_id). Direct uploads into a project from the UI.
+    if (resolvedScope.scope === 'project') {
+        if (!userId) {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.userRequired)
+            });
+        }
+        const pid = String(resolvedScope.projectId || '').trim();
+        if (!pid) {
+            throw new errors.ValidationError({
+                message: tpl(messages.projectRequired)
+            });
+        }
+        // Ownership: mirror the projects rule — deny only someone else's PERSONAL
+        // project (group projects fall through).
+        const project = await models.Base.knex('social_ai_projects')
+            .where({id: pid})
+            .first('id', 'user_id', 'group_id');
+        if (!project) {
+            throw new errors.NotFoundError({
+                message: tpl(messages.projectNotFound, {projectId: pid})
+            });
+        }
+        if (String(project.user_id || '') !== String(userId) && !project.group_id) {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.noProjectPermission)
+            });
+        }
+        const baseDir = path.posix.join(root, 'gallery', 'chart_projects', pid);
+        return {
+            mediaStore,
+            targetDir: mediaStore.getTargetDir(baseDir),
+            userId,
+            groupId: null,
+            projectId: pid,
+            ownerScope: 'chart_jobs',
             tag
         };
     }
@@ -1321,6 +1393,84 @@ const controller = {
         }
     },
 
+    // Project-scoped gallery: all media of a project (direct project_id rows +
+    // rows produced by the project's jobs). Same card as chartjobs on the client.
+    project: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'limit',
+            'next_cursor',
+            'type',
+            'project_id',
+            'include',
+            'page',
+            'fields',
+            'filter',
+            'order',
+            'debug'
+        ],
+        data: [
+            'id'
+        ],
+        permissions: false,
+        async query(frame) {
+            const userId = frame.options?.context?.user;
+            if (!userId) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.userRequired)
+                });
+            }
+            const projectId = String(frame.options?.project_id || frame.data?.id || '').trim();
+            if (!projectId) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.projectRequired)
+                });
+            }
+
+            // Ownership: mirror the projects module rule — deny only when it is
+            // someone else's PERSONAL project (group projects fall through; the
+            // row-level chart_jobs guard in listByAssetTable still scopes data).
+            const knex = models.Base.knex;
+            const project = await knex('social_ai_projects')
+                .where({id: projectId})
+                .first('id', 'user_id', 'group_id');
+            if (!project) {
+                throw new errors.NotFoundError({
+                    message: tpl(messages.projectNotFound, {projectId})
+                });
+            }
+            if (String(project.user_id || '') !== String(userId) && !project.group_id) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.noProjectPermission)
+                });
+            }
+
+            const limit = parseLimit(frame.options?.limit);
+            const nextCursor = frame.options?.next_cursor || null;
+            const type = parseType(frame.options?.type);
+            const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
+
+            const listed = await listByAssetTable({
+                scope: 'chart_jobs',
+                userId,
+                groupId: null,
+                jobId: null,
+                chartJobId: null,
+                projectId,
+                limit,
+                nextCursor,
+                type,
+                orderBy
+            });
+            listed.meta.scope = 'project';
+            listed.meta.project_id = projectId;
+            listed.meta.type = type;
+            return listed;
+        }
+    },
+
     group: {
         headers: {
             cacheInvalidate: false
@@ -1453,7 +1603,8 @@ const controller = {
             'original_filename',
             'target',
             'property_id',
-            'person_id'
+            'person_id',
+            'project_id'
         ],
         permissions: false,
         async query(frame) {
@@ -1593,6 +1744,8 @@ const controller = {
             'job_id',
             'dzi_job_id',
             'chart_job_id',
+            'project_id',
+            'target',
             'social_chart_id',
             'tag',
             'tag_slug',
@@ -1648,6 +1801,7 @@ const controller = {
                     jobId,
                     dziJobId,
                     chartJobId,
+                    projectId: uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null,
                     socialChartId,
                     userId: uploadContext.userId,
                     groupId: uploadContext.groupId,
@@ -1862,6 +2016,116 @@ const controller = {
 
             return {
                 data: [{id, deleted: true}]
+            };
+        }
+    },
+
+    // Copy one of the caller's gallery assets INTO a project (server-side S3 copy
+    // → gallery/chart_projects/{projectId}/, new row with project_id). Lets users
+    // bring another agent's output (image/csv/json/…) into a chart project.
+    copyToProject: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'id',
+            'project_id'
+        ],
+        data: [
+            'id'
+        ],
+        permissions: false,
+        async query(frame) {
+            const userId = frame.options?.context?.user;
+            if (!userId) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.userRequired)
+                });
+            }
+            const assetId = String(frame.data?.id || frame.options?.id || '').trim();
+            const projectId = String(frame.options?.project_id || '').trim();
+            if (!assetId) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.assetIdRequired)
+                });
+            }
+            if (!projectId) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.projectRequired)
+                });
+            }
+
+            const knex = models.Base.knex;
+            // Source: must be the caller's own asset.
+            const source = await knex('social_media_assets')
+                .where({id: assetId})
+                .first('id', 'user_id', 'storage_key', 'storage_url', 'asset_type', 'original_filename');
+            if (!source) {
+                throw new errors.NotFoundError({
+                    message: tpl(messages.assetRowNotFound, {id: assetId})
+                });
+            }
+            if (String(source.user_id || '') !== String(userId)) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.noAssetPermission)
+                });
+            }
+            // Destination project ownership (mirror the projects rule).
+            const project = await knex('social_ai_projects')
+                .where({id: projectId})
+                .first('id', 'user_id', 'group_id');
+            if (!project) {
+                throw new errors.NotFoundError({
+                    message: tpl(messages.projectNotFound, {projectId})
+                });
+            }
+            if (String(project.user_id || '') !== String(userId) && !project.group_id) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.noProjectPermission)
+                });
+            }
+
+            const mediaStore = storage.getStorage('media');
+            if (typeof mediaStore.copy !== 'function') {
+                throw new errors.BadRequestError({
+                    message: 'Configured storage adapter does not support server-side copy.'
+                });
+            }
+            const root = mediaStore.pathPrefix || mediaStore.storagePath || '';
+            const baseDir = path.posix.join(root, 'gallery', 'chart_projects', projectId);
+            const targetDir = typeof mediaStore.getTargetDir === 'function'
+                ? mediaStore.getTargetDir(baseDir)
+                : baseDir;
+            const name = String(source.original_filename || source.storage_key || 'file').split('/').pop();
+            const destKey = buildUniqueStorageKey(targetDir, name);
+
+            let destUrl;
+            try {
+                destUrl = await mediaStore.copy(source.storage_key, destKey);
+            } catch (err) {
+                wrapStorageError(messages.finalizeFailed, {storageKey: destKey}, err);
+            }
+
+            const newId = await socialMediaAssets.upsertAsset({
+                knex,
+                store: mediaStore,
+                url: destUrl,
+                assetType: source.asset_type,
+                originalFilename: source.original_filename,
+                projectId,
+                ownerScope: 'chart_jobs',
+                userId
+            });
+
+            return {
+                data: [{
+                    id: newId,
+                    storage_key: destKey,
+                    storage_url: destUrl,
+                    project_id: projectId,
+                    asset_type: source.asset_type,
+                    original_filename: source.original_filename || null
+                }]
             };
         }
     }

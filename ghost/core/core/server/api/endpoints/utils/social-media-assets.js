@@ -143,6 +143,7 @@ const upsertAsset = async ({
     dziJobId,
     socialChartId,
     chartJobId,
+    projectId,
     userId,
     groupId,
     propertyId,
@@ -177,6 +178,7 @@ const upsertAsset = async ({
             dzi_job_id: normalizeJobId(dziJobId),
             social_chart_id: normalizeJobId(socialChartId),
             chart_job_id: normalizeJobId(chartJobId),
+            project_id: normalizeJobId(projectId),
             tag_id: tag?.id || null,
             tag_slug: tag?.slug || null,
             updated_at: now
@@ -240,9 +242,14 @@ const upsertAsset = async ({
             const isMissingSocialChartIdColumn =
                 (message.includes('unknown column') || message.includes('has no column named')) &&
                 message.includes('social_chart_id');
+            // project_id is a newer column too (mirrors dzi_job_id handling): drop
+            // it from the retry payload only when THAT specific column is missing.
+            const isMissingProjectIdColumn =
+                (message.includes('unknown column') || message.includes('has no column named')) &&
+                message.includes('project_id');
             const isMissingStorageKeyHashColumn = isMissingStorageKeyHashColumnError(err);
 
-            if (!isMissingThumbnailColumn && !isMissingJobIdColumn && !isMissingDziJobIdColumn && !isMissingSocialChartIdColumn && !isMissingStorageKeyHashColumn) {
+            if (!isMissingThumbnailColumn && !isMissingJobIdColumn && !isMissingDziJobIdColumn && !isMissingSocialChartIdColumn && !isMissingProjectIdColumn && !isMissingStorageKeyHashColumn) {
                 throw err;
             }
 
@@ -254,6 +261,9 @@ const upsertAsset = async ({
             }
             if (isMissingSocialChartIdColumn) {
                 delete fallbackPayload.social_chart_id;
+            }
+            if (isMissingProjectIdColumn) {
+                delete fallbackPayload.project_id;
             }
             if (isMissingStorageKeyHashColumn) {
                 delete fallbackPayload.storage_key_hash;
