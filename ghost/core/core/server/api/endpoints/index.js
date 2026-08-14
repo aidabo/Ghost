@@ -483,6 +483,10 @@ module.exports = {
         return apiFramework.pipeline(require('./social-charts-public'), localUtils, 'social');
     },
 
+    get socialAiProjectsPublic() {
+        return apiFramework.pipeline(require('./social-ai-projects-public'), localUtils, 'content');
+    },
+
     // post search index (public: published + public only)
     get postsSearchIndexPublic() {
         return apiFramework.pipeline(require('./posts-search-index-public'), localUtils, 'content');

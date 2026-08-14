@@ -36,7 +36,7 @@ const SocialChart = ghostBookshelf.Model.extend({
     },
 
     async validateFields(model) {
-        logging.info(JSON.stringify(model));
+        logging.info(`[social-charts] saving: "${model.get('title')}"`);
 
         const title = model.get('title');
         const status = model.get('status');
