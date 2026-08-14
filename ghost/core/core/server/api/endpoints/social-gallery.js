@@ -35,7 +35,10 @@ const messages = {
     noAssetPermission: 'You are not allowed to delete this gallery asset.',
     projectRequired: '`project_id` is required.',
     projectNotFound: 'Project not found: {projectId}.',
-    noProjectPermission: 'You are not allowed to access this project gallery.'
+    noProjectPermission: 'You are not allowed to access this project gallery.',
+    jobIdRequired: '`job_id` is required.',
+    jobNotFound: 'Chart job not found: {jobId}.',
+    noJobPermission: 'You are not allowed to access this chart job gallery.'
 };
 
 const TYPE_ALL = 'all';
@@ -2052,7 +2055,9 @@ const controller = {
                 });
             }
             const assetId = String(frame.data?.id || frame.options?.id || '').trim();
-            const projectId = String(frame.options?.project_id || '').trim();
+            // Body fields land in frame.data (see @tryghost/api-framework Frame.js);
+            // options only ever carries query/url params. Read body first.
+            const projectId = String(frame.data?.project_id || frame.options?.project_id || '').trim();
             if (!assetId) {
                 throw new errors.ValidationError({
                     message: tpl(messages.assetIdRequired)
@@ -2131,6 +2136,134 @@ const controller = {
                     id: newId,
                     storage_key: destKey,
                     storage_url: destUrl,
+                    project_id: projectId,
+                    asset_type: source.asset_type,
+                    original_filename: source.original_filename || null
+                }]
+            };
+        }
+    },
+
+    copyToJob: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'id',
+            'job_id'
+        ],
+        data: [
+            'id'
+        ],
+        permissions: false,
+        async query(frame) {
+            const userId = frame.options?.context?.user;
+            if (!userId) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.userRequired)
+                });
+            }
+            const assetId = String(frame.data?.id || frame.options?.id || '').trim();
+            // Body fields land in frame.data (see @tryghost/api-framework Frame.js);
+            // options only ever carries query/url params. Read body first.
+            const jobId = String(frame.data?.job_id || frame.options?.job_id || '').trim();
+            if (!assetId) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.assetIdRequired)
+                });
+            }
+            if (!jobId) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.jobIdRequired)
+                });
+            }
+
+            const knex = models.Base.knex;
+            // Source: must be the caller's own asset.
+            const source = await knex('social_media_assets')
+                .where({id: assetId})
+                .first('id', 'user_id', 'storage_key', 'storage_url', 'asset_type', 'original_filename');
+            if (!source) {
+                throw new errors.NotFoundError({
+                    message: tpl(messages.assetRowNotFound, {id: assetId})
+                });
+            }
+            if (String(source.user_id || '') !== String(userId)) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.noAssetPermission)
+                });
+            }
+            // Destination job: caller must own the job (or be in its group).
+            // project_id comes from the JOB row, never from the payload (mirror link-assets).
+            const job = await knex('social_ai_chart_jobs')
+                .where({id: jobId})
+                .first('id', 'user_id', 'project_id', 'group_id');
+            if (!job) {
+                throw new errors.NotFoundError({
+                    message: tpl(messages.jobNotFound, {jobId})
+                });
+            }
+            if (String(job.user_id || '') !== String(userId) && !job.group_id) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.noJobPermission)
+                });
+            }
+            const projectId = job.project_id ? String(job.project_id).trim() : null;
+            if (projectId) {
+                const project = await knex('social_ai_projects')
+                    .where({id: projectId})
+                    .first('id', 'user_id', 'group_id');
+                if (!project) {
+                    throw new errors.NotFoundError({
+                        message: tpl(messages.projectNotFound, {projectId})
+                    });
+                }
+                if (String(project.user_id || '') !== String(userId) && !project.group_id) {
+                    throw new errors.NoPermissionError({
+                        message: tpl(messages.noProjectPermission)
+                    });
+                }
+            }
+
+            const mediaStore = storage.getStorage('media');
+            if (typeof mediaStore.copy !== 'function') {
+                throw new errors.BadRequestError({
+                    message: 'Configured storage adapter does not support server-side copy.'
+                });
+            }
+            const root = mediaStore.pathPrefix || mediaStore.storagePath || '';
+            const baseDir = path.posix.join(root, 'gallery', 'chart_projects', projectId || 'job', jobId);
+            const targetDir = typeof mediaStore.getTargetDir === 'function'
+                ? mediaStore.getTargetDir(baseDir)
+                : baseDir;
+            const name = String(source.original_filename || source.storage_key || 'file').split('/').pop();
+            const destKey = buildUniqueStorageKey(targetDir, name);
+
+            let destUrl;
+            try {
+                destUrl = await mediaStore.copy(source.storage_key, destKey);
+            } catch (err) {
+                wrapStorageError(messages.finalizeFailed, {storageKey: destKey}, err);
+            }
+
+            const newId = await socialMediaAssets.upsertAsset({
+                knex,
+                store: mediaStore,
+                url: destUrl,
+                assetType: source.asset_type,
+                originalFilename: source.original_filename,
+                chartJobId: jobId,
+                projectId,
+                ownerScope: 'chart_jobs',
+                userId
+            });
+
+            return {
+                data: [{
+                    id: newId,
+                    storage_key: destKey,
+                    storage_url: destUrl,
+                    chart_job_id: jobId,
                     project_id: projectId,
                     asset_type: source.asset_type,
                     original_filename: source.original_filename || null

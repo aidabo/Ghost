@@ -163,6 +163,9 @@ module.exports = function customApiRoutes(router) {
     // Copy one of the caller's gallery assets into a project (user gallery -> project).
     router.post('/social/gallery/copy-to-project', mw.authAdminApi, http(api.socialGallery.copyToProject));
     router.post('/social/gallery/copy-to-project/', mw.authAdminApi, http(api.socialGallery.copyToProject));
+    // Copy one of the caller's gallery assets into a chart job's artifacts (user gallery -> job).
+    router.post('/social/gallery/copy-to-job', mw.authAdminApi, http(api.socialGallery.copyToJob));
+    router.post('/social/gallery/copy-to-job/', mw.authAdminApi, http(api.socialGallery.copyToJob));
     router.post('/social/gallery/sync-tags', mw.authAdminApi, http(api.socialGallery.syncTags));
     router.post('/social/gallery/sync-tags/', mw.authAdminApi, http(api.socialGallery.syncTags));
     router.put('/social/gallery/tag', mw.authAdminApi, http(api.socialGallery.updateTag));
