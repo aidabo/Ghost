@@ -4,8 +4,9 @@ const errors = require('@tryghost/errors');
 const models = require('./index');
 
 // Generic project container (P1, plan §0-1/§3-1). Holds jobs of any type;
-// `status` is derived from the jobs and kept in sync by recalcProjectStatus
-// (api/endpoints/utils/social-ai-projects.js, review M2).
+// `status` is a user-controlled PUBLICATION state — enum: draft | published,
+// set from the project detail page / edit dialog (review M2: the old derived
+// draft/active/completed scheme was removed).
 const SocialAiProject = ghostBookshelf.Model.extend({
     tableName: 'social_ai_projects',
 

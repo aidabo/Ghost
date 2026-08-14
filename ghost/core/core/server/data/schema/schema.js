@@ -2264,9 +2264,9 @@ module.exports = {
         // generic, plan §3-1). LIKE-scan searchable; normalized table only if a
         // tag-search requirement appears (review L3).
         tags: { type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true },
-        // Derived from the project's jobs (no jobs → draft / any queued|running
-        // → active / all terminal → completed), kept in sync by
-        // recalcProjectStatus (review M2).
+        // User-controlled PUBLICATION state — enum: draft | published, set on
+        // the project detail page. NOT derived from the jobs (review M2: the
+        // old derived draft/active/completed scheme was removed).
         status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft', index: true },
         user_id: { type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true, index: true },
         group_id: { type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', setNullDelete: true },

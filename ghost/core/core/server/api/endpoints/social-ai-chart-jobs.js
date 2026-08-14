@@ -6,7 +6,6 @@ const models = require('../../models');
 const storage = require('../../adapters/storage');
 const ObjectId = require('bson-objectid').default;
 const socialMediaAssets = require('./utils/social-media-assets');
-const {recalcProjectStatus} = require('./utils/social-ai-projects');
 
 const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 const ALLOWED_INCLUDES = ['user', 'group'];
@@ -542,11 +541,6 @@ const controller = {
                 group_id: groupId
             }, frame.options);
 
-            // M2: a new job may flip the project status (draft → active).
-            if (projectId) {
-                await recalcProjectStatus(models.Base.knex, projectId);
-            }
-
             // Link source/preview assets by stamping chart_job_id on them
             // (plain link, NOT a FK — artifacts are finalized before the job row
             // exists, and worker-written assets are linked post-completion).
@@ -595,9 +589,6 @@ const controller = {
                     updated_at: now,
                     updated_by: currentUserId || row.updated_by || row.user_id
                 });
-
-            // M2: project status may flip active → completed.
-            await recalcProjectStatus(knex, row.project_id);
 
             return {
                 ...serializeRow({
@@ -660,9 +651,6 @@ const controller = {
                     updated_at: now,
                     updated_by: row.updated_by || row.user_id
                 });
-
-            // M2: rerun may flip the project status (completed → active).
-            await recalcProjectStatus(knex, row.project_id);
 
             const next = await loadRowOrThrow(knex, row.id);
             return serializeRow(next);
@@ -753,9 +741,6 @@ const controller = {
             // Junction rows (social_ai_chart_job_media) cascade via the
             // chart_job_id FK.
             await knex(TABLE).where({id: row.id}).del();
-
-            // M2: a project with no remaining jobs flips back to draft.
-            await recalcProjectStatus(knex, row.project_id);
 
             return {
                 ...serializeRow({
@@ -955,9 +940,6 @@ const controller = {
                     updated_at: now,
                     updated_by: row.updated_by || row.user_id
                 });
-
-            // M2: job completion may flip the project status (active → completed).
-            await recalcProjectStatus(knex, row.project_id);
 
             const next = await loadRowOrThrow(knex, row.id);
             return serializeRow(next);
@@ -1184,9 +1166,6 @@ const controller = {
                     updated_at: now,
                     updated_by: row.updated_by || row.user_id
                 });
-
-            // M2: a failed job is terminal at the project level.
-            await recalcProjectStatus(knex, row.project_id);
 
             const next = await loadRowOrThrow(knex, row.id);
             return serializeRow(next);

@@ -359,7 +359,7 @@ const controller = {
     edit: {
         headers: { cacheInvalidate: false },
         options: ['id'],
-        data: ['name', 'description', 'tags'],
+        data: ['name', 'description', 'tags', 'status'],
         permissions: false,
         async query(frame) {
             const knex = models.Base.knex;
@@ -376,6 +376,18 @@ const controller = {
                     throw new errors.ValidationError({ message: tpl(messages.nameRequired) });
                 }
                 update.name = name;
+            }
+            if (payloadInput.status !== undefined) {
+                // User-controlled publication state — enum: draft | published.
+                // (The old derived draft/active/completed scheme was removed —
+                // review M2: job transitions no longer touch project status.)
+                const status = String(payloadInput.status || '').trim();
+                if (status !== 'draft' && status !== 'published') {
+                    throw new errors.ValidationError({
+                        message: '`status` must be one of: draft, published.'
+                    });
+                }
+                update.status = status;
             }
             if (payloadInput.description !== undefined) {
                 update.description = payloadInput.description || null;
