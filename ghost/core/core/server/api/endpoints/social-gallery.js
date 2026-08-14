@@ -1966,7 +1966,7 @@ const controller = {
             const knex = models.Base.knex;
             const row = await knex('social_media_assets')
                 .where({id})
-                .first('id', 'user_id', 'chart_job_id', 'storage_key', 'thumbnail_storage_key');
+                .first('id', 'user_id', 'chart_job_id', 'storage_key', 'thumbnail_storage_key', 'original_filename');
             if (!row) {
                 throw new errors.NotFoundError({
                     message: tpl(messages.assetRowNotFound, {id})
@@ -2014,8 +2014,17 @@ const controller = {
             // Delete the row; junction social_ai_chart_job_media cascades on FK.
             await knex('social_media_assets').where({id}).del();
 
+            // Return the deleted row's storage keys so the HOST route can remove
+            // the actual S3 objects: Ghost's media store is local-only and can
+            // never reach the think-ai-jobs bucket chart artifacts.
             return {
-                data: [{id, deleted: true}]
+                data: [{
+                    id,
+                    deleted: true,
+                    storage_key: row.storage_key || null,
+                    thumbnail_storage_key: row.thumbnail_storage_key || null,
+                    original_filename: row.original_filename || null
+                }]
             };
         }
     },
