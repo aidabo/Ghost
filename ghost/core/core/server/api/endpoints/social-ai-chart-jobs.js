@@ -978,6 +978,9 @@ const controller = {
             const row = await loadRowOrThrow(knex, getJobId(frame));
             const payloadInput = getActionPayload(frame);
             const assets = Array.isArray(payloadInput.assets) ? payloadInput.assets : [];
+            const removedKeys = Array.isArray(payloadInput.removed_keys)
+                ? payloadInput.removed_keys.map(String).map((s) => String(s).trim()).filter(Boolean)
+                : [];
             const mediaIds = [];
 
             // Register worker-written S3 artifacts in social_media_assets +
@@ -1009,6 +1012,12 @@ const controller = {
                 const existing = await knex('social_media_assets')
                     .where({storage_key_hash: storageKeyHash})
                     .first();
+                // project_id is written from the JOB (row.project_id), NOT from
+                // the asset payload (worker has no auth context and cannot be
+                // trusted with arbitrary project ids). A legacy job without a
+                // project_id keeps the row's existing value (null for new rows).
+                const jobProjectId = row.project_id || null;
+
                 if (existing) {
                     // Same S3 key: latest publisher wins. chart_job_id is
                     // re-pointed; user/group fall back to existing values.
@@ -1021,6 +1030,9 @@ const controller = {
                             original_filename: asset.original_filename || existing.original_filename || null,
                             asset_type: assetType,
                             chart_job_id: row.id,
+                            // Backfill: older rows (pre project_id) get the
+                            // project resolved from the publishing job.
+                            project_id: jobProjectId || existing.project_id || null,
                             user_id: existing.user_id || row.user_id || null,
                             group_id: existing.group_id || row.group_id || null,
                             updated_at: now
@@ -1039,6 +1051,7 @@ const controller = {
                                 original_filename: asset.original_filename || null,
                                 asset_type: assetType,
                                 owner_scope: 'chart_jobs',
+                                project_id: jobProjectId,
                                 user_id: row.user_id || null,
                                 group_id: row.group_id || null,
                                 chart_job_id: row.id,
@@ -1109,9 +1122,30 @@ const controller = {
                 mediaIds.push(mediaId);
             }
 
+            // Removed keys (S3 objects deleted by publishJob's stale per-person
+            // cleanup) must also drop their social_media_assets rows — a deleted
+            // object keeps no gallery row (S3↔DB consistency, 2026-08-14).
+            // Scope: chart_jobs owner rows only; the junction
+            // social_ai_chart_job_media rows cascade via the media_id FK.
+            // Deleting only rows whose storage_key is NOT re-registered in this
+            // payload (a key can be both in assets[] and removed_keys[] when a
+            // later entry re-publishes the same path — the asset wins).
+            const removedSet = new Set(removedKeys);
+            for (const key of removedSet) {
+                const stillRegistered = assets.some((a) =>
+                    String(a.storage_key || '').trim() === key);
+                if (stillRegistered) {
+                    continue;
+                }
+                await knex('social_media_assets')
+                    .where({storage_key: key, owner_scope: 'chart_jobs'})
+                    .del();
+            }
+
             return {
                 media_ids: mediaIds,
-                count: mediaIds.length
+                count: mediaIds.length,
+                removed_count: removedKeys.length
             };
         }
     },
