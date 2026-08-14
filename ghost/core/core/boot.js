@@ -312,6 +312,7 @@ async function initServices() {
     const xmlrpc = require('./server/services/xmlrpc');
     const slack = require('./server/services/slack');
     const postSearchIndex = require('./server/services/post-search-index');
+    const postMediaIndex = require('./server/services/post-media-index');
     const webhooks = require('./server/services/webhooks');
     const limits = require('./server/services/limits');
     const apiVersionCompatibility = require('./server/services/api-version-compatibility');
@@ -369,6 +370,7 @@ async function initServices() {
         xmlrpc.listen(),
         slack.listen(),
         postSearchIndex.listen(),
+        postMediaIndex.listen(),
         audienceFeedback.init(),
         emailService.init(),
         emailAnalytics.init(),

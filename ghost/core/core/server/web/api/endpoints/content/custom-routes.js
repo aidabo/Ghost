@@ -22,6 +22,7 @@ module.exports = function customApiRoutes(router) {
     // route above is registered before customApi() and would otherwise capture
     // `/posts/search-index` as id="search-index" (422 on the 24-hex id validator).
     router.get('/search/posts', mw.authenticatePublic, http(api.postsSearchIndexPublic.search));
+    router.get('/post-media', mw.authenticatePublic, http(api.postMediaPublic.browse));
 
     // ## estate content routes
     router.get('/estate/properties', mw.authenticatePublic, http(api.estatePropertiesPublic.browse));

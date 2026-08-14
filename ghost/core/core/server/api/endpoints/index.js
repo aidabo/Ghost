@@ -488,6 +488,10 @@ module.exports = {
         return apiFramework.pipeline(require('./posts-search-index-public'), localUtils, 'content');
     },
 
+    get postMediaPublic() {
+        return apiFramework.pipeline(require('./post-media-public'), localUtils, 'content');
+    },
+
     // estate content endpoints
     get estatePropertiesPublic() {
         return apiFramework.pipeline(require('./estate-properties-public'), localUtils, 'content');
