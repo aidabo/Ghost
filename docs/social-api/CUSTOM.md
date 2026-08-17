@@ -569,3 +569,32 @@ Older notes for:
 have been moved to:
 
 - [LEGACY_NOTES.md](./LEGACY_NOTES.md)
+
+---
+
+## Backend image custom source and migration safety (2026-08-17)
+
+The production backend image is based on the upstream `ghost:5.116.2-alpine`
+image. Custom source files that are required by `ghost/core/core/boot.js` must
+be copied explicitly in `.docker/prd.Dockerfile`.
+
+Currently copied custom services include:
+
+- `core/server/services/post-search-index`
+- `core/server/services/post-media-index`
+- `core/server/services/social-comments`
+
+Do not copy the whole `core/server/services` directory by default. That would
+replace upstream Ghost services unnecessarily, increase the image diff, and
+make future upstream updates harder to audit. Add a directory-specific `COPY`
+when `boot.js` or another runtime entrypoint introduces a custom service.
+
+The DZI and Chart job table definitions must not declare the same index twice.
+Keep the single-column `status` index in `@@INDEXES@@`; do not also set
+`status.index: true`, because Ghost's schema builder emits both definitions and
+MySQL rejects the duplicate key name with `ER_DUP_KEYNAME`.
+
+The `2026-08-17-00-00-00-repair-social-ai-job-indexes.js` migration is
+non-transactional and idempotent. It repairs indexes when an earlier MySQL DDL
+migration created a table before failing, and safely skips indexes that already
+exist.

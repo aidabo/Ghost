@@ -4,7 +4,7 @@ module.exports = addTable('social_ai_dzi_jobs', {
     id: {type: 'string', maxlength: 24, nullable: false, primary: true},
     user_id: {type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true, index: true},
     group_id: {type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', setNullDelete: true},
-    status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued', index: true},
+    status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued'},
     progress: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
     source_path: {type: 'string', maxlength: 2000, nullable: false},
     source_name: {type: 'string', maxlength: 500, nullable: true},

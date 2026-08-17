@@ -8,7 +8,7 @@ const {addTable} = require('../../utils');
 module.exports = addTable('social_ai_chart_jobs', {
     id: {type: 'string', maxlength: 24, nullable: false, primary: true},
     type: {type: 'string', maxlength: 100, nullable: false, defaultTo: 'image-fetch'},
-    status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued', index: true},
+    status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued'},
     steps: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
     payload: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
     result: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},

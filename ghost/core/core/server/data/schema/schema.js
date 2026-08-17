@@ -2196,7 +2196,7 @@ module.exports = {
         id: { type: 'string', maxlength: 24, nullable: false, primary: true },
         user_id: { type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true, index: true },
         group_id: { type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', setNullDelete: true },
-        status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued', index: true },
+        status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued' },
         is_public: { type: 'bool', nullable: false, defaultTo: false, index: true },
         progress: { type: 'integer', nullable: false, unsigned: true, defaultTo: 0 },
         source_path: { type: 'string', maxlength: 2000, nullable: false },
@@ -2225,7 +2225,7 @@ module.exports = {
         id: { type: 'string', maxlength: 24, nullable: false, primary: true },
         // Leading step type (image-fetch / csv-create / …), for display & filtering.
         type: { type: 'string', maxlength: 100, nullable: false, defaultTo: 'image-fetch' },
-        status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued', index: true },
+        status: { type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued' },
         // Ordered step array: [{id, type, status, payload, result, artifacts, error, history, progress}].
         // Job-level status is DERIVED from steps in the endpoint.
         steps: { type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true },
