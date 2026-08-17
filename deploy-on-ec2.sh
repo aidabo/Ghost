@@ -6,7 +6,7 @@ S3_FOLDER="deploy-image"
 AWS_REGION="ap-northeast-1"
 IMAGE_NAME="ghost"
 # Update this version as needed
-VERSION="5.116.2-next-r6b" 
+VERSION="5.116.2-next-r260817"
 
 # Download from S3
 aws s3 cp s3://$S3_BUCKET/$S3_FOLDER/$IMAGE_NAME-$VERSION.tar . --region $AWS_REGION

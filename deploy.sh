@@ -5,7 +5,7 @@ S3_BUCKET="60-legacy"
 S3_FOLDER="deploy-image"
 AWS_REGION="ap-northeast-1"
 IMAGE_NAME="ghost"
-VERSION="5.116.2-next-r6b"
+VERSION="5.116.2-next-r260817"
 
 # yarn docker:build
 yarn docker:next:build
@@ -32,4 +32,3 @@ docker builder prune --force
 
 # Cleanup all
 # docker system prune -a
-
