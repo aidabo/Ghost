@@ -1257,6 +1257,7 @@ module.exports = {
     social_components: {
         id: { type: 'string', maxlength: 24, nullable: false, primary: true },
         slug: { type: 'string', maxlength: 191, nullable: true, unique: true },
+        public_path: { type: 'string', maxlength: 191, nullable: true, unique: true },
         type: { type: 'string', maxlength: 60, nullable: false, index: true },
         title: { type: 'string', maxlength: 191, nullable: false },
         tag: { type: 'string', maxlength: 24, nullable: true, index: true, references: 'tags.id', setNullDelete: true },

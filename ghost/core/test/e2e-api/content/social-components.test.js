@@ -1,4 +1,3 @@
-const assert = require('assert/strict');
 const should = require('should');
 const supertest = require('supertest');
 const ObjectId = require('bson-objectid').default;
@@ -22,13 +21,15 @@ describe('Social Components Content API', function () {
 
     const validKey = localUtils.getValidKey();
 
-    const createComponent = async ({title, groupId = null, status = 'published'}) => {
+    const createComponent = async ({title, groupId = null, status = 'published', slug = null, publicPath = null}) => {
         const ownerId = testUtils.DataGenerator.Content.users[0].id;
         const now = new Date();
         const componentId = ObjectId().toHexString();
 
         await testUtils.knex('social_components').insert({
             id: componentId,
+            slug,
+            public_path: publicPath,
             type: 'page',
             title,
             tag: null,
@@ -48,6 +49,41 @@ describe('Social Components Content API', function () {
 
         return componentId;
     };
+
+    it('Can resolve only a published social component by public_path', async function () {
+        const suffix = ObjectId().toHexString();
+        const publicPath = `/news/page-${suffix}`;
+        const publishedId = await createComponent({
+            title: 'Published alias page',
+            slug: `published-alias-${suffix}`,
+            publicPath
+        });
+        const draftId = await createComponent({
+            title: 'Draft alias page',
+            slug: `draft-alias-${suffix}`,
+            publicPath: `/news/draft-${suffix}`,
+            status: 'draft'
+        });
+
+        try {
+            const filter = encodeURIComponent(`public_path:'${publicPath}'`);
+            const res = await request.get(localUtils.API.getApiQuery(`social/components/?key=${validKey}&filter=${filter}`))
+                .set('Origin', testUtils.API.getURL())
+                .expect('Content-Type', /json/)
+                .expect(200);
+
+            res.body.socialcomponents.should.have.length(1);
+            res.body.socialcomponents[0].id.should.equal(publishedId);
+
+            const draftFilter = encodeURIComponent(`public_path:'/news/draft-${suffix}'`);
+            const draftRes = await request.get(localUtils.API.getApiQuery(`social/components/?key=${validKey}&filter=${draftFilter}`))
+                .set('Origin', testUtils.API.getURL())
+                .expect(200);
+            draftRes.body.socialcomponents.should.have.length(0);
+        } finally {
+            await testUtils.knex('social_components').whereIn('id', [publishedId, draftId]).del();
+        }
+    });
 
     it('Can request social components scoped to a public group without member auth', async function () {
         const ownerId = testUtils.DataGenerator.Content.users[0].id;
