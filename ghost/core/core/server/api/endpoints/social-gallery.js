@@ -1125,7 +1125,18 @@ const resolveUploadContext = async (frame) => {
                 message: tpl(messages.noProjectPermission)
             });
         }
-        const baseDir = path.posix.join(root, 'gallery', 'chart_projects', pid);
+        // A project is a GENERIC task container (media/chart/deepzoom/posts), not
+        // chart-specific. An optional typed subfolder routes the upload into the
+        // general project tree gallery/projects/{pid}/{subfolder}/ (e.g. media →
+        // gallery/projects/{pid}/media/). Legacy chart direct uploads (no
+        // subfolder) stay at gallery/chart_projects/{pid}/ for back-compat.
+        // Search is by social_media_assets.project_id, so the folder is purely
+        // organizational — both trees list together under the project.
+        const subRaw = String(getFrameValue(frame, 'subfolder') || '').trim().toLowerCase();
+        const sub = /^[a-z0-9_-]{1,32}$/.test(subRaw) ? subRaw : '';
+        const baseDir = sub
+            ? path.posix.join(root, 'gallery', 'projects', pid, sub)
+            : path.posix.join(root, 'gallery', 'chart_projects', pid);
         return {
             mediaStore,
             targetDir: mediaStore.getTargetDir(baseDir),
@@ -1607,7 +1618,8 @@ const controller = {
             'target',
             'property_id',
             'person_id',
-            'project_id'
+            'project_id',
+            'subfolder'
         ],
         permissions: false,
         async query(frame) {

@@ -424,7 +424,7 @@ const controller = {
             const deletedJobs = [];
             // Best-effort gallery-bucket object cleanup (mirrors job destroy).
             // Must not block the DB delete — failures are logged.
-            const cleanupGalleryBucket = async (childId) => {
+            const cleanupGalleryPrefix = async (prefixParts) => {
                 try {
                     const mediaStore = storage.getStorage('media');
                     if (!mediaStore || typeof mediaStore.delete !== 'function') {
@@ -442,7 +442,7 @@ const controller = {
                     };
                     if (typeof mediaStore.list === 'function') {
                         const root = mediaStore.pathPrefix || mediaStore.storagePath || '';
-                        const prefix = [root, 'gallery', 'chart_jobs', childId]
+                        const prefix = [root, ...prefixParts]
                             .filter(Boolean)
                             .join('/')
                             .replace(/\/+/g, '/');
@@ -457,9 +457,10 @@ const controller = {
                         } while (cursor);
                     }
                 } catch (err) {
-                    logging.warn(`[social-ai-projects] gallery S3 cleanup failed for job ${childId}: ${err?.message || err}`);
+                    logging.warn(`[social-ai-projects] gallery S3 cleanup failed for prefix ${prefixParts.join('/')}: ${err?.message || err}`);
                 }
             };
+            const cleanupGalleryBucket = (childId) => cleanupGalleryPrefix(['gallery', 'chart_jobs', childId]);
 
             try {
                 await knex.transaction(async (trx) => {
@@ -516,6 +517,16 @@ const controller = {
                             .del();
                     }
 
+                    // Direct project-stamped rows: uploads that target the
+                    // project tree itself (media → gallery/projects/{pid}/…,
+                    // legacy chart → gallery/chart_projects/{pid}/). The
+                    // per-family cascade above only covers rows linked through
+                    // a wired job family — the project is going away entirely,
+                    // so delete these outright. (Media jobs themselves keep
+                    // surviving: they have no project_id yet; the association
+                    // is asset-level.)
+                    await trx('social_media_assets').where({project_id: row.id}).del();
+
                     await trx(TABLE).where({ id: row.id }).del();
                 });
             } finally {
@@ -525,6 +536,12 @@ const controller = {
                 for (const cid of deletedJobs) {
                     await cleanupGalleryBucket(cid);
                 }
+                // Project tree: direct uploads into the project itself (media →
+                // gallery/projects/{pid}/…, legacy chart →
+                // gallery/chart_projects/{pid}/) are prefixed by the project
+                // id, not by any child job id.
+                await cleanupGalleryPrefix(['gallery', 'chart_projects', row.id]);
+                await cleanupGalleryPrefix(['gallery', 'projects', row.id]);
             }
 
             return {
