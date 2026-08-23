@@ -187,3 +187,4 @@ ghost/core/core/shared/config/env/*.json
 .omx/
 .omc/
 yalc.lock
+.codex
