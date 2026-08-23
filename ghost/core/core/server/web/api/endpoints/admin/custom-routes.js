@@ -1,6 +1,6 @@
 const api = require('../../../../api').endpoints;
 const models = require('../../../../models');
-const { http } = require('@tryghost/api-framework');
+const {http} = require('@tryghost/api-framework');
 const mw = require('./middleware');
 
 const createOrUpdatePost = async (req, res, next) => {
@@ -143,6 +143,9 @@ module.exports = function customApiRoutes(router) {
     // Project-scoped gallery (all media of a project).
     router.get('/social/gallery/project', mw.authAdminApi, http(api.socialGallery.project));
     router.get('/social/gallery/project/', mw.authAdminApi, http(api.socialGallery.project));
+    // Distinct projects a job's uploaded assets belong to (job_id / job_ids).
+    router.get('/social/gallery/job-projects', mw.authAdminApi, http(api.socialGallery.jobProjects));
+    router.get('/social/gallery/job-projects/', mw.authAdminApi, http(api.socialGallery.jobProjects));
     // Delete ONE gallery asset (social_media_assets) by id — chart-job gallery delete icon.
     router.delete('/social/gallery/assets/:id', mw.authAdminApi, http(api.socialGallery.destroyAsset));
     router.delete('/social/gallery/assets/:id/', mw.authAdminApi, http(api.socialGallery.destroyAsset));

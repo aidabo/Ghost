@@ -1413,6 +1413,81 @@ const controller = {
         }
     },
 
+    // Distinct projects that a job's uploaded assets belong to. Job pages surface
+    // "which project(s)" from here: an upload stamps social_media_assets.project_id
+    // but leaves the job row itself project-less (asset-level association), and
+    // those rows carry owner_scope='chart_jobs', so the plain user-scope gallery
+    // list never returns them. Accepts MEDIA job ids (`job_id`/`job_ids`, matched
+    // on sma.job_id) and/or CHART job ids (`chart_job_id`/`chart_job_ids`, matched
+    // on sma.chart_job_id) — comma-separated sets let a LIST resolve many at once.
+    jobProjects: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: ['job_id', 'job_ids', 'chart_job_id', 'chart_job_ids'],
+        permissions: false,
+        async query(frame) {
+            const userId = frame.options?.context?.user;
+            if (!userId) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.userRequired)
+                });
+            }
+            const parseIds = (...vals) => [...new Set(
+                String(vals.find(v => v) || '').split(',').map(s => s.trim()).filter(Boolean)
+            )];
+            const jobIds = parseIds(getFrameValue(frame, 'job_ids'), getFrameValue(frame, 'job_id'));
+            const chartJobIds = parseIds(getFrameValue(frame, 'chart_job_ids'), getFrameValue(frame, 'chart_job_id'));
+            if (!jobIds.length && !chartJobIds.length) {
+                return {data: [], meta: {}};
+            }
+            // Ownership: the uploader's own rows, OR rows of a media/chart job the
+            // caller owns (mirror the chart_jobs IDOR guard) — never enumerate
+            // another user's project associations.
+            const rows = await models.Base.knex('social_media_assets as sma')
+                .join('social_ai_projects as p', 'p.id', 'sma.project_id')
+                .whereNotNull('sma.project_id')
+                .where(function () {
+                    if (jobIds.length) {
+                        this.orWhereIn('sma.job_id', jobIds);
+                    }
+                    if (chartJobIds.length) {
+                        this.orWhereIn('sma.chart_job_id', chartJobIds);
+                    }
+                })
+                .where(function () {
+                    this.where('sma.user_id', userId)
+                        .orWhereExists(function () {
+                            this.select(1)
+                                .from('social_ai_media_jobs as mj')
+                                .whereRaw('mj.id = sma.job_id')
+                                .andWhere('mj.user_id', userId);
+                        })
+                        .orWhereExists(function () {
+                            this.select(1)
+                                .from('social_ai_chart_jobs as caj')
+                                .whereRaw('caj.id = sma.chart_job_id')
+                                .andWhere('caj.user_id', userId);
+                        });
+                })
+                .distinct(
+                    'sma.job_id as job_id',
+                    'sma.chart_job_id as chart_job_id',
+                    'sma.project_id as project_id',
+                    'p.name as project_name'
+                );
+            return {
+                data: rows.map(r => ({
+                    job_id: r.job_id || null,
+                    chart_job_id: r.chart_job_id || null,
+                    project_id: r.project_id,
+                    project_name: r.project_name
+                })),
+                meta: {}
+            };
+        }
+    },
+
     // Project-scoped gallery: all media of a project (direct project_id rows +
     // rows produced by the project's jobs). Same card as chartjobs on the client.
     project: {
