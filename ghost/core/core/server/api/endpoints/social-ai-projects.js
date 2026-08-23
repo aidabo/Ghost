@@ -500,7 +500,7 @@ const controller = {
                         // per-JOB (`gallery/chart_jobs/{jobId}/`), so the LIKE
                         // clauses enumerate the child job ids — the old
                         // project-id clause never matched.
-                        const galleryLikes = childIds.map((cid) => `storage_key LIKE ?`);
+                        const galleryLikes = childIds.map(() => `storage_key LIKE ?`);
                         const galleryParams = childIds.flatMap((cid) => [`%gallery/chart_jobs/${cid}/%`]);
                         const jobAreaLikes = childIds.map(() => `storage_key LIKE ?`);
                         const jobAreaParams = childIds.flatMap((cid) => [`%/jobs/${cid}/%`]);
