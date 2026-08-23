@@ -208,9 +208,6 @@ const assertRowAccess = async ({ frame, row, permission = 'read' }) => {
     }
 };
 
-// @ts-ignore
-const assertCanReadRow = (args) => assertRowAccess({ ...args, permission: 'read' });
-
 // Review 2026-08-07 #1: destructive/state-changing actions (cancel/rerun/
 // destroy) require write permission — `read` is granted to any valid group
 // member, so a read-only member could otherwise cancel, rerun, or delete jobs.

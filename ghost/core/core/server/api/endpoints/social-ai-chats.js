@@ -147,7 +147,7 @@ const formatMySqlDateTime = (date) => {
     return date.toISOString().slice(0, 19).replace('T', ' ');
 };
 
-const buildConversationTitle = ({ provider, title, userMessage }) => {
+const buildConversationTitle = ({ title, userMessage }) => {
     const incomingTitle = String(title || '').trim();
     if (incomingTitle) {
         return incomingTitle;

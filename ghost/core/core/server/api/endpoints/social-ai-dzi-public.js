@@ -2,6 +2,10 @@ const models = require('../../models');
 const errors = require('@tryghost/errors');
 const tpl = require('@tryghost/tpl');
 
+const messages = {
+    jobNotFound: 'DZI job not found.'
+};
+
 const serialize = row => ({
     id: row.id,
     publication_name: row.publication_name,
@@ -47,7 +51,7 @@ const controller = {
         async query(frame) {
             const id = frame.data?.id || frame.options?.id;
             const row = await models.Base.knex('social_ai_dzi_jobs').where({id, status: 'completed', is_public: true}).first();
-            if (!row) throw new errors.NotFoundError({message: tpl('DZI job not found.')});
+            if (!row) throw new errors.NotFoundError({message: tpl(messages.jobNotFound)});
             return new models.SocialAiDziJob(serialize(row));
         }
     }

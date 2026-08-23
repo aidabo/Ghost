@@ -465,12 +465,15 @@ const controller = {
                         message: tpl(messages.invalidCorrectedTranscript)
                     });
                 }
+                let parsedCorrectedTranscript;
                 try {
-                    const parsed = JSON.parse(correctedTranscriptJson);
-                    if (!Array.isArray(parsed?.segments)) {
-                        throw new Error('segments array is required');
-                    }
+                    parsedCorrectedTranscript = JSON.parse(correctedTranscriptJson);
                 } catch (err) {
+                    throw new errors.ValidationError({
+                        message: tpl(messages.invalidCorrectedTranscript)
+                    });
+                }
+                if (!Array.isArray(parsedCorrectedTranscript?.segments)) {
                     throw new errors.ValidationError({
                         message: tpl(messages.invalidCorrectedTranscript)
                     });
