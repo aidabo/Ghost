@@ -701,6 +701,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
             'sma.original_filename as original_filename',
             'sma.asset_type as asset_type',
             'sma.job_id as job_id',
+            'sma.project_id as project_id',
             'sma.created_at as created_at',
             'sma.updated_at as updated_at',
             't.name as tag_name',
@@ -853,6 +854,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
         }),
         asset_type: row.asset_type || null,
         job_id: row.job_id || null,
+        project_id: row.project_id || null,
         category: row.tag_name || null,
         category_slug: row.tag_slug || null,
         created_at: row.created_at || null,
@@ -1127,8 +1129,8 @@ const resolveUploadContext = async (frame) => {
         }
         // A project is a GENERIC task container (media/chart/deepzoom/posts), not
         // chart-specific. An optional typed subfolder routes the upload into the
-        // general project tree gallery/projects/{pid}/{subfolder}/ (e.g. media →
-        // gallery/projects/{pid}/media/). Legacy chart direct uploads (no
+        // general project tree gallery/projects/{pid}/{subfolder}/ (e.g. artifacts →
+        // gallery/projects/{pid}/artifacts/). Legacy chart direct uploads (no
         // subfolder) stay at gallery/chart_projects/{pid}/ for back-compat.
         // Search is by social_media_assets.project_id, so the folder is purely
         // organizational — both trees list together under the project.
@@ -1139,7 +1141,11 @@ const resolveUploadContext = async (frame) => {
             : path.posix.join(root, 'gallery', 'chart_projects', pid);
         return {
             mediaStore,
-            targetDir: mediaStore.getTargetDir(baseDir),
+            // NO date subfolder: project artifacts use a stable, flat layout
+            // (gallery/projects/{pid}/{subfolder}/{name}) matching the chart
+            // worker's artifacts layer — buildUniqueStorageKey already appends a
+            // -{8hex} suffix so names never collide without a YYYY/MM split.
+            targetDir: baseDir,
             userId,
             groupId: null,
             projectId: pid,
