@@ -640,6 +640,99 @@ const controller = {
             const next = await loadRowOrThrow(knex, row.id);
             return serializeRow(next);
         }
+    },
+
+    // ─── Project association (many-to-many via social_ai_dzi_job_projects) ───
+
+    // @ts-ignore
+    listProjects: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const knex = models.Base.knex;
+            const row = await loadRowOrThrow(knex, getJobId(frame));
+            await assertCanReadRow({frame, row});
+            const links = await knex('social_ai_dzi_job_projects as djp')
+                .join('social_ai_projects as p', 'p.id', 'djp.project_id')
+                .where('djp.dzi_job_id', row.id)
+                .select('djp.project_id as id', 'p.name as name', 'djp.created_at as linked_at')
+                .orderBy('djp.created_at', 'asc');
+            return {data: links, meta: {}};
+        }
+    },
+
+    // @ts-ignore
+    linkProject: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const knex = models.Base.knex;
+            const row = await loadRowOrThrow(knex, getJobId(frame));
+            await assertCanReadRow({frame, row});
+
+            const payload = getActionPayload(frame);
+            const projectId = String(payload.project_id || '').trim();
+            if (!projectId) {
+                throw new errors.ValidationError({message: 'project_id is required'});
+            }
+
+            const project = await knex('social_ai_projects').where({id: projectId}).first();
+            if (!project) {
+                throw new errors.NotFoundError({message: 'Project not found'});
+            }
+
+            const exists = await knex('social_ai_dzi_job_projects')
+                .where({dzi_job_id: row.id, project_id: projectId}).first();
+
+            if (!exists) {
+                const ts = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
+                // @ts-ignore
+                const rand = require('crypto').randomBytes(8).toString('hex');
+                const linkId = ts + rand;
+                const now = nowMySql();
+                await knex('social_ai_dzi_job_projects').insert({
+                    id: linkId,
+                    dzi_job_id: row.id,
+                    project_id: projectId,
+                    created_at: now
+                });
+            }
+
+            const links = await knex('social_ai_dzi_job_projects as djp')
+                .join('social_ai_projects as p', 'p.id', 'djp.project_id')
+                .where('djp.dzi_job_id', row.id)
+                .select('djp.project_id as id', 'p.name as name', 'djp.created_at as linked_at')
+                .orderBy('djp.created_at', 'asc');
+            return {data: links, meta: {}};
+        }
+    },
+
+    // @ts-ignore
+    unlinkProject: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const knex = models.Base.knex;
+            const row = await loadRowOrThrow(knex, getJobId(frame));
+            await assertCanReadRow({frame, row});
+
+            const payload = getActionPayload(frame);
+            const projectId = String(payload.project_id || '').trim();
+            if (!projectId) {
+                throw new errors.ValidationError({message: 'project_id is required'});
+            }
+
+            await knex('social_ai_dzi_job_projects')
+                .where({dzi_job_id: row.id, project_id: projectId})
+                .del();
+
+            const links = await knex('social_ai_dzi_job_projects as djp')
+                .join('social_ai_projects as p', 'p.id', 'djp.project_id')
+                .where('djp.dzi_job_id', row.id)
+                .select('djp.project_id as id', 'p.name as name', 'djp.created_at as linked_at')
+                .orderBy('djp.created_at', 'asc');
+            return {data: links, meta: {}};
+        }
     }
 };
 
