@@ -733,6 +733,25 @@ const controller = {
                 .orderBy('djp.created_at', 'asc');
             return {data: links, meta: {}};
         }
+    },
+
+    // @ts-ignore
+    listByProject: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const knex = models.Base.knex;
+            const projectId = String(frame.options.id || '').trim();
+            if (!projectId) {
+                throw new errors.ValidationError({message: 'project_id is required'});
+            }
+            const rows = await knex('social_ai_dzi_jobs as j')
+                .join('social_ai_dzi_job_projects as djp', 'djp.dzi_job_id', 'j.id')
+                .where('djp.project_id', projectId)
+                .select('j.*', 'djp.created_at as linked_at')
+                .orderBy('djp.created_at', 'desc');
+            return {data: rows, meta: {}};
+        }
     }
 };
 
