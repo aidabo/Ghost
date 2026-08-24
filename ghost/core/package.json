@@ -21,7 +21,7 @@
   "license": "MIT",
   "scripts": {
     "archive": "npm pack",
-    "dev": "node --watch --import=tsx index.js",
+    "dev": "FRONT_END_URL=\"${FRONT_END_URL:-http://localhost:${FRONTEND_PORT:-3000}}\" node --watch --import=tsx index.js",
     "build:assets": "postcss core/frontend/public/ghost.css --no-map --use cssnano -o core/frontend/public/ghost.min.css",
     "build:tsc": "tsc",
     "test": "yarn test:unit",
