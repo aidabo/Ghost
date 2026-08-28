@@ -306,6 +306,7 @@ module.exports = {
         codeinjection_foot: {type: 'text', maxlength: 65535, nullable: true},
         canonical_url: {type: 'string', maxlength: 2000, nullable: true},
         accent_color: {type: 'string', maxlength: 50, nullable: true},
+        classification: {type: 'string', maxlength: 100, nullable: true},
         created_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false},
         updated_at: {type: 'dateTime', nullable: true},
@@ -1412,7 +1413,7 @@ module.exports = {
         user_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true},
         group_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true},
         device_type: {type: 'string', maxlength: 24, nullable: false, index: true},
-        device_key: {type: 'string', maxlength: 2000, nullable: false, index: true},
+        device_key: {type: 'string', maxlength: 1500, nullable: false},
         locale: {type: 'string', maxlength: 16, nullable: true},
         timezone: {type: 'string', maxlength: 64, nullable: true},
         push_subscription: {type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true},
@@ -1523,6 +1524,10 @@ module.exports = {
 
     },
 
+    // Keep the initial table small. REINS, MLIT, neighborhood, school,
+    // hazard, Google, and inquiry fields are added by their dated migrations.
+    // This must stay aligned with 2026-05-11-00-00-01-add-estate-properties-table.js
+    // so a fresh database follows the same incremental path as an existing one.
     estate_properties: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
         status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft', validations: {isIn: [['published', 'draft', 'working', 'contracted', 'booked', 'invalid']]}},
@@ -1560,69 +1565,13 @@ module.exports = {
         current_yield: {type: 'float', nullable: true},
         expected_rent: {type: 'integer', nullable: true},
         features: {type: 'text', maxlength: 5000, nullable: true},
-
-        // REINS-specific fields
-        building_name: {type: 'string', maxlength: 500, nullable: true},
-        management_company: {type: 'string', maxlength: 500, nullable: true},
-        current_rent: {type: 'bigInteger', nullable: true},
-        price_valuation: {type: 'bigInteger', nullable: true},
-        registration_date: {type: 'string', maxlength: 50, nullable: true},
-        expiry_date: {type: 'string', maxlength: 50, nullable: true},
-        land_leasehold: {type: 'string', maxlength: 50, nullable: true},
-        fixtures_and_fittings: {type: 'text', maxlength: 5000, nullable: true},
-        reins_listing_number: {type: 'string', maxlength: 100, nullable: true, index: true},
-        internal_inquiry_id: {type: 'string', maxlength: 100, nullable: true, index: true},
-        registrant_notes: {type: 'text', maxlength: 5000, nullable: true},
-
-        // Source tracking fields (used by ghostWriter.ts registration pipeline)
-        source: {type: 'string', maxlength: 50, nullable: true, index: true},
-        source_company: {type: 'string', maxlength: 500, nullable: true},
-        source_url: {type: 'string', maxlength: 2000, nullable: true},
-        source_pdf_url: {type: 'string', maxlength: 2000, nullable: true},
-        source_id: {type: 'string', maxlength: 200, nullable: true},
-        registered_by: {type: 'string', maxlength: 50, nullable: true},
-
         featured: {type: 'bool', nullable: true, defaultTo: false},
         sort_order: {type: 'integer', nullable: true, defaultTo: 0},
-
-        // Neighborhood / MLIT data
-        google_map_url: {type: 'string', maxlength: 2000, nullable: true},
-        google_3d_url: {type: 'string', maxlength: 2000, nullable: true},
-        google_places_data: {type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true},
-        mlit_summary_data: {type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true},
-        street_view_url: {type: 'string', maxlength: 2000, nullable: true},
-        hazard_map_url: {type: 'string', maxlength: 2000, nullable: true},
-        nearby_stores: {type: 'text', maxlength: 5000, nullable: true},
-        nearby_hospitals: {type: 'text', maxlength: 5000, nullable: true},
-        nearby_schools: {type: 'text', maxlength: 5000, nullable: true},
-        nearby_parks: {type: 'text', maxlength: 5000, nullable: true},
-        elementary_school_info: {type: 'text', maxlength: 5000, nullable: true},
-        junior_school_info: {type: 'text', maxlength: 5000, nullable: true},
-        school_info: {type: 'text', maxlength: 5000, nullable: true},
-        preschool_info: {type: 'text', maxlength: 5000, nullable: true},
-        liquefaction_info: {type: 'text', maxlength: 5000, nullable: true},
-        flood_inundation_info: {type: 'text', maxlength: 5000, nullable: true},
-        storm_surge_info: {type: 'text', maxlength: 5000, nullable: true},
-        tsunami_info: {type: 'text', maxlength: 5000, nullable: true},
-        landslide_warning_info: {type: 'text', maxlength: 5000, nullable: true},
-        disaster_hazard_area_info: {type: 'text', maxlength: 5000, nullable: true},
-        large_scale_fill_info: {type: 'text', maxlength: 5000, nullable: true},
-        landslide_prevention_info: {type: 'text', maxlength: 5000, nullable: true},
-        steep_slope_info: {type: 'text', maxlength: 5000, nullable: true},
-        building_auto_lock: {type: 'bool', nullable: true, defaultTo: false},
-        building_manager: {type: 'string', maxlength: 100, nullable: true},
-        mlit_data: {type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true},
         group_id: {type: 'string', maxlength: 24, nullable: true},
         created_at: {type: 'dateTime', nullable: false},
         updated_at: {type: 'dateTime', nullable: true},
         created_by: {type: 'string', maxlength: 24, nullable: true},
-        updated_by: {type: 'string', maxlength: 24, nullable: true},
-        '@@INDEXES@@': [
-            ['status'],
-            ['property_type'],
-            ['group_id'],
-            ['featured']
-        ]
+        updated_by: {type: 'string', maxlength: 24, nullable: true}
     },
 
     estate_property_search_index: {
@@ -2286,7 +2235,6 @@ module.exports = {
         updated_at: {type: 'dateTime', nullable: false},
         updated_by: {type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true},
         '@@INDEXES@@': [
-            ['status'],
             ['user_id', 'status']
         ]
     },
