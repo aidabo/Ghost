@@ -1323,8 +1323,10 @@ module.exports = {
         owner_scope: {type: 'string', maxlength: 20, nullable: false, index: true},
         user_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'users.id', cascadeDelete: true},
         group_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true},
-        // Media job ID. A plain indexed link
-        job_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_ai_media_jobs.id', setNullDelete: true},
+        // Media job ID. Keep the initial table creation independent from the
+        // social_ai_media_jobs table; the FK is added by a later migration
+        // after both tables exist.
+        job_id: {type: 'string', maxlength: 24, nullable: true, index: true},
         // Deep Zoom source-PDF link. A plain indexed link, NOT a FK: the upload
         // flow finalizes the source-PDF asset BEFORE the social_ai_dzi_jobs row
         // is created, so a FK here would always fail its referential check at
