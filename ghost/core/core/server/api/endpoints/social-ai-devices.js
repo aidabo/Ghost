@@ -3,6 +3,7 @@ const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const ObjectId = require('bson-objectid').default;
 const models = require('../../models');
+const crypto = require('crypto');
 
 const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 
@@ -152,6 +153,7 @@ const controller = {
             const groupId = payload.group_id || frame.options?.group_id || null;
             const deviceType = String(payload.device_type || '').trim().toLowerCase();
             const deviceKey = String(payload.device_key || '').trim();
+            const deviceKeyHash = crypto.createHash('sha256').update(deviceKey).digest('hex');
             const locale = payload.locale || null;
             const timezone = payload.timezone || null;
             const pushSubscription = payload.push_subscription || null;
@@ -169,7 +171,7 @@ const controller = {
             }
 
             const existing = await knex(DEVICES_TABLE)
-                .where({user_id: targetUserId, device_key: deviceKey})
+                .where({user_id: targetUserId, device_key_hash: deviceKeyHash})
                 .first();
 
             const nowSql = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -196,6 +198,7 @@ const controller = {
                 group_id: groupId,
                 device_type: deviceType,
                 device_key: deviceKey,
+                device_key_hash: deviceKeyHash,
                 locale,
                 timezone,
                 push_subscription: pushSubscription,

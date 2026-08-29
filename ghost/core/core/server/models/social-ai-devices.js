@@ -2,6 +2,7 @@ const ObjectId = require('bson-objectid').default;
 const ghostBookshelf = require('./base');
 const errors = require('@tryghost/errors');
 const models = require('./index');
+const crypto = require('crypto');
 
 const SocialAiDevice = ghostBookshelf.Model.extend({
     tableName: 'social_ai_devices',
@@ -62,6 +63,7 @@ const SocialAiDevice = ghostBookshelf.Model.extend({
 
         model.set('device_type', deviceType);
         model.set('device_key', deviceKey);
+        model.set('device_key_hash', crypto.createHash('sha256').update(deviceKey).digest('hex'));
     }
 });
 
