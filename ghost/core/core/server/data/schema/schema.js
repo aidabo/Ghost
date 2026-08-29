@@ -2324,8 +2324,7 @@ module.exports = {
         created_at: {type: 'dateTime', nullable: false},
         '@@INDEXES@@': [
             ['chart_job_id', 'role', 'sort_order'],
-            ['chart_job_id', 'person_name'],
-            ['media_id']
+            ['chart_job_id', 'person_name']
         ]
     },
 

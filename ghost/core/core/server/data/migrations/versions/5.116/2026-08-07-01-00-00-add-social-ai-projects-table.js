@@ -18,7 +18,6 @@ module.exports = addTable('social_ai_projects', {
     updated_at: {type: 'dateTime', nullable: false},
     updated_by: {type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true},
     '@@INDEXES@@': [
-        ['status'],
         ['user_id', 'status']
     ]
 });
