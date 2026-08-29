@@ -36,7 +36,8 @@ module.exports = combineNonTransactionalMigrations(
     }),
     createAddColumnMigration('estate_properties', 'fixtures_and_fittings', {
         type: 'text',
-        maxlength: 5000,
+        maxlength: 16777215,
+        fieldtype: 'medium',
         nullable: true
     }),
     createAddColumnMigration('estate_properties', 'reins_listing_number', {
@@ -56,13 +57,13 @@ module.exports = combineNonTransactionalMigrations(
         nullable: true
     }),
     createAddColumnMigration('estate_properties', 'source_url', {
-        type: 'string',
-        maxlength: 2000,
+        type: 'text',
+        maxlength: 65535,
         nullable: true
     }),
     createAddColumnMigration('estate_properties', 'source_pdf_url', {
-        type: 'string',
-        maxlength: 2000,
+        type: 'text',
+        maxlength: 65535,
         nullable: true
     }),
     createAddColumnMigration('estate_properties', 'source_id', {

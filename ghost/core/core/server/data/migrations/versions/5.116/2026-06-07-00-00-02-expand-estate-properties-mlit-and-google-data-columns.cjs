@@ -2,8 +2,8 @@ const logging = require('@tryghost/logging');
 const DatabaseInfo = require('@tryghost/database-info');
 const {createTransactionalMigration} = require('../../utils');
 
-async function alterToLongText(knex, table, column) {
-    await knex.raw(`ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` LONGTEXT NULL;`);
+async function alterToMediumText(knex, table, column) {
+    await knex.raw(`ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` MEDIUMTEXT NULL;`);
 }
 
 module.exports = createTransactionalMigration(
@@ -13,8 +13,8 @@ module.exports = createTransactionalMigration(
             return;
         }
 
-        await alterToLongText(knex, 'estate_properties', 'mlit_data');
-        await alterToLongText(knex, 'estate_properties', 'google_places_data');
+        await alterToMediumText(knex, 'estate_properties', 'mlit_data');
+        await alterToMediumText(knex, 'estate_properties', 'google_places_data');
     },
     async function down(knex) {
         if (DatabaseInfo.isSQLite(knex)) {

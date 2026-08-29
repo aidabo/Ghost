@@ -1,8 +1,8 @@
 const {createAddColumnMigration, combineNonTransactionalMigrations} = require('../../utils');
 
 module.exports = combineNonTransactionalMigrations(
-    createAddColumnMigration('estate_properties', 'street_view_url', {type: 'string', maxlength: 2000, nullable: true}),
-    createAddColumnMigration('estate_properties', 'hazard_map_url', {type: 'string', maxlength: 2000, nullable: true}),
+    createAddColumnMigration('estate_properties', 'street_view_url', {type: 'text', maxlength: 65535, nullable: true}),
+    createAddColumnMigration('estate_properties', 'hazard_map_url', {type: 'text', maxlength: 65535, nullable: true}),
     createAddColumnMigration('estate_properties', 'nearby_stores', {type: 'text', maxlength: 5000, nullable: true}),
     createAddColumnMigration('estate_properties', 'nearby_hospitals', {type: 'text', maxlength: 5000, nullable: true}),
     createAddColumnMigration('estate_properties', 'nearby_schools', {type: 'text', maxlength: 5000, nullable: true}),

@@ -12,13 +12,13 @@ module.exports = combineNonTransactionalMigrations(
         nullable: true
     }),
     createAddColumnMigration('estate_properties', 'source_url', {
-        type: 'string',
-        maxlength: 2000,
+        type: 'text',
+        maxlength: 65535,
         nullable: true
     }),
     createAddColumnMigration('estate_properties', 'source_pdf_url', {
-        type: 'string',
-        maxlength: 2000,
+        type: 'text',
+        maxlength: 65535,
         nullable: true
     }),
     createAddColumnMigration('estate_properties', 'source_id', {
