@@ -1414,6 +1414,7 @@ module.exports = {
         group_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true},
         device_type: {type: 'string', maxlength: 24, nullable: false, index: true},
         device_key: {type: 'string', maxlength: 2000, nullable: false},
+        device_key_hash: {type: 'string', maxlength: 64, nullable: true},
         locale: {type: 'string', maxlength: 16, nullable: true},
         timezone: {type: 'string', maxlength: 64, nullable: true},
         push_subscription: {type: 'text', maxlength: 1000000000, fieldtype: 'long', nullable: true},
@@ -1423,6 +1424,9 @@ module.exports = {
         '@@INDEXES@@': [
             ['user_id', 'enabled'],
             ['group_id', 'enabled', 'updated_at']
+        ],
+        '@@UNIQUE_CONSTRAINTS@@': [
+            ['user_id', 'device_key_hash']
         ]
     },
 
