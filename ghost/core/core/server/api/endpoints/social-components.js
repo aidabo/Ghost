@@ -17,7 +17,7 @@ const messages = {
 };
 
 const TAG_ID_REGEX = /^[a-f0-9]{24}$/;
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
+const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin', 'Super Editor']);
 
 const getCurrentUserId = (frame) => frame.options?.context?.user || null;
 

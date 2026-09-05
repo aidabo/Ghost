@@ -15,7 +15,7 @@ const messages = {
     userRequired: 'No login user authentication.'
 };
 
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
+const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin', 'Super Editor']);
 
 const getCurrentUserId = (frame) => frame.options?.context?.user || null;
 
