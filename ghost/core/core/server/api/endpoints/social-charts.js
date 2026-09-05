@@ -226,7 +226,8 @@ const controller = {
         data: [
             'title',
             'group_id',
-            'status'
+            'status',
+            'created_by'
         ],
         permissions: true,
         async query(frame) {
@@ -243,8 +244,35 @@ const controller = {
                 }
 
                 enforceWriteAccessForEntry(existing, userId, isAdmin);
+
+                const payload = frame.data.socialcharts[0] || {};
+
+                // Reassigning the chart owner (created_by) is owner/admin only.
+                // Strip from the main payload so non-admins cannot set it; apply
+                // separately via internal context to bypass the x_by guard.
+                let reassignTo = null;
+                if (
+                    isAdmin &&
+                    payload.created_by &&
+                    String(payload.created_by) !== String(existing.get('created_by'))
+                ) {
+                    reassignTo = String(payload.created_by);
+                }
+                delete payload.created_by;
+
                 // @ts-ignore
-                return await models.SocialChart.edit(frame.data.socialcharts[0], frame.options);
+                const result = await models.SocialChart.edit(payload, frame.options);
+
+                if (reassignTo) {
+                    // @ts-ignore
+                    await models.SocialChart.edit(
+                        {created_by: reassignTo},
+                        {id: frame.options.id, context: {internal: true}}
+                    );
+                    result.set('created_by', reassignTo);
+                }
+
+                return result;
             } catch (err) {
                 logging.error(err);
                 throw err;
