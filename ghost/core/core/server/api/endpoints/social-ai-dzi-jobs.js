@@ -5,7 +5,7 @@ const logging = require('@tryghost/logging');
 const models = require('../../models');
 const storage = require('../../adapters/storage');
 
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
+const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin', 'Super Editor']);
 const ALLOWED_INCLUDES = ['user', 'group'];
 
 const messages = {
@@ -235,6 +235,7 @@ const controller = {
         },
         permissions: false,
         async query(frame) {
+            const currentUserId = getCurrentUserId(frame);
             const targetUserId = await resolveTargetUserId(frame);
             // @ts-ignore
             const groupId = frame.options?.group_id || null;
@@ -244,6 +245,14 @@ const controller = {
                 targetUserId,
                 permission: 'read'
             });
+
+            // Scope non-admins to their own jobs; admin/Super Editor see all.
+            const isAdmin = await isAdminUser(currentUserId);
+            if (!isAdmin && targetUserId) {
+                // @ts-ignore
+                frame.options.user_id = targetUserId;
+            }
+
             // @ts-ignore
             return await models.SocialAiDziJob.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
         }
