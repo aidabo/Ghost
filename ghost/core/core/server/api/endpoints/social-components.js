@@ -284,7 +284,8 @@ const controller = {
             'title',
             'tag',
             'group_id',
-            'status'
+            'status',
+            'created_by'
         ],
         permissions: true,
         async query(frame) {
@@ -301,8 +302,38 @@ const controller = {
                 }
 
                 enforceWriteAccessForEntry(existing, userId, isAdmin);
+
+                const payload = frame.data.socialcomponents[0] || {};
+
+                // Reassigning the page owner (created_by) is owner/admin only.
+                // The generic save path reverts created_by (the deprecated x_by
+                // guard in base/plugins/events.js onUpdating), so it must be
+                // applied separately with internal context. Always strip
+                // created_by from the main payload so a non-admin cannot hand
+                // off (or steal) a page, and the guard never fights the edit.
+                let reassignTo = null;
+                if (
+                    isAdmin &&
+                    payload.created_by &&
+                    String(payload.created_by) !== String(existing.get('created_by'))
+                ) {
+                    reassignTo = String(payload.created_by);
+                }
+                delete payload.created_by;
+
                 // @ts-ignore
-                return await models.SocialComponent.edit(frame.data.socialcomponents[0], frame.options);
+                const result = await models.SocialComponent.edit(payload, frame.options);
+
+                if (reassignTo) {
+                    // @ts-ignore
+                    await models.SocialComponent.edit(
+                        {created_by: reassignTo},
+                        {id: frame.options.id, context: {internal: true}}
+                    );
+                    result.set('created_by', reassignTo);
+                }
+
+                return result;
             } catch (err) {
                 logging.error(err);
                 throw err;
