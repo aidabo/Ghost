@@ -1474,6 +1474,7 @@ module.exports = class MemberRepository {
 
         let updatedSubscription;
         if (data.subscription.price) {
+            logging.info(`[Members] Stripe subscription price update starting: subscription=${data.subscription.subscription_id}, price=${data.subscription.price}`);
             const subscription = await this._stripeAPIService.getSubscription(
                 data.subscription.subscription_id
             );
@@ -1491,6 +1492,7 @@ module.exports = class MemberRepository {
                 if (subscriptionModel.get('status') === SUBSCRIPTION_STATUS_TRIALING) {
                     updatedSubscription = await this._stripeAPIService.cancelSubscriptionTrial(subscription.id);
                 }
+                logging.info(`[Members] Stripe subscription price update completed: subscription=${data.subscription.subscription_id}, price=${data.subscription.price}`);
             }
         }
 

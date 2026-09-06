@@ -39,6 +39,12 @@ COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115 ${G
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116 ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 COPY --chown=node:node ghost/core/core/server/models ${GHOST_INSTALL}/current/core/server/models
 COPY --chown=node:node ghost/core/core/server/services/mail ${GHOST_INSTALL}/current/core/server/services/mail
+COPY --chown=node:node ghost/admin/app/utils/currency.js ${GHOST_INSTALL}/current/admin/app/utils
+# The local development Admin build contains symlinks for Admin-X apps. Remove
+# the base image's asset directory before copying the dereferenced production
+# bundle, otherwise Docker cannot replace a directory symlink with a directory.
+RUN rm -rf ${GHOST_INSTALL}/current/core/built/admin
+COPY --chown=node:node ghost/core/core/built/admin ${GHOST_INSTALL}/current/core/built/admin
 COPY --chown=node:node ghost/core/core/server/services/url/config.js ${GHOST_INSTALL}/current/core/server/services/url
 COPY --chown=node:node ghost/core/core/server/web/api/endpoints/admin ${GHOST_INSTALL}/current/core/server/web/api/endpoints/admin
 COPY --chown=node:node ghost/core/core/server/web/api/endpoints/content ${GHOST_INSTALL}/current/core/server/web/api/endpoints/content
@@ -63,6 +69,12 @@ RUN set -eux; \
     gosu node npm cache clean --force; \
     npm cache clean --force; \
     rm -rv /tmp/yarn*;
+
+# The dependency install above recreates node_modules, so custom members-api
+# modules must be overlaid after it completes.
+COPY --chown=node:node ghost/members-api/lib/controllers/MemberController.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/controllers/
+COPY --chown=node:node ghost/members-api/lib/repositories/MemberRepository.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/repositories/
+COPY --chown=node:node ghost/members-api/lib/services/PaymentsService.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/services/
 
 WORKDIR $GHOST_INSTALL
 VOLUME $GHOST_CONTENT

@@ -1,5 +1,6 @@
 const errors = require('@tryghost/errors');
 const tpl = require('@tryghost/tpl');
+const logging = require('@tryghost/logging');
 
 const messages = {
     blockedEmailDomain: 'Memberships from this email domain are currently restricted.'
@@ -130,8 +131,11 @@ module.exports = class MemberController {
             }
 
             if (tierId && cadence) {
+                logging.info(`[Members] subscription update requested: subscription=${subscriptionId}, tier=${tierId}, cadence=${cadence}`);
                 const tier = await this._tiersService.api.read(tierId);
+                logging.info(`[Members] subscription update tier resolved: subscription=${subscriptionId}, tier=${tierId}`);
                 const stripePrice = await this._paymentsService.getPriceForTierCadence(tier, cadence);
+                logging.info(`[Members] subscription update price resolved: subscription=${subscriptionId}, price=${stripePrice.id}, cadence=${cadence}`);
 
                 await this._memberRepository.updateSubscription({
                     email,
@@ -140,6 +144,7 @@ module.exports = class MemberController {
                         price: stripePrice.id
                     }
                 });
+                logging.info(`[Members] subscription update completed: subscription=${subscriptionId}, tier=${tierId}, cadence=${cadence}`);
             } else if (ghostPriceId !== undefined) {
                 const price = await this._StripePrice.findOne({
                     id: ghostPriceId
@@ -205,6 +210,8 @@ module.exports = class MemberController {
             res.writeHead(204);
             res.end();
         } catch (err) {
+            logging.error(`[Members] subscription update failed: subscription=${req.params.id}, tier=${req.body?.tierId || 'none'}, cadence=${req.body?.cadence || 'none'}, message=${err.message}`);
+            logging.error(err);
             res.writeHead(err.statusCode || 500, {
                 'Content-Type': 'text/plain;charset=UTF-8'
             });

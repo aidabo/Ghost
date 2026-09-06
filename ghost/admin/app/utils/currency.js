@@ -1,5 +1,6 @@
 export const currencies = [
     {isoCode: 'USD', name: 'United States dollar'},
+    {isoCode: 'JPY', name: 'Japanese yen'},
     {isoCode: 'EUR', name: 'Euro'},
     {isoCode: 'GBP', name: 'Pound sterling'},
     {isoCode: 'AUD', name: 'Australian dollar'},

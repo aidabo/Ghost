@@ -53,6 +53,14 @@ class PaymentsService {
         });
     }
 
+    // Ghost stores tier prices in the same hundredth-based representation used
+    // by the admin price field. Stripe's JPY amounts are zero-decimal, so the
+    // value sent to Stripe must be converted back to yen.
+    getStripeAmount(tier, cadence) {
+        const amount = tier.getPrice(cadence);
+        return tier.currency?.toLowerCase() === 'jpy' ? Math.floor(amount / 100) : amount;
+    }
+
     /**
      * @param {object} params
      * @param {Tier} params.tier
@@ -403,7 +411,7 @@ class PaymentsService {
     async getPriceForTierCadence(tier, cadence) {
         const product = await this.getProductForTier(tier);
         const currency = tier.currency.toLowerCase();
-        const amount = tier.getPrice(cadence);
+        const amount = this.getStripeAmount(tier, cadence);
         const rows = await this.StripePriceModel.where({
             stripe_product_id: product.id,
             currency,
@@ -421,10 +429,18 @@ class PaymentsService {
                         id: price.id
                     };
                 } else {
-                    // Update the database model to prevent future Stripe fetches when it is not needed
-                    await this.StripePriceModel.edit({
-                        active: !!price.active
-                    }, {id: row.id});
+                    // A price is immutable. Deactivate an obsolete Stripe price
+                    // as well as its local index entry so it cannot be selected
+                    // again for a newly created tier checkout.
+                    if (price.active) {
+                        try {
+                            await this.stripeAPIService.updatePrice(price.id, {active: false});
+                        } catch (err) {
+                            logging.error(`Failed to deactivate obsolete Stripe Price ${price.id}`);
+                            logging.error(err);
+                        }
+                    }
+                    await this.StripePriceModel.edit({active: false}, {id: row.id});
                 }
             } catch (err) {
                 logging.error(`Failed to lookup Stripe Price ${row.stripe_price_id}`);
@@ -446,15 +462,17 @@ class PaymentsService {
      */
     async createPriceForTierCadence(tier, cadence) {
         const product = await this.getProductForTier(tier);
+        const amount = this.getStripeAmount(tier, cadence);
         const price = await this.stripeAPIService.createPrice({
             product: product.id,
             interval: cadence,
             currency: tier.currency,
-            amount: tier.getPrice(cadence),
+            amount,
             nickname: cadence === 'month' ? 'Monthly' : 'Yearly',
             type: 'recurring',
             active: true
         });
+        logging.info(`[Members] Stripe tier price created: price=${price.id}, product=${product.id}, tier=${tier.id.toHexString()}, cadence=${cadence}, currency=${tier.currency}`);
         await this.StripePriceModel.add({
             stripe_price_id: price.id,
             stripe_product_id: product.id,
