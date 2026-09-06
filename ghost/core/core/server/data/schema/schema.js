@@ -1323,6 +1323,7 @@ module.exports = {
         asset_type: {type: 'string', maxlength: 50, nullable: false, index: true},
         owner_scope: {type: 'string', maxlength: 20, nullable: false, index: true},
         user_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'users.id', cascadeDelete: true},
+        member_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'members.id', cascadeDelete: true},
         group_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true},
         // Media job ID. Keep the initial table creation independent from the
         // social_ai_media_jobs table; the FK is added by a later migration

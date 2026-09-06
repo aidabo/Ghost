@@ -32,9 +32,9 @@ const getTagInputs = (frame) => {
 };
 
 const resolveTag = async (knex, frame) => {
-    const {tag_id, tag_slug, tag} = getTagInputs(frame);
+    const {tag_id: tagId, tag_slug: tagSlug, tag: tagValue} = getTagInputs(frame);
 
-    const resolvedId = normalizeId(tag_id) || normalizeId(tag);
+    const resolvedId = normalizeId(tagId) || normalizeId(tagValue);
     if (resolvedId) {
         const byId = await knex('tags').where({id: resolvedId}).first('id', 'name', 'slug');
         if (byId) {
@@ -42,7 +42,7 @@ const resolveTag = async (knex, frame) => {
         }
     }
 
-    const resolvedSlug = normalizeSlug(tag_slug) || normalizeSlug(tag);
+    const resolvedSlug = normalizeSlug(tagSlug) || normalizeSlug(tagValue);
     if (resolvedSlug) {
         const bySlug = await knex('tags').where({slug: resolvedSlug}).first('id', 'name', 'slug');
         if (bySlug) {
@@ -145,6 +145,7 @@ const upsertAsset = async ({
     chartJobId,
     projectId,
     userId,
+    memberId,
     groupId,
     propertyId,
     ownerScope,
@@ -173,6 +174,7 @@ const upsertAsset = async ({
             asset_type: assetType,
             owner_scope: resolvedOwnerScope,
             user_id: userId || null,
+            member_id: memberId || null,
             group_id: groupId || null,
             job_id: normalizeJobId(jobId),
             dzi_job_id: normalizeJobId(dziJobId),
@@ -191,6 +193,7 @@ const upsertAsset = async ({
             asset_type: payload.asset_type,
             owner_scope: payload.owner_scope,
             user_id: payload.user_id,
+            member_id: payload.member_id,
             group_id: payload.group_id,
             job_id: payload.job_id,
             dzi_job_id: payload.dzi_job_id,
