@@ -2,6 +2,7 @@ const logging = require('@tryghost/logging');
 const {URL} = require('url');
 const crypto = require('crypto');
 const createKeypair = require('keypair');
+const {getMembersFrontendUrl} = require('./frontend-url');
 
 class MembersConfigProvider {
     /**
@@ -83,7 +84,7 @@ class MembersConfigProvider {
     }
 
     getSigninURL(token, type, referrer) {
-        const siteUrl = this._urlUtils.urlFor({relativeUrl: '/members/'}, true);
+        const siteUrl = `${getMembersFrontendUrl(this._urlUtils)}/members/`;
         const signinURL = new URL(siteUrl);
         signinURL.searchParams.set('token', token);
         signinURL.searchParams.set('action', type);

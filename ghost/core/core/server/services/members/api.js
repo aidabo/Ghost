@@ -22,6 +22,7 @@ const CaptchaService = require('./CaptchaService');
 const {t} = require('../i18n');
 const sentry = require('../../../shared/sentry');
 const sharedConfig = require('../../../shared/config');
+const {getMembersFrontendUrl} = require('./frontend-url');
 
 const MAGIC_LINK_TOKEN_VALIDITY = 24 * 60 * 60 * 1000;
 const MAGIC_LINK_TOKEN_VALIDITY_AFTER_USAGE = 10 * 60 * 1000;
@@ -184,8 +185,8 @@ function createApiInstance(config) {
             },
             getHTML(url, type, email) {
                 const siteTitle = settingsCache.get('title');
-                const siteUrl = urlUtils.urlFor('home', true);
-                const domain = urlUtils.urlFor('home', true).match(new RegExp('^https?://([^/:?#]+)(?:[/:?#]|$)', 'i'));
+                const siteUrl = getMembersFrontendUrl(urlUtils);
+                const domain = siteUrl.match(new RegExp('^https?://([^/:?#]+)(?:[/:?#]|$)', 'i'));
                 const siteDomain = (domain && domain[1]);
                 const accentColor = settingsCache.get('accent_color');
                 switch (type) {

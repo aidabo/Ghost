@@ -5,6 +5,7 @@ const membersService = require('./service');
 const emailSuppressionList = require('../email-suppression-list');
 const models = require('../../models');
 const urlUtils = require('../../../shared/url-utils');
+const {getMembersFrontendUrl} = require('./frontend-url');
 const spamPrevention = require('../../web/shared/middleware/api/spam-prevention');
 const {
     formattedMemberResponse,
@@ -373,7 +374,7 @@ const createSessionFromMagicLink = async function createSessionFromMagicLink(req
             }
 
             if (customRedirect && customRedirect !== '/') {
-                const baseUrl = urlUtils.getSiteUrl();
+                const baseUrl = getMembersFrontendUrl(urlUtils);
                 const ensureEndsWith = (string, endsWith) => (string.endsWith(endsWith) ? string : string + endsWith);
                 const removeLeadingSlash = string => string.replace(/^\//, '');
 
@@ -393,7 +394,7 @@ const createSessionFromMagicLink = async function createSessionFromMagicLink(req
 
         // If a custom referrer/redirect was passed, redirect the user to that URL
         const referrer = req.query.r;
-        const siteUrl = urlUtils.getSiteUrl();
+        const siteUrl = getMembersFrontendUrl(urlUtils);
 
         if (referrer && referrer.startsWith(siteUrl)) {
             const redirectUrl = new URL(referrer);
@@ -413,13 +414,13 @@ const createSessionFromMagicLink = async function createSessionFromMagicLink(req
 
         // Do a standard 302 redirect to the homepage, with success=true
         searchParams.set('success', 'true');
-        res.redirect(`${urlUtils.getSubdir()}/?${searchParams.toString()}`);
+        res.redirect(`${getMembersFrontendUrl(urlUtils)}/?${searchParams.toString()}`);
     } catch (err) {
         logging.warn(err.message);
 
         // Do a standard 302 redirect to the homepage, with success=false
         searchParams.set('success', false);
-        res.redirect(`${urlUtils.getSubdir()}/?${searchParams.toString()}`);
+        res.redirect(`${getMembersFrontendUrl(urlUtils)}/?${searchParams.toString()}`);
     }
 };
 
