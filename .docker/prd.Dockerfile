@@ -39,6 +39,8 @@ COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115 ${G
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116 ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
 COPY --chown=node:node ghost/core/core/server/models ${GHOST_INSTALL}/current/core/server/models
 COPY --chown=node:node ghost/core/core/server/services/mail ${GHOST_INSTALL}/current/core/server/services/mail
+COPY --chown=node:node ghost/core/core/server/services/stripe/StripeAPI.js ${GHOST_INSTALL}/current/core/server/services/stripe
+COPY --chown=node:node ghost/core/core/server/api/endpoints/member-invoices.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/admin/app/utils/currency.js ${GHOST_INSTALL}/current/admin/app/utils
 # The local development Admin build contains symlinks for Admin-X apps. Remove
 # the base image's asset directory before copying the dereferenced production

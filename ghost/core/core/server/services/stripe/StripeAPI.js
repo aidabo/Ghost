@@ -276,6 +276,21 @@ module.exports = class StripeAPI {
     }
 
     /**
+     * List invoices for one Stripe customer.
+     * @param {string} customerId
+     * @param {object} [options]
+     * @returns {Promise<import('stripe').Stripe.ApiList<import('stripe').Stripe.Invoice>>}
+     */
+    async listInvoices(customerId, options = {}) {
+        await this._rateLimitBucket.throttle();
+        return await this._stripe.invoices.list({
+            customer: customerId,
+            limit: Math.min(Number(options.limit) || 100, 100),
+            expand: ['data.lines.data.price']
+        });
+    }
+
+    /**
      * Finds or creates a Stripe Customer for a Member.
      * 
      * @deprecated
