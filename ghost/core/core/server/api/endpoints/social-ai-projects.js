@@ -12,13 +12,28 @@ const ALLOWED_INCLUDES = ['user', 'group'];
 // Review 2026-08-07 #2: families that hang off the generic project path.
 // destroy iterates this list for its active-jobs check and cascade — add an
 // entry when a new job family (media_jobs …) is wired to /social/ai/projects.
+// Phase 3: media jobs family added. destroy iterates this list for
+// active-jobs check and cascade — add an entry when a new family ships.
+// Phase 3: media jobs family added. destroy iterates this list for
+// active-jobs check and cascade — add an entry when a new family ships.
+// assetLinkColumn: column on social_media_assets that links to this family's job id.
+// junctionTable/linkColumn: null when the family has no media junction table.
 const JOB_FAMILIES = [
     {
         name: 'chart',
         jobsTable: 'social_ai_chart_jobs',
         junctionTable: 'social_ai_chart_job_media',
         linkColumn: 'chart_job_id',
-        galleryPrefix: 'gallery/chart_jobs'
+        assetLinkColumn: 'chart_job_id',
+        galleryPrefixParts: ['gallery', 'chart_jobs']
+    },
+    {
+        name: 'media',
+        jobsTable: 'social_ai_media_jobs',
+        junctionTable: null,
+        linkColumn: null,
+        assetLinkColumn: 'job_id',
+        galleryPrefixParts: ['gallery', 'media_jobs']
     }
 ];
 
@@ -460,7 +475,8 @@ const controller = {
                     logging.warn(`[social-ai-projects] gallery S3 cleanup failed for prefix ${prefixParts.join('/')}: ${err?.message || err}`);
                 }
             };
-            const cleanupGalleryBucket = (childId) => cleanupGalleryPrefix(['gallery', 'chart_jobs', childId]);
+            const cleanupGalleryBucket = (family, childId) =>
+                cleanupGalleryPrefix([...family.galleryPrefixParts, childId]);
 
             try {
                 await knex.transaction(async (trx) => {
@@ -487,27 +503,32 @@ const controller = {
                         if (childIds.length === 0) {
                             continue;
                         }
-                        deletedJobs.push(...childIds);
+                        deletedJobs.push({family, ids: childIds});
 
-                        await trx(family.junctionTable)
-                            .whereIn(family.linkColumn, childIds)
-                            .del();
+                        // Junction table (chart → chart_job_media; media → none).
+                        if (family.junctionTable) {
+                            await trx(family.junctionTable)
+                                .whereIn(family.linkColumn, childIds)
+                                .del();
+                        }
 
                         // Asset rows of the project's jobs. The project is
                         // going away entirely, so ALL of its rows go (unlike
                         // job destroy — H3 — where artifacts rows must survive
-                        // for other jobs). Review #3: gallery paths are
-                        // per-JOB (`gallery/chart_jobs/{jobId}/`), so the LIKE
-                        // clauses enumerate the child job ids — the old
-                        // project-id clause never matched.
+                        // for other jobs). gallery paths are per-JOB, so the
+                        // LIKE clauses enumerate the child job ids.
+                        const galleryPfx = family.galleryPrefixParts.join('/');
                         const galleryLikes = childIds.map(() => `storage_key LIKE ?`);
-                        const galleryParams = childIds.flatMap((cid) => [`%gallery/chart_jobs/${cid}/%`]);
+                        const galleryParams = childIds.flatMap((cid) => [`%${galleryPfx}/${cid}/%`]);
                         const jobAreaLikes = childIds.map(() => `storage_key LIKE ?`);
                         const jobAreaParams = childIds.flatMap((cid) => [`%/jobs/${cid}/%`]);
+                        const assetCol = family.assetLinkColumn;
                         await trx('social_media_assets')
                             .where(function () {
-                                this.whereIn(family.linkColumn, childIds)
-                                    .orWhereRaw(`(${jobAreaLikes.join(' OR ')})`, jobAreaParams);
+                                if (assetCol) {
+                                    this.whereIn(assetCol, childIds);
+                                }
+                                this.orWhereRaw(`(${jobAreaLikes.join(' OR ')})`, jobAreaParams);
                             })
                             .orWhereRaw(`(${galleryLikes.join(' OR ')})`, galleryParams)
                             .del();
@@ -520,12 +541,12 @@ const controller = {
                     // Direct project-stamped rows: uploads that target the
                     // project tree itself (media → gallery/projects/{pid}/…,
                     // legacy chart → gallery/chart_projects/{pid}/). The
-                    // per-family cascade above only covers rows linked through
-                    // a wired job family — the project is going away entirely,
-                    // so delete these outright. (Media jobs themselves keep
-                    // surviving: they have no project_id yet; the association
-                    // is asset-level.)
+                    // per-family cascade above covers rows linked through job
+                    // families; these are project-direct uploads.
                     await trx('social_media_assets').where({project_id: row.id}).del();
+
+                    // Phase 1: project content links (posts/StackPages/gallery).
+                    await trx('social_ai_project_links').where({project_id: row.id}).del();
 
                     await trx(TABLE).where({ id: row.id }).del();
                 });
@@ -533,8 +554,10 @@ const controller = {
                 // Gallery-bucket objects: best-effort, after the transaction
                 // (objects have no FK; deleting them must never roll back the
                 // DB cascade).
-                for (const cid of deletedJobs) {
-                    await cleanupGalleryBucket(cid);
+                for (const {family, ids} of deletedJobs) {
+                    for (const cid of ids) {
+                        await cleanupGalleryBucket(family, cid);
+                    }
                 }
                 // Project tree: direct uploads into the project itself (media →
                 // gallery/projects/{pid}/…, legacy chart →
@@ -549,7 +572,7 @@ const controller = {
                     ...row,
                     status: 'deleted'
                 }),
-                deleted_jobs: deletedJobs.length
+                deleted_jobs: deletedJobs.reduce((sum, {ids}) => sum + ids.length, 0)
             };
         }
     },

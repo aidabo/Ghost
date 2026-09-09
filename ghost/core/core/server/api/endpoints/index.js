@@ -326,6 +326,14 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-projects'), localUtils);
     },
 
+    get socialAiProjectLinks() {
+        return apiFramework.pipeline(require('./social-ai-project-links'), localUtils);
+    },
+
+    get socialAiResourceLinks() {
+        return apiFramework.pipeline(require('./social-ai-resource-links'), localUtils);
+    },
+
     //custom end
 
     // post search index (admin: includes drafts / non-public)

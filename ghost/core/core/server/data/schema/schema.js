@@ -1515,6 +1515,9 @@ module.exports = {
         started_at: {type: 'dateTime', nullable: true},
         completed_at: {type: 'dateTime', nullable: true},
         canceled_at: {type: 'dateTime', nullable: true},
+        // Generic project container (plain indexed, NOT a FK — cascade handled
+        // explicitly by the project destroy endpoint).
+        project_id: {type: 'string', maxlength: 24, nullable: true, index: true},
         created_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true},
         updated_at: {type: 'dateTime', nullable: false},
@@ -2449,6 +2452,20 @@ module.exports = {
         '@@UNIQUE_CONSTRAINTS@@': [
             ['post_id', 'source_url_hash', 'role']
         ]
+    },
+
+    social_ai_project_links: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        // Plain indexed, NOT a FK — project deletion cascades explicitly in the
+        // project destroy endpoint.
+        project_id: {type: 'string', maxlength: 24, nullable: false, index: true},
+        link_type: {type: 'string', maxlength: 50, nullable: false},
+        link_id: {type: 'string', maxlength: 24, nullable: false},
+        link_title: {type: 'string', maxlength: 191, nullable: true},
+        link_url: {type: 'string', maxlength: 2000, nullable: true},
+        sort_order: {type: 'integer', nullable: true},
+        created_at: {type: 'dateTime', nullable: false},
+        created_by: {type: 'string', maxlength: 24, nullable: true}
     }
 
 };

@@ -208,6 +208,7 @@ const serializeRow = (row) => {
         id: row.id,
         job_id: row.id,
         job_type: row.job_type,
+        project_id: row.project_id || null,
         user_id: row.user_id,
         group_id: row.group_id,
         visibility: row.visibility,
@@ -511,6 +512,7 @@ const controller = {
         data: [
             'user_id',
             'group_id',
+            'project_id',
             'visibility',
             'scope_type',
             'priority',
@@ -580,11 +582,13 @@ const controller = {
                 });
             }
 
+            const projectId = String(payload.project_id || '').trim() || null;
             // @ts-ignore
             return await models.SocialAiMediaJob.add({
                 ...payload,
                 user_id: targetUserId || actorUserId,
                 group_id: groupId,
+                project_id: projectId,
                 visibility: payload.visibility || 'private',
                 scope_type: payload.scope_type || (groupId ? 'group' : 'user'),
                 settings_json: JSON.stringify(payloadInput || {})

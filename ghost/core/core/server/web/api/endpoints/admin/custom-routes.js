@@ -255,12 +255,18 @@ module.exports = function customApiRoutes(router) {
     router.get('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.browse));
     router.post('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.add));
     router.get('/social/ai/projects/:id/dzi-jobs', mw.authAdminApi, http(api.socialAiDziJobs.listByProject));
+    router.get('/social/ai/projects/:id/links', mw.authAdminApi, http(api.socialAiProjectLinks.browse));
+    router.post('/social/ai/projects/:id/links', mw.authAdminApi, http(api.socialAiProjectLinks.add));
     router.get('/social/ai/projects/:id', mw.authAdminApi, http(api.socialAiProjects.read));
     router.put('/social/ai/projects/:id', mw.authAdminApi, http(api.socialAiProjects.edit));
     router.del('/social/ai/projects/:id', mw.authAdminApi, http(api.socialAiProjects.destroy));
     // Clear a project's job media (S3 space) — keeps job rows, marks them cleared.
     router.post('/social/ai/projects/:id/clear-artifacts', mw.authAdminApi, http(api.socialAiProjects.clearArtifacts));
     router.post('/social/ai/projects/:id/clear-artifacts/', mw.authAdminApi, http(api.socialAiProjects.clearArtifacts));
+    // Project link destroy — operates on link id directly (not nested under project/:id).
+    router.del('/social/ai/project-links/:id', mw.authAdminApi, http(api.socialAiProjectLinks.destroy));
+    // Resource links browse — find all project links for a given resource (post/stackpage/gallery).
+    router.get('/social/ai/resource-links', mw.authAdminApi, http(api.socialAiResourceLinks.browse));
 
     // ## estate admin routes
     router.get('/estate/properties', mw.authAdminApi, http(api.estateProperties.browse));
