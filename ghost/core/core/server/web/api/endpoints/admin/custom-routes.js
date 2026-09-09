@@ -1,7 +1,9 @@
 const api = require('../../../../api').endpoints;
 const models = require('../../../../models');
 const {http} = require('@tryghost/api-framework');
+const bodyParser = require('body-parser');
 const mw = require('./middleware');
+const contentProducts = require('../../../../api/endpoints/content-products-admin');
 
 const createOrUpdatePost = async (req, res, next) => {
     try {
@@ -45,6 +47,11 @@ const createOrUpdateGalleryAsset = async (req, res, next) => {
  * @returns {import('express').Router}
  */
 module.exports = function customApiRoutes(router) {
+    router.get('/content-products', mw.authAdminApi, contentProducts.browse);
+    router.post('/content-products', bodyParser.json({limit: '2mb'}), mw.authAdminApi, contentProducts.add);
+    router.put('/content-products/:id', bodyParser.json({limit: '2mb'}), mw.authAdminApi, contentProducts.edit);
+    router.post('/content-products/:id/items', bodyParser.json({limit: '2mb'}), mw.authAdminApi, contentProducts.addItem);
+    router.delete('/content-products/:id/items/:itemId', mw.authAdminApi, contentProducts.deleteItem);
     // bookmarks
     // post search index (admin: includes drafts / non-public, for logged-in surfaces)
     // NOTE: mounted under /search/* — NOT /posts/* — because the core `/posts/:id`

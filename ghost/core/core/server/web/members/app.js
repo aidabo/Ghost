@@ -11,6 +11,7 @@ const labs = require('../../../shared/labs');
 const errorHandler = require('@tryghost/mw-error-handler');
 const memberGallery = require('../../api/endpoints/member-gallery');
 const memberInvoices = require('../../api/endpoints/member-invoices');
+const contentProducts = require('../../api/endpoints/content-products');
 const config = require('../../../shared/config');
 const {http} = require('@tryghost/api-framework');
 const api = require('../../api').endpoints;
@@ -68,6 +69,9 @@ module.exports = function setupMembersApp() {
     membersApp.get('/api/gallery', memberGallery.list);
     membersApp.delete('/api/gallery/:id', memberGallery.destroy);
     membersApp.get('/api/invoices', memberInvoices.list);
+    membersApp.get('/api/content-products', contentProducts.list);
+    membersApp.get('/api/content-products/:slug', contentProducts.read);
+    membersApp.post('/api/content-products/:id/checkout', bodyParser.json({limit: '1mb'}), contentProducts.checkout);
     membersApp.post('/api/member/email', bodyParser.json({limit: '50mb'}), (req, res, next) => membersService.api.middleware.updateEmailAddress(req, res, next));
 
     // Remove email from suppression list

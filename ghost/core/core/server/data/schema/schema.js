@@ -2362,6 +2362,72 @@ module.exports = {
         ]
     },
 
+    content_products: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        slug: {type: 'string', maxlength: 191, nullable: false, unique: true},
+        name: {type: 'string', maxlength: 191, nullable: false},
+        description: {type: 'text', nullable: true},
+        product_type: {type: 'string', maxlength: 50, nullable: false, index: true},
+        status: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'draft', index: true},
+        created_by: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'users.id'},
+        created_at: {type: 'dateTime', nullable: false},
+        updated_at: {type: 'dateTime', nullable: false}
+    },
+    content_product_prices: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        content_product_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'content_products.id', cascadeDelete: true},
+        stripe_product_id: {type: 'string', maxlength: 191, nullable: true, index: true},
+        stripe_price_id: {type: 'string', maxlength: 191, nullable: true, unique: true},
+        amount: {type: 'integer', nullable: false, unsigned: true},
+        currency: {type: 'string', maxlength: 10, nullable: false},
+        active: {type: 'boolean', nullable: false, defaultTo: true, index: true},
+        created_at: {type: 'dateTime', nullable: false},
+        updated_at: {type: 'dateTime', nullable: false}
+    },
+    content_product_items: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        content_product_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'content_products.id', cascadeDelete: true},
+        content_type: {type: 'string', maxlength: 50, nullable: false},
+        content_id: {type: 'string', maxlength: 191, nullable: false},
+        sort_order: {type: 'integer', nullable: false, defaultTo: 0},
+        required: {type: 'boolean', nullable: false, defaultTo: true},
+        access_mode: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'preview', index: true},
+        source_status: {type: 'string', maxlength: 30, nullable: true},
+        source_visibility: {type: 'string', maxlength: 30, nullable: true},
+        source_title: {type: 'string', maxlength: 500, nullable: true},
+        source_slug: {type: 'string', maxlength: 191, nullable: true},
+        source_url: {type: 'string', maxlength: 2000, nullable: true},
+        created_at: {type: 'dateTime', nullable: false},
+        updated_at: {type: 'dateTime', nullable: false}
+    },
+    content_product_orders: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        member_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'members.id', cascadeDelete: true},
+        content_product_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'content_products.id', cascadeDelete: true},
+        content_product_price_id: {type: 'string', maxlength: 24, nullable: false, references: 'content_product_prices.id'},
+        stripe_customer_id: {type: 'string', maxlength: 191, nullable: true, index: true},
+        stripe_checkout_session_id: {type: 'string', maxlength: 191, nullable: false, unique: true},
+        stripe_payment_intent_id: {type: 'string', maxlength: 191, nullable: true, index: true},
+        status: {type: 'string', maxlength: 30, nullable: false, defaultTo: 'pending', index: true},
+        amount: {type: 'integer', nullable: false, unsigned: true},
+        currency: {type: 'string', maxlength: 10, nullable: false},
+        created_at: {type: 'dateTime', nullable: false},
+        updated_at: {type: 'dateTime', nullable: false}
+    },
+    member_entitlements: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        member_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'members.id', cascadeDelete: true},
+        content_product_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'content_products.id', cascadeDelete: true},
+        order_id: {type: 'string', maxlength: 24, nullable: false, unique: true, references: 'content_product_orders.id', cascadeDelete: true},
+        status: {type: 'string', maxlength: 30, nullable: false, defaultTo: 'active', index: true},
+        granted_at: {type: 'dateTime', nullable: false},
+        expires_at: {type: 'dateTime', nullable: true},
+        refunded_at: {type: 'dateTime', nullable: true},
+        revoked_at: {type: 'dateTime', nullable: true},
+        created_at: {type: 'dateTime', nullable: false},
+        updated_at: {type: 'dateTime', nullable: false}
+    },
+
     post_media: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
         post_id: {type: 'string', maxlength: 24, nullable: false, references: 'posts.id', cascadeDelete: true},

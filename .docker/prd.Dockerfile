@@ -40,7 +40,13 @@ COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116 ${G
 COPY --chown=node:node ghost/core/core/server/models ${GHOST_INSTALL}/current/core/server/models
 COPY --chown=node:node ghost/core/core/server/services/mail ${GHOST_INSTALL}/current/core/server/services/mail
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeAPI.js ${GHOST_INSTALL}/current/core/server/services/stripe
+COPY --chown=node:node ghost/core/core/server/services/stripe/StripeService.js ${GHOST_INSTALL}/current/core/server/services/stripe
+COPY --chown=node:node ghost/core/core/server/services/stripe/WebhookController.js ${GHOST_INSTALL}/current/core/server/services/stripe
+COPY --chown=node:node ghost/core/core/server/services/stripe/WebhookManager.js ${GHOST_INSTALL}/current/core/server/services/stripe
+COPY --chown=node:node ghost/core/core/server/services/stripe/services/webhook/CheckoutSessionEventService.js ${GHOST_INSTALL}/current/core/server/services/stripe/services/webhook
 COPY --chown=node:node ghost/core/core/server/api/endpoints/member-invoices.js ${GHOST_INSTALL}/current/core/server/api/endpoints
+COPY --chown=node:node ghost/core/core/server/api/endpoints/content-products.js ${GHOST_INSTALL}/current/core/server/api/endpoints
+COPY --chown=node:node ghost/core/core/server/api/endpoints/content-products-admin.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/admin/app/utils/currency.js ${GHOST_INSTALL}/current/admin/app/utils
 # The local development Admin build contains symlinks for Admin-X apps. Remove
 # the base image's asset directory before copying the dereferenced production
@@ -75,6 +81,7 @@ RUN set -eux; \
 # The dependency install above recreates node_modules, so custom members-api
 # modules must be overlaid after it completes.
 COPY --chown=node:node ghost/members-api/lib/controllers/MemberController.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/controllers/
+COPY --chown=node:node ghost/members-api/lib/controllers/RouterController.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/controllers/
 COPY --chown=node:node ghost/members-api/lib/repositories/MemberRepository.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/repositories/
 COPY --chown=node:node ghost/members-api/lib/services/PaymentsService.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/services/
 
