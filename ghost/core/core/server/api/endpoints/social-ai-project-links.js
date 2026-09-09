@@ -8,7 +8,9 @@ const ObjectId = require('bson-objectid').default;
 // posts, StackPages, or gallery entries to a project.
 // project_id lives in the URL for browse/add; link id lives in the URL for destroy.
 
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
+// Super Editor added to align with bbfcc5ab78 / 79b09f3d0e admin-roles policy.
+const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin', 'Super Editor']);
+const VALID_LINK_TYPES = new Set(['post', 'stackpage', 'gallery']);
 const TABLE = 'social_ai_project_links';
 const PROJECTS_TABLE = 'social_ai_projects';
 
@@ -18,8 +20,9 @@ const messages = {
     linkNotFound: 'Project link not found.',
     noPermission: 'You are not allowed to access this project.',
     invalidProjectId: '`id` is required.',
-    linkTypeRequired: '`link_type` is required (post | stackpage | gallery).',
-    linkIdRequired: '`link_id` is required.'
+    linkTypeRequired: '`link_type` must be one of: post, stackpage, gallery.',
+    linkIdRequired: '`link_id` is required.',
+    duplicateLink: 'This resource is already linked to the project.'
 };
 
 // @ts-ignore
@@ -147,12 +150,20 @@ const controller = {
             const payload = frame.data?.socialaiprojectlinks?.[0] || {};
 
             const linkType = String(payload.link_type || '').trim();
-            if (!linkType) {
+            if (!linkType || !VALID_LINK_TYPES.has(linkType)) {
                 throw new errors.ValidationError({message: tpl(messages.linkTypeRequired)});
             }
             const linkId = String(payload.link_id || '').trim();
             if (!linkId) {
                 throw new errors.ValidationError({message: tpl(messages.linkIdRequired)});
+            }
+
+            // Prevent duplicate (project_id, link_type, link_id) entries.
+            const existing = await knex(TABLE)
+                .where({project_id: projectId, link_type: linkType, link_id: linkId})
+                .first();
+            if (existing) {
+                throw new errors.ValidationError({message: tpl(messages.duplicateLink)});
             }
 
             const currentUserId = getCurrentUserId(frame);
