@@ -676,6 +676,21 @@ module.exports = class StripeAPI {
         return session;
     }
 
+    async createOneTimeCheckoutSession({priceId, successUrl, cancelUrl, metadata, customer, customerEmail}) {
+        await this._rateLimitBucket.throttle();
+        const session = await this._stripe.checkout.sessions.create({
+            mode: 'payment',
+            success_url: successUrl || this._config.checkoutSessionSuccessUrl,
+            cancel_url: cancelUrl || this._config.checkoutSessionCancelUrl,
+            customer: customer ? customer.id : undefined,
+            customer_email: !customer && customerEmail ? customerEmail : undefined,
+            metadata,
+            line_items: [{price: priceId, quantity: 1}],
+            invoice_creation: {enabled: true}
+        });
+        return session;
+    }
+
     /**
      * Create a new Stripe Checkout Setup Session.
      * 

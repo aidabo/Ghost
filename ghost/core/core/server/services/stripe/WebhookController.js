@@ -18,7 +18,8 @@ module.exports = class WebhookController {
             'customer.subscription.updated': this.subscriptionEvent,
             'customer.subscription.created': this.subscriptionEvent,
             'invoice.payment_succeeded': this.invoiceEvent,
-            'checkout.session.completed': this.checkoutSessionEvent
+            'checkout.session.completed': this.checkoutSessionEvent,
+            'checkout.session.async_payment_succeeded': this.checkoutSessionEvent
         };
     }
 

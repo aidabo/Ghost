@@ -84,6 +84,7 @@ module.exports = class StripeService {
 
         const checkoutSessionEventService = new CheckoutSessionEventService({
             api,
+            models,
             get memberRepository(){
                 return membersService.api.members;
             },

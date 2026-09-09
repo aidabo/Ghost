@@ -48,6 +48,55 @@ module.exports = class CheckoutSessionEventService {
         if (session.mode === 'payment' && session.metadata?.ghost_donation) {
             await this.handleDonationEvent(session);
         }
+
+        if (session.mode === 'payment' && session.metadata?.content_product_id) {
+            await this.handleContentProductEvent(session);
+        }
+    }
+
+    async handleContentProductEvent(session) {
+        if (session.payment_status !== 'paid') {
+            return;
+        }
+        const metadata = session.metadata || {};
+        const memberId = metadata.member_id;
+        const productId = metadata.content_product_id;
+        const priceId = metadata.content_product_price_id;
+        const knex = this.deps.models.Base.knex;
+        const now = new Date();
+        const existingOrder = await knex('content_product_orders').where({stripe_checkout_session_id: session.id}).first();
+        if (existingOrder) {
+            return;
+        }
+        const orderId = metadata.order_id || require('bson-objectid').default().toHexString();
+        await knex('content_product_orders').insert({
+            id: orderId,
+            member_id: memberId,
+            content_product_id: productId,
+            content_product_price_id: priceId,
+            stripe_customer_id: session.customer || null,
+            stripe_checkout_session_id: session.id,
+            stripe_payment_intent_id: session.payment_intent || null,
+            status: 'paid',
+            amount: session.amount_total || 0,
+            currency: String(session.currency || '').toUpperCase(),
+            created_at: now,
+            updated_at: now
+        });
+        await knex('member_entitlements').insert({
+            id: require('bson-objectid').default().toHexString(),
+            member_id: memberId,
+            content_product_id: productId,
+            order_id: orderId,
+            status: 'active',
+            granted_at: now,
+            expires_at: null,
+            refunded_at: null,
+            revoked_at: null,
+            created_at: now,
+            updated_at: now
+        });
+        logging.info(`[Members] content product entitlement granted: session=${session.id}, member=${memberId}, product=${productId}`);
     }
 
     /**

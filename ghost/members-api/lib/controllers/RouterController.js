@@ -160,7 +160,8 @@ module.exports = class RouterController {
         const publicKey = this._stripeAPIService.getPublicKey();
         const sessionInfo = {
             sessionId: session.id,
-            publicKey
+            publicKey,
+            url: session.url || null
         };
         res.writeHead(200, {
             'Content-Type': 'application/json'
