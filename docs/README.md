@@ -12,6 +12,8 @@ These remain at repo root:
 
 ## Custom social API docs
 
+- [operations-docker-admin-build.md](./operations-docker-admin-build.md) — 本番DockerでのAdmin bundle反映方法と継続課題
+
 - [social-api/README.md](./social-api/README.md)
 - [CUSTOM.md](./social-api/CUSTOM.md)
 - [summary-2026-02-18.md](./social-api/summary-2026-02-18.md)
