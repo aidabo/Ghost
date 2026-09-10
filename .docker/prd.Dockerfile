@@ -56,6 +56,7 @@ COPY --chown=node:node ghost/core/core/built/admin ${GHOST_INSTALL}/current/core
 COPY --chown=node:node ghost/core/core/server/services/url/config.js ${GHOST_INSTALL}/current/core/server/services/url
 COPY --chown=node:node ghost/core/core/server/web/api/endpoints/admin ${GHOST_INSTALL}/current/core/server/web/api/endpoints/admin
 COPY --chown=node:node ghost/core/core/server/web/api/endpoints/content ${GHOST_INSTALL}/current/core/server/web/api/endpoints/content
+COPY --chown=node:node ghost/core/core/server/web/members/app.js ${GHOST_INSTALL}/current/core/server/web/members/app.js
 COPY --chown=node:node ghost/core/core/shared/config/overrides.json ${GHOST_INSTALL}/current/core/shared/config/overrides.json
 COPY --chown=node:node ghost/core/core/boot.js ${GHOST_INSTALL}/current/core
 COPY --chown=node:node ghost/core/core/server/services/social-comments ${GHOST_INSTALL}/current/core/server/services/social-comments
