@@ -48,6 +48,29 @@ const createOrUpdateGalleryAsset = async (req, res, next) => {
  * @returns {import('express').Router}
  */
 module.exports = function customApiRoutes(router) {
+    // Update member last_seen_at via the existing LastSeenAtUpdater (throttled to once/day).
+    // Called by the Next.js host when a subscriber member views a page, since the Ghost
+    // monolithic frontend middleware (site.js) is bypassed in our Next.js setup.
+    router.post('/members/track-view', mw.authAdminApi, async (req, res, next) => {
+        try {
+            const uuid = typeof req.body?.uuid === 'string' ? req.body.uuid.trim() : null;
+            if (!uuid) {
+                return res.status(400).json({errors: [{message: 'uuid is required'}]});
+            }
+            const membersEvents = require('../../../../services/members-events');
+            if (membersEvents.lastSeenAtUpdater) {
+                const db = require('../../../../data/db');
+                const member = await db.knex('members').select('id').where('uuid', uuid).first();
+                if (member) {
+                    await membersEvents.lastSeenAtUpdater.updateLastSeenAtWithoutKnownLastSeen(member.id, new Date());
+                }
+            }
+            return res.status(204).send();
+        } catch (error) {
+            return next(error);
+        }
+    });
+
     router.get('/content-products', mw.authAdminApi, contentProducts.browse);
     router.post('/content-products', bodyParser.json({limit: '2mb'}), mw.authAdminApi, contentProducts.add);
     router.put('/content-products/:id', bodyParser.json({limit: '2mb'}), mw.authAdminApi, contentProducts.edit);
