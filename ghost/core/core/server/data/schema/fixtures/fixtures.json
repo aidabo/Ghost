@@ -110,6 +110,18 @@
                 {
                     "name": "Super Editor",
                     "description": "Super Editors"
+                },
+                {
+                    "name": "Social Group Admin",
+                    "description": "Social Group Admin to manage social group created"
+                },
+                {
+                    "name": "Social Group Owner",
+                    "description": "Social Group Owner to manage social group created"
+                },
+                {
+                    "name": "Social Group Member",
+                    "description": "Social Group Member to manage social group created"
                 }
             ]
         },
@@ -715,6 +727,856 @@
                     "name": "Delete recommendations",
                     "action_type": "destroy",
                     "object_type": "recommendation"
+                },
+                {
+                    "name": "Add estate inquiries",
+                    "action_type": "add",
+                    "object_type": "estateinquiry"
+                },
+                {
+                    "name": "Browse estate inquiries",
+                    "action_type": "browse",
+                    "object_type": "estateinquiry"
+                },
+                {
+                    "name": "Delete estate inquiries",
+                    "action_type": "destroy",
+                    "object_type": "estateinquiry"
+                },
+                {
+                    "name": "Edit estate inquiries",
+                    "action_type": "edit",
+                    "object_type": "estateinquiry"
+                },
+                {
+                    "name": "Read estate inquiries",
+                    "action_type": "read",
+                    "object_type": "estateinquiry"
+                },
+                {
+                    "name": "Add estate properties",
+                    "action_type": "add",
+                    "object_type": "estateproperty"
+                },
+                {
+                    "name": "Browse estate properties",
+                    "action_type": "browse",
+                    "object_type": "estateproperty"
+                },
+                {
+                    "name": "Delete estate properties",
+                    "action_type": "destroy",
+                    "object_type": "estateproperty"
+                },
+                {
+                    "name": "Edit estate properties",
+                    "action_type": "edit",
+                    "object_type": "estateproperty"
+                },
+                {
+                    "name": "Read estate properties",
+                    "action_type": "read",
+                    "object_type": "estateproperty"
+                },
+                {
+                    "name": "Add estate property media",
+                    "action_type": "add",
+                    "object_type": "estatepropertymedium"
+                },
+                {
+                    "name": "Browse estate property media",
+                    "action_type": "browse",
+                    "object_type": "estatepropertymedium"
+                },
+                {
+                    "name": "Delete estate property media",
+                    "action_type": "destroy",
+                    "object_type": "estatepropertymedium"
+                },
+                {
+                    "name": "Edit estate property media",
+                    "action_type": "edit",
+                    "object_type": "estatepropertymedium"
+                },
+                {
+                    "name": "Add estate property posts",
+                    "action_type": "add",
+                    "object_type": "estatepropertypost"
+                },
+                {
+                    "name": "Browse estate property posts",
+                    "action_type": "browse",
+                    "object_type": "estatepropertypost"
+                },
+                {
+                    "name": "Delete estate property posts",
+                    "action_type": "destroy",
+                    "object_type": "estatepropertypost"
+                },
+                {
+                    "name": "Add estate property staff",
+                    "action_type": "add",
+                    "object_type": "estatepropertystaff"
+                },
+                {
+                    "name": "Browse estate property staff",
+                    "action_type": "browse",
+                    "object_type": "estatepropertystaff"
+                },
+                {
+                    "name": "Delete estate property staff",
+                    "action_type": "destroy",
+                    "object_type": "estatepropertystaff"
+                },
+                {
+                    "name": "Add estate property tags",
+                    "action_type": "add",
+                    "object_type": "estatepropertytag"
+                },
+                {
+                    "name": "Browse estate property tags",
+                    "action_type": "browse",
+                    "object_type": "estatepropertytag"
+                },
+                {
+                    "name": "Delete estate property tags",
+                    "action_type": "destroy",
+                    "object_type": "estatepropertytag"
+                },
+                {
+                    "name": "Browse estate settings",
+                    "action_type": "browse",
+                    "object_type": "estatesetting"
+                },
+                {
+                    "name": "Edit estate settings",
+                    "action_type": "edit",
+                    "object_type": "estatesetting"
+                },
+                {
+                    "name": "Read estate settings",
+                    "action_type": "read",
+                    "object_type": "estatesetting"
+                },
+                {
+                    "name": "Add persons",
+                    "action_type": "add",
+                    "object_type": "person"
+                },
+                {
+                    "name": "Browse persons",
+                    "action_type": "browse",
+                    "object_type": "person"
+                },
+                {
+                    "name": "Delete persons",
+                    "action_type": "destroy",
+                    "object_type": "person"
+                },
+                {
+                    "name": "Edit persons",
+                    "action_type": "edit",
+                    "object_type": "person"
+                },
+                {
+                    "name": "Read persons",
+                    "action_type": "read",
+                    "object_type": "person"
+                },
+                {
+                    "name": "Add person gallery assets",
+                    "action_type": "add",
+                    "object_type": "persongalleryasset"
+                },
+                {
+                    "name": "Browse person gallery assets",
+                    "action_type": "browse",
+                    "object_type": "persongalleryasset"
+                },
+                {
+                    "name": "Delete person gallery assets",
+                    "action_type": "destroy",
+                    "object_type": "persongalleryasset"
+                },
+                {
+                    "name": "Edit person gallery assets",
+                    "action_type": "edit",
+                    "object_type": "persongalleryasset"
+                },
+                {
+                    "name": "Read person gallery assets",
+                    "action_type": "read",
+                    "object_type": "persongalleryasset"
+                },
+                {
+                    "name": "Add person life events",
+                    "action_type": "add",
+                    "object_type": "personlifeevent"
+                },
+                {
+                    "name": "Browse person life events",
+                    "action_type": "browse",
+                    "object_type": "personlifeevent"
+                },
+                {
+                    "name": "Delete person life events",
+                    "action_type": "destroy",
+                    "object_type": "personlifeevent"
+                },
+                {
+                    "name": "Edit person life events",
+                    "action_type": "edit",
+                    "object_type": "personlifeevent"
+                },
+                {
+                    "name": "Read person life events",
+                    "action_type": "read",
+                    "object_type": "personlifeevent"
+                },
+                {
+                    "name": "Add person post relations",
+                    "action_type": "add",
+                    "object_type": "personpostrelation"
+                },
+                {
+                    "name": "Browse person post relations",
+                    "action_type": "browse",
+                    "object_type": "personpostrelation"
+                },
+                {
+                    "name": "Delete person post relations",
+                    "action_type": "destroy",
+                    "object_type": "personpostrelation"
+                },
+                {
+                    "name": "Edit person post relations",
+                    "action_type": "edit",
+                    "object_type": "personpostrelation"
+                },
+                {
+                    "name": "Read person post relations",
+                    "action_type": "read",
+                    "object_type": "personpostrelation"
+                },
+                {
+                    "name": "Add person relations",
+                    "action_type": "add",
+                    "object_type": "personrelation"
+                },
+                {
+                    "name": "Browse person relations",
+                    "action_type": "browse",
+                    "object_type": "personrelation"
+                },
+                {
+                    "name": "Delete person relations",
+                    "action_type": "destroy",
+                    "object_type": "personrelation"
+                },
+                {
+                    "name": "Edit person relations",
+                    "action_type": "edit",
+                    "object_type": "personrelation"
+                },
+                {
+                    "name": "Read person relations",
+                    "action_type": "read",
+                    "object_type": "personrelation"
+                },
+                {
+                    "name": "Add person roles",
+                    "action_type": "add",
+                    "object_type": "personrole"
+                },
+                {
+                    "name": "Browse person roles",
+                    "action_type": "browse",
+                    "object_type": "personrole"
+                },
+                {
+                    "name": "Delete person roles",
+                    "action_type": "destroy",
+                    "object_type": "personrole"
+                },
+                {
+                    "name": "Edit person roles",
+                    "action_type": "edit",
+                    "object_type": "personrole"
+                },
+                {
+                    "name": "Read person roles",
+                    "action_type": "read",
+                    "object_type": "personrole"
+                },
+                {
+                    "name": "Add person stories",
+                    "action_type": "add",
+                    "object_type": "personstory"
+                },
+                {
+                    "name": "Browse person stories",
+                    "action_type": "browse",
+                    "object_type": "personstory"
+                },
+                {
+                    "name": "Delete person stories",
+                    "action_type": "destroy",
+                    "object_type": "personstory"
+                },
+                {
+                    "name": "Edit person stories",
+                    "action_type": "edit",
+                    "object_type": "personstory"
+                },
+                {
+                    "name": "Read person stories",
+                    "action_type": "read",
+                    "object_type": "personstory"
+                },
+                {
+                    "name": "Add person story episodes",
+                    "action_type": "add",
+                    "object_type": "personstoryepisode"
+                },
+                {
+                    "name": "Browse person story episodes",
+                    "action_type": "browse",
+                    "object_type": "personstoryepisode"
+                },
+                {
+                    "name": "Delete person story episodes",
+                    "action_type": "destroy",
+                    "object_type": "personstoryepisode"
+                },
+                {
+                    "name": "Edit person story episodes",
+                    "action_type": "edit",
+                    "object_type": "personstoryepisode"
+                },
+                {
+                    "name": "Read person story episodes",
+                    "action_type": "read",
+                    "object_type": "personstoryepisode"
+                },
+                {
+                    "name": "Add person story series",
+                    "action_type": "add",
+                    "object_type": "personstoryseries"
+                },
+                {
+                    "name": "Browse person story series",
+                    "action_type": "browse",
+                    "object_type": "personstoryseries"
+                },
+                {
+                    "name": "Delete person story series",
+                    "action_type": "destroy",
+                    "object_type": "personstoryseries"
+                },
+                {
+                    "name": "Edit person story series",
+                    "action_type": "edit",
+                    "object_type": "personstoryseries"
+                },
+                {
+                    "name": "Read person story series",
+                    "action_type": "read",
+                    "object_type": "personstoryseries"
+                },
+                {
+                    "name": "Add publish content",
+                    "action_type": "add",
+                    "object_type": "publishcontent"
+                },
+                {
+                    "name": "Browse publish content",
+                    "action_type": "browse",
+                    "object_type": "publishcontent"
+                },
+                {
+                    "name": "Delete publish content",
+                    "action_type": "destroy",
+                    "object_type": "publishcontent"
+                },
+                {
+                    "name": "Edit publish content",
+                    "action_type": "edit",
+                    "object_type": "publishcontent"
+                },
+                {
+                    "name": "Read publish content",
+                    "action_type": "read",
+                    "object_type": "publishcontent"
+                },
+                {
+                    "name": "Add Social AI Agent Settings",
+                    "action_type": "add",
+                    "object_type": "socialaiagentsetting"
+                },
+                {
+                    "name": "Browse Social AI Agent Settings",
+                    "action_type": "browse",
+                    "object_type": "socialaiagentsetting"
+                },
+                {
+                    "name": "Edit Social AI Agent Settings",
+                    "action_type": "edit",
+                    "object_type": "socialaiagentsetting"
+                },
+                {
+                    "name": "Read Social AI Agent Settings",
+                    "action_type": "read",
+                    "object_type": "socialaiagentsetting"
+                },
+                {
+                    "name": "Add Social AI Chats",
+                    "action_type": "add",
+                    "object_type": "socialaichat"
+                },
+                {
+                    "name": "Browse Social AI Chats",
+                    "action_type": "browse",
+                    "object_type": "socialaichat"
+                },
+                {
+                    "name": "Read Social AI Chats",
+                    "action_type": "read",
+                    "object_type": "socialaichat"
+                },
+                {
+                    "name": "Add Social AI Devices",
+                    "action_type": "add",
+                    "object_type": "socialaidevice"
+                },
+                {
+                    "name": "Browse Social AI Devices",
+                    "action_type": "browse",
+                    "object_type": "socialaidevice"
+                },
+                {
+                    "name": "Delete Social AI Devices",
+                    "action_type": "destroy",
+                    "object_type": "socialaidevice"
+                },
+                {
+                    "name": "Edit Social AI Devices",
+                    "action_type": "edit",
+                    "object_type": "socialaidevice"
+                },
+                {
+                    "name": "Read Social AI Devices",
+                    "action_type": "read",
+                    "object_type": "socialaidevice"
+                },
+                {
+                    "name": "Add Social AI Media Jobs",
+                    "action_type": "add",
+                    "object_type": "socialaimediajob"
+                },
+                {
+                    "name": "Browse Social AI Media Jobs",
+                    "action_type": "browse",
+                    "object_type": "socialaimediajob"
+                },
+                {
+                    "name": "Cancel Social AI Media Jobs",
+                    "action_type": "cancel",
+                    "object_type": "socialaimediajob"
+                },
+                {
+                    "name": "Claim Social AI Media Jobs",
+                    "action_type": "claim",
+                    "object_type": "socialaimediajob"
+                },
+                {
+                    "name": "Complete Social AI Media Jobs",
+                    "action_type": "complete",
+                    "object_type": "socialaimediajob"
+                },
+                {
+                    "name": "Edit Social AI Media Jobs",
+                    "action_type": "edit",
+                    "object_type": "socialaimediajob"
+                },
+                {
+                    "name": "Fail Social AI Media Jobs",
+                    "action_type": "fail",
+                    "object_type": "socialaimediajob"
+                },
+                {
+                    "name": "Progress Social AI Media Jobs",
+                    "action_type": "progress",
+                    "object_type": "socialaimediajob"
+                },
+                {
+                    "name": "Read Social AI Media Jobs",
+                    "action_type": "read",
+                    "object_type": "socialaimediajob"
+                },
+                {
+                    "name": "Retry Social AI Media Jobs",
+                    "action_type": "retry",
+                    "object_type": "socialaimediajob"
+                },
+                {
+                    "name": "Add Social AI SMS Logs",
+                    "action_type": "add",
+                    "object_type": "socialaismslog"
+                },
+                {
+                    "name": "Browse Social AI SMS Logs",
+                    "action_type": "browse",
+                    "object_type": "socialaismslog"
+                },
+                {
+                    "name": "Add Social AI User Phones",
+                    "action_type": "add",
+                    "object_type": "socialaiuserphone"
+                },
+                {
+                    "name": "Browse Social AI User Phones",
+                    "action_type": "browse",
+                    "object_type": "socialaiuserphone"
+                },
+                {
+                    "name": "Edit Social AI User Phones",
+                    "action_type": "edit",
+                    "object_type": "socialaiuserphone"
+                },
+                {
+                    "name": "Add SocialBookmarks",
+                    "action_type": "add",
+                    "object_type": "socialbookmark"
+                },
+                {
+                    "name": "Browse SocialBookmarks",
+                    "action_type": "browse",
+                    "object_type": "socialbookmark"
+                },
+                {
+                    "name": "Delete SocialBookmarks",
+                    "action_type": "destroy",
+                    "object_type": "socialbookmark"
+                },
+                {
+                    "name": "Read SocialBookmarks",
+                    "action_type": "read",
+                    "object_type": "socialbookmark"
+                },
+                {
+                    "name": "Add Social Charts",
+                    "action_type": "add",
+                    "object_type": "socialchart"
+                },
+                {
+                    "name": "Browse Social Charts",
+                    "action_type": "browse",
+                    "object_type": "socialchart"
+                },
+                {
+                    "name": "Delete Social Charts",
+                    "action_type": "destroy",
+                    "object_type": "socialchart"
+                },
+                {
+                    "name": "Edit Social Charts",
+                    "action_type": "edit",
+                    "object_type": "socialchart"
+                },
+                {
+                    "name": "Read Social Charts",
+                    "action_type": "read",
+                    "object_type": "socialchart"
+                },
+                {
+                    "name": "Add Social Components",
+                    "action_type": "add",
+                    "object_type": "socialcomponent"
+                },
+                {
+                    "name": "Browse Social Components",
+                    "action_type": "browse",
+                    "object_type": "socialcomponent"
+                },
+                {
+                    "name": "Delete Social Components",
+                    "action_type": "destroy",
+                    "object_type": "socialcomponent"
+                },
+                {
+                    "name": "Edit Social Components",
+                    "action_type": "edit",
+                    "object_type": "socialcomponent"
+                },
+                {
+                    "name": "Read Social Components",
+                    "action_type": "read",
+                    "object_type": "socialcomponent"
+                },
+                {
+                    "name": "Add SocialFavors",
+                    "action_type": "add",
+                    "object_type": "socialfavor"
+                },
+                {
+                    "name": "Browse SocialFavors",
+                    "action_type": "browse",
+                    "object_type": "socialfavor"
+                },
+                {
+                    "name": "Delete SocialFavors",
+                    "action_type": "destroy",
+                    "object_type": "socialfavor"
+                },
+                {
+                    "name": "Read SocialFavors",
+                    "action_type": "read",
+                    "object_type": "socialfavor"
+                },
+                {
+                    "name": "Add SocialFollows",
+                    "action_type": "add",
+                    "object_type": "socialfollow"
+                },
+                {
+                    "name": "Browse SocialFollows",
+                    "action_type": "browse",
+                    "object_type": "socialfollow"
+                },
+                {
+                    "name": "Delete SocialFollows",
+                    "action_type": "destroy",
+                    "object_type": "socialfollow"
+                },
+                {
+                    "name": "Read SocialFollows",
+                    "action_type": "read",
+                    "object_type": "socialfollow"
+                },
+                {
+                    "name": "Add SocialForwards",
+                    "action_type": "add",
+                    "object_type": "socialforward"
+                },
+                {
+                    "name": "Browse SocialForwards",
+                    "action_type": "browse",
+                    "object_type": "socialforward"
+                },
+                {
+                    "name": "Delete SocialForwards",
+                    "action_type": "destroy",
+                    "object_type": "socialforward"
+                },
+                {
+                    "name": "Read SocialForwards",
+                    "action_type": "read",
+                    "object_type": "socialforward"
+                },
+                {
+                    "name": "Add SocialGroups",
+                    "action_type": "add",
+                    "object_type": "socialgroup"
+                },
+                {
+                    "name": "Browse SocialGroups",
+                    "action_type": "browse",
+                    "object_type": "socialgroup"
+                },
+                {
+                    "name": "Count SocialGroups",
+                    "action_type": "count",
+                    "object_type": "socialgroup"
+                },
+                {
+                    "name": "Delete SocialGroups",
+                    "action_type": "destroy",
+                    "object_type": "socialgroup"
+                },
+                {
+                    "name": "Edit SocialGroups",
+                    "action_type": "edit",
+                    "object_type": "socialgroup"
+                },
+                {
+                    "name": "Read SocialGroups",
+                    "action_type": "read",
+                    "object_type": "socialgroup"
+                },
+                {
+                    "name": "Add SocialGroupMembers",
+                    "action_type": "add",
+                    "object_type": "socialgroupmember"
+                },
+                {
+                    "name": "Browse SocialGroupMembers",
+                    "action_type": "browse",
+                    "object_type": "socialgroupmember"
+                },
+                {
+                    "name": "Delete SocialGroupMembers",
+                    "action_type": "destroy",
+                    "object_type": "socialgroupmember"
+                },
+                {
+                    "name": "Edit SocialGroupMembers",
+                    "action_type": "edit",
+                    "object_type": "socialgroupmember"
+                },
+                {
+                    "name": "Read SocialGroupMembers",
+                    "action_type": "read",
+                    "object_type": "socialgroupmember"
+                },
+                {
+                    "name": "Add SocialPostComments",
+                    "action_type": "add",
+                    "object_type": "socialpostcomment"
+                },
+                {
+                    "name": "Browse SocialPostComments",
+                    "action_type": "browse",
+                    "object_type": "socialpostcomment"
+                },
+                {
+                    "name": "Count SocialPostComments",
+                    "action_type": "counts",
+                    "object_type": "socialpostcomment"
+                },
+                {
+                    "name": "Delete SocialPostComments",
+                    "action_type": "destroy",
+                    "object_type": "socialpostcomment"
+                },
+                {
+                    "name": "Edit SocialPostComments",
+                    "action_type": "edit",
+                    "object_type": "socialpostcomment"
+                },
+                {
+                    "name": "Like SocialPostComments",
+                    "action_type": "like",
+                    "object_type": "socialpostcomment"
+                },
+                {
+                    "name": "Read SocialPostComments",
+                    "action_type": "read",
+                    "object_type": "socialpostcomment"
+                },
+                {
+                    "name": "Replies SocialPostComments",
+                    "action_type": "replies",
+                    "object_type": "socialpostcomment"
+                },
+                {
+                    "name": "Report SocialPostComments",
+                    "action_type": "report",
+                    "object_type": "socialpostcomment"
+                },
+                {
+                    "name": "Unlike SocialPostComments",
+                    "action_type": "unlike",
+                    "object_type": "socialpostcomment"
+                },
+                {
+                    "name": "Add SocialPostCommentLikes",
+                    "action_type": "add",
+                    "object_type": "socialpostcommentlike"
+                },
+                {
+                    "name": "Browse SocialPostCommentLikes",
+                    "action_type": "browse",
+                    "object_type": "socialpostcommentlike"
+                },
+                {
+                    "name": "Delete SocialPostCommentLikes",
+                    "action_type": "destroy",
+                    "object_type": "socialpostcommentlike"
+                },
+                {
+                    "name": "Read SocialPostCommentLikes",
+                    "action_type": "read",
+                    "object_type": "socialpostcommentlike"
+                },
+                {
+                    "name": "Add SocialPostCommentReports",
+                    "action_type": "add",
+                    "object_type": "socialpostcommentreport"
+                },
+                {
+                    "name": "Browse SocialPostCommentReports",
+                    "action_type": "browse",
+                    "object_type": "socialpostcommentreport"
+                },
+                {
+                    "name": "Delete SocialPostCommentReports",
+                    "action_type": "destroy",
+                    "object_type": "socialpostcommentreport"
+                },
+                {
+                    "name": "Edit SocialPostCommentReports",
+                    "action_type": "edit",
+                    "object_type": "socialpostcommentreport"
+                },
+                {
+                    "name": "Read SocialPostCommentReports",
+                    "action_type": "read",
+                    "object_type": "socialpostcommentreport"
+                },
+                {
+                    "name": "Add Social Post Components",
+                    "action_type": "add",
+                    "object_type": "socialpostcomponent"
+                },
+                {
+                    "name": "Browse Social Post Components",
+                    "action_type": "browse",
+                    "object_type": "socialpostcomponent"
+                },
+                {
+                    "name": "Delete Social Post Components",
+                    "action_type": "destroy",
+                    "object_type": "socialpostcomponent"
+                },
+                {
+                    "name": "Edit Social Post Components",
+                    "action_type": "edit",
+                    "object_type": "socialpostcomponent"
+                },
+                {
+                    "name": "Read Social Post Components",
+                    "action_type": "read",
+                    "object_type": "socialpostcomponent"
+                },
+                {
+                    "name": "Add Social User Logs",
+                    "action_type": "add",
+                    "object_type": "socialuserlog"
+                },
+                {
+                    "name": "Browse Social User Logs",
+                    "action_type": "browse",
+                    "object_type": "socialuserlog"
+                },
+                {
+                    "name": "Delete Social User Logs",
+                    "action_type": "destroy",
+                    "object_type": "socialuserlog"
+                },
+                {
+                    "name": "Edit Social User Logs",
+                    "action_type": "edit",
+                    "object_type": "socialuserlog"
+                },
+                {
+                    "name": "Read Social User Logs",
+                    "action_type": "read",
+                    "object_type": "socialuserlog"
+                },
+                {
+                    "name": "Count Tags",
+                    "action_type": "count",
+                    "object_type": "tag"
                 }
             ]
         },
@@ -842,6 +1704,42 @@
             },
             "entries": {
                 "Administrator": {
+                    "estateinquiry": "all",
+                    "estateproperty": "all",
+                    "estatepropertymedium": "all",
+                    "estatepropertypost": "all",
+                    "estatepropertystaff": "all",
+                    "estatepropertytag": "all",
+                    "estatesetting": "all",
+                    "person": "all",
+                    "persongalleryasset": "all",
+                    "personlifeevent": "all",
+                    "personpostrelation": "all",
+                    "personrelation": "all",
+                    "personrole": "all",
+                    "personstory": "all",
+                    "personstoryepisode": "all",
+                    "personstoryseries": "all",
+                    "publishcontent": "all",
+                    "socialaiagentsetting": "all",
+                    "socialaichat": "all",
+                    "socialaidevice": "all",
+                    "socialaimediajob": "all",
+                    "socialaismslog": "all",
+                    "socialaiuserphone": "all",
+                    "socialbookmark": "all",
+                    "socialchart": "all",
+                    "socialcomponent": "all",
+                    "socialfavor": "all",
+                    "socialfollow": "all",
+                    "socialforward": "all",
+                    "socialgroup": "all",
+                    "socialgroupmember": "all",
+                    "socialpostcomment": "all",
+                    "socialpostcommentlike": "all",
+                    "socialpostcommentreport": "all",
+                    "socialpostcomponent": "all",
+                    "socialuserlog": "all",
                     "db": "all",
                     "mail": "all",
                     "notification": "all",
@@ -893,6 +1791,35 @@
                     "tag": "read"
                 },
                 "Admin Integration": {
+                    "estateinquiry": "all",
+                    "estateproperty": "all",
+                    "estatepropertymedium": "all",
+                    "estatepropertypost": "all",
+                    "estatepropertystaff": "all",
+                    "estatepropertytag": "all",
+                    "estatesetting": "all",
+                    "person": "all",
+                    "persongalleryasset": "all",
+                    "personlifeevent": "all",
+                    "personpostrelation": "all",
+                    "personrelation": "all",
+                    "personrole": "all",
+                    "personstory": "all",
+                    "personstoryepisode": "all",
+                    "personstoryseries": "all",
+                    "publishcontent": "all",
+                    "socialaiagentsetting": "all",
+                    "socialaichat": "all",
+                    "socialaidevice": "all",
+                    "socialaimediajob": "all",
+                    "socialaismslog": "all",
+                    "socialaiuserphone": "all",
+                    "socialchart": "all",
+                    "socialcomponent": "all",
+                    "socialgroup": "count",
+                    "socialpostcomment": "all",
+                    "socialpostcomponent": "all",
+                    "socialuserlog": "all",
                     "mail": "all",
                     "notification": "all",
                     "post": "all",
@@ -923,6 +1850,42 @@
                     "member_signin_url": "read"
                 },
                 "Super Editor": {
+                    "estateinquiry": ["add", "destroy", "edit"],
+                    "estateproperty": ["add", "destroy", "edit"],
+                    "estatepropertymedium": ["add", "destroy", "edit"],
+                    "estatepropertypost": ["add", "destroy"],
+                    "estatepropertystaff": ["add", "destroy"],
+                    "estatepropertytag": ["add", "destroy"],
+                    "estatesetting": "edit",
+                    "person": ["add", "destroy", "edit"],
+                    "persongalleryasset": ["add", "destroy", "edit"],
+                    "personlifeevent": ["add", "destroy", "edit"],
+                    "personpostrelation": ["add", "destroy", "edit"],
+                    "personrelation": ["add", "destroy", "edit"],
+                    "personrole": ["add", "destroy", "edit"],
+                    "personstory": ["add", "destroy", "edit"],
+                    "personstoryepisode": ["add", "destroy", "edit"],
+                    "personstoryseries": ["add", "destroy", "edit"],
+                    "publishcontent": ["add", "destroy", "edit"],
+                    "socialaiagentsetting": "all",
+                    "socialaichat": "all",
+                    "socialaidevice": "all",
+                    "socialaimediajob": "all",
+                    "socialaismslog": "all",
+                    "socialaiuserphone": "all",
+                    "socialbookmark": "all",
+                    "socialchart": ["add", "destroy", "edit"],
+                    "socialcomponent": "all",
+                    "socialfavor": "all",
+                    "socialfollow": "all",
+                    "socialforward": "all",
+                    "socialgroup": "all",
+                    "socialgroupmember": "all",
+                    "socialpostcomment": "all",
+                    "socialpostcommentlike": "all",
+                    "socialpostcommentreport": "all",
+                    "socialpostcomponent": "all",
+                    "socialuserlog": "all",
                     "notification": "all",
                     "post": "all",
                     "setting": ["browse", "read"],
@@ -946,6 +1909,42 @@
                     "comment": "all"
                 },
                 "Editor": {
+                    "estateinquiry": "all",
+                    "estateproperty": "all",
+                    "estatepropertymedium": "all",
+                    "estatepropertypost": "all",
+                    "estatepropertystaff": "all",
+                    "estatepropertytag": "all",
+                    "estatesetting": "all",
+                    "person": "all",
+                    "persongalleryasset": "all",
+                    "personlifeevent": "all",
+                    "personpostrelation": "all",
+                    "personrelation": "all",
+                    "personrole": "all",
+                    "personstory": "all",
+                    "personstoryepisode": "all",
+                    "personstoryseries": "all",
+                    "publishcontent": "all",
+                    "socialaiagentsetting": "all",
+                    "socialaichat": "all",
+                    "socialaidevice": "all",
+                    "socialaimediajob": "all",
+                    "socialaismslog": "all",
+                    "socialaiuserphone": "all",
+                    "socialbookmark": "all",
+                    "socialchart": "all",
+                    "socialcomponent": "all",
+                    "socialfavor": "all",
+                    "socialfollow": "all",
+                    "socialforward": "all",
+                    "socialgroup": "all",
+                    "socialgroupmember": "all",
+                    "socialpostcomment": "all",
+                    "socialpostcommentlike": "all",
+                    "socialpostcommentreport": "all",
+                    "socialpostcomponent": "all",
+                    "socialuserlog": "all",
                     "notification": "all",
                     "post": "all",
                     "setting": ["browse", "read"],
@@ -965,10 +1964,46 @@
                     "recommendation": ["browse", "read"]
                 },
                 "Author": {
+                    "estateinquiry": ["browse", "read"],
+                    "estateproperty": ["browse", "read"],
+                    "estatepropertymedium": "browse",
+                    "estatepropertypost": "browse",
+                    "estatepropertystaff": "browse",
+                    "estatepropertytag": "browse",
+                    "estatesetting": ["browse", "read"],
+                    "person": ["browse", "read"],
+                    "persongalleryasset": ["browse", "read"],
+                    "personlifeevent": ["browse", "read"],
+                    "personpostrelation": ["browse", "read"],
+                    "personrelation": ["browse", "read"],
+                    "personrole": ["browse", "read"],
+                    "personstory": ["browse", "read"],
+                    "personstoryepisode": ["browse", "read"],
+                    "personstoryseries": ["browse", "read"],
+                    "publishcontent": ["browse", "read"],
+                    "socialaiagentsetting": "all",
+                    "socialaichat": "all",
+                    "socialaidevice": "all",
+                    "socialaimediajob": "all",
+                    "socialaismslog": "all",
+                    "socialaiuserphone": "all",
+                    "socialbookmark": "all",
+                    "socialchart": ["browse", "read"],
+                    "socialcomponent": "all",
+                    "socialfavor": "all",
+                    "socialfollow": "all",
+                    "socialforward": "all",
+                    "socialgroup": "all",
+                    "socialgroupmember": "all",
+                    "socialpostcomment": "all",
+                    "socialpostcommentlike": "all",
+                    "socialpostcommentreport": "all",
+                    "socialpostcomponent": "all",
+                    "socialuserlog": "all",
                     "post": ["browse", "read", "edit", "add", "destroy"],
                     "setting": ["browse", "read"],
                     "slug": "all",
-                    "tag": ["browse", "read", "add"],
+                    "tag": ["add", "browse", "count", "read"],
                     "user": ["browse", "read"],
                     "role": ["browse"],
                     "theme": ["browse", "readActive"],
@@ -982,6 +2017,29 @@
                     "recommendation": ["browse", "read"]
                 },
                 "Contributor": {
+                    "estateinquiry": ["browse", "read"],
+                    "estateproperty": ["browse", "read"],
+                    "estatepropertymedium": "browse",
+                    "estatepropertypost": "browse",
+                    "estatepropertystaff": "browse",
+                    "estatepropertytag": "browse",
+                    "estatesetting": ["browse", "read"],
+                    "person": ["browse", "read"],
+                    "persongalleryasset": ["browse", "read"],
+                    "personlifeevent": ["browse", "read"],
+                    "personpostrelation": ["browse", "read"],
+                    "personrelation": ["browse", "read"],
+                    "personrole": ["browse", "read"],
+                    "personstory": ["browse", "read"],
+                    "personstoryepisode": ["browse", "read"],
+                    "personstoryseries": ["browse", "read"],
+                    "publishcontent": ["browse", "read"],
+                    "socialaichat": "all",
+                    "socialchart": ["browse", "read"],
+                    "socialcomponent": "all",
+                    "socialpostcomment": "all",
+                    "socialpostcomponent": "all",
+                    "socialuserlog": "all",
                     "post": ["browse", "read", "edit", "add", "destroy"],
                     "setting": ["browse", "read"],
                     "slug": "all",
@@ -994,6 +2052,9 @@
                     "snippet": ["browse", "read"],
                     "collection": ["browse", "read"],
                     "recommendation": ["browse", "read"]
+                },
+                "Owner": {
+                    "tag": "count"
                 }
             }
         },

@@ -227,6 +227,10 @@
             "defaultValue": "source",
             "flags": "RO",
             "type": "string"
+        },
+        "my_config": {
+            "defaultValue": null,
+            "type": "string"
         }
     },
     "private": {
@@ -535,7 +539,7 @@
     "comments": {
         "comments_enabled": {
             "type": "string",
-            "defaultValue": "off",
+            "defaultValue": "all",
             "validations": {
                 "isEmpty": false,
                 "isIn": [[

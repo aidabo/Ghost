@@ -1356,6 +1356,12 @@ module.exports = {
             ['owner_scope', 'user_id', 'created_at'],
             ['owner_scope', 'group_id', 'created_at'],
             ['job_id', 'created_at']
+        ],
+        // Idempotency key for chart-job artifact uploads. Created by
+        // 2026-08-07-00-00-03-add-chart-job-assets-unique-key.js, which init()
+        // never runs, so a fresh DB would have no such constraint at all.
+        '@@UNIQUE_CONSTRAINTS@@': [
+            ['chart_job_id', 'storage_key_hash']
         ]
     },
 
@@ -1747,6 +1753,13 @@ module.exports = {
         parse_warnings_json: {type: 'text', maxlength: 10000, nullable: true},
         source_updated_at: {type: 'dateTime', nullable: true},
         indexed_at: {type: 'dateTime', nullable: false},
+        // The sort/filter composites (price×area, rent×area, area×price,
+        // age×price, featured) are NOT declared here: MySQL caps identifiers at
+        // 64 characters and commands.js only supports the auto-generated
+        // `<table>_<cols>_index` name, which for these would be 68-76 chars and
+        // fail with ER_TOO_LONG_IDENT. They are created in
+        // migrations/hooks/init/after.js under the same short names the
+        // migrations use. Keep the two in sync.
         '@@INDEXES@@': [
             ['status', 'property_type'],
             ['city', 'ward']
@@ -1764,6 +1777,11 @@ module.exports = {
         sort_order: {type: 'integer', nullable: true, defaultTo: 0},
         created_at: {type: 'dateTime', nullable: false},
         updated_at: {type: 'dateTime', nullable: true},
+        // The (railway_line, station_name, walk_minutes) and
+        // (walk_minutes, property_id) composites are NOT declared here — see
+        // estate_property_search_index above for why. They are created in
+        // migrations/hooks/init/after.js as idx_esti_line_station_walk and
+        // idx_esti_walk_property.
         '@@INDEXES@@': [
             ['property_id', 'walk_minutes'],
             ['station_name', 'walk_minutes'],
@@ -1785,7 +1803,11 @@ module.exports = {
         sort_order: {type: 'integer', nullable: true, defaultTo: 0},
         is_primary: {type: 'bool', nullable: true, defaultTo: false},
         created_at: {type: 'dateTime', nullable: false},
-        '@@INDEXES@@': [
+        // UNIQUE, not a plain index: created by
+        // 2026-05-11-00-00-07-add-estate-unique-constraints.js, which init()
+        // never runs. As a plain @@INDEXES@@ entry a fresh DB would silently
+        // lose the constraint and allow duplicate rows.
+        '@@UNIQUE_CONSTRAINTS@@': [
             ['property_id', 'post_id', 'locale']
         ]
     },
@@ -1795,7 +1817,8 @@ module.exports = {
         property_id: {type: 'string', maxlength: 24, nullable: false, references: 'estate_properties.id'},
         tag_id: {type: 'string', maxlength: 24, nullable: false, references: 'tags.id'},
         created_at: {type: 'dateTime', nullable: false},
-        '@@INDEXES@@': [
+        // See estate_property_posts above.
+        '@@UNIQUE_CONSTRAINTS@@': [
             ['property_id', 'tag_id']
         ]
     },
@@ -1810,7 +1833,8 @@ module.exports = {
         is_primary: {type: 'bool', nullable: true, defaultTo: false},
         is_selected: {type: 'bool', nullable: true, defaultTo: false},
         created_at: {type: 'dateTime', nullable: false},
-        '@@INDEXES@@': [
+        // See estate_property_posts above.
+        '@@UNIQUE_CONSTRAINTS@@': [
             ['property_id', 'media_id', 'media_type']
         ]
     },
@@ -2428,7 +2452,13 @@ module.exports = {
         refunded_at: {type: 'dateTime', nullable: true},
         revoked_at: {type: 'dateTime', nullable: true},
         created_at: {type: 'dateTime', nullable: false},
-        updated_at: {type: 'dateTime', nullable: false}
+        updated_at: {type: 'dateTime', nullable: false},
+        // "Does this member already own this product?" lookup. Declared in
+        // 2026-09-07-00-00-04-add-member-entitlements-table.js but missing from
+        // this file, so a fresh DB had no such index.
+        '@@INDEXES@@': [
+            ['member_id', 'content_product_id', 'status']
+        ]
     },
 
     post_media: {
@@ -2466,6 +2496,58 @@ module.exports = {
         sort_order: {type: 'integer', nullable: true},
         created_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: true}
+    },
+
+    // 2026-09-12: these two tables existed only in 5.116 migrations.
+    // knex-migrator's init() builds tables from schema.js and bulk-INSERTs the
+    // versions/** filenames into the migrations table WITHOUT running them, so a
+    // table that lives only in a migration is never created on a fresh database.
+    // Production was built up by applying migrations in order and never noticed;
+    // only tenant automation, which creates a fresh DB every time, broke.
+    // Definitions match the final state of 2026-03-08-00-00-04 / -05 / -06 / -07 / -08.
+    social_ai_reminders: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        user_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true},
+        group_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true},
+        title: {type: 'string', maxlength: 500, nullable: false},
+        note: {type: 'text', maxlength: 1000000, nullable: true},
+        remind_at: {type: 'dateTime', nullable: false, index: true},
+        timezone: {type: 'string', maxlength: 64, nullable: true},
+        status: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'active', index: true},
+        cancelled_at: {type: 'dateTime', nullable: true, index: true},
+        created_at: {type: 'dateTime', nullable: false, index: true},
+        updated_at: {type: 'dateTime', nullable: false, index: true},
+        recurrence_type: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'none'},
+        recurrence_interval: {type: 'integer', nullable: false, unsigned: true, defaultTo: 1},
+        reminder_message_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        reminder_batch_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        source_message_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        created_by_user_message_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        source_type: {type: 'string', maxlength: 32, nullable: true, index: true},
+        source_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        '@@INDEXES@@': [
+            ['user_id', 'group_id', 'status', 'remind_at'],
+            ['group_id', 'status', 'remind_at']
+        ]
+    },
+
+    social_ai_reminder_events: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        reminder_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_ai_reminders.id', cascadeDelete: true},
+        user_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true},
+        group_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_groups.id', cascadeDelete: true},
+        scheduled_at: {type: 'dateTime', nullable: true, index: true},
+        prompted_at: {type: 'dateTime', nullable: true, index: true},
+        answered_at: {type: 'dateTime', nullable: true, index: true},
+        answer_type: {type: 'string', maxlength: 32, nullable: false, defaultTo: 'acknowledged', index: true},
+        answer_text: {type: 'text', maxlength: 1000000, nullable: true},
+        channel: {type: 'string', maxlength: 32, nullable: true, index: true},
+        created_at: {type: 'dateTime', nullable: false, index: true},
+        updated_at: {type: 'dateTime', nullable: false, index: true},
+        '@@INDEXES@@': [
+            ['user_id', 'group_id', 'created_at'],
+            ['reminder_id', 'answered_at']
+        ]
     }
 
 };

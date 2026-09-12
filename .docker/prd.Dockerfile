@@ -34,9 +34,22 @@ RUN chown -R node:node ${GHOST_CONTENT}
 # Simplified COPY section (grouped by directory)
 COPY --chown=node:node .docker/components/tryghost-api-framework-5.116.2.tgz ${GHOST_INSTALL}/current/core/components
 COPY --chown=node:node ghost/core/core/server/data/schema/schema.js ${GHOST_INSTALL}/current/core/server/data/schema
+# Fresh-install seeds: knex-migrator's init() builds the permissions table from
+# fixtures.json and first-boot populateDefaults() seeds settings from
+# default-settings.json. Neither runs the versioned migrations, so these two
+# files must ship in the image; only /data/ghost/content is a volume.
+COPY --chown=node:node ghost/core/core/server/data/schema/fixtures/fixtures.json ${GHOST_INSTALL}/current/core/server/data/schema/fixtures
+COPY --chown=node:node ghost/core/core/server/data/schema/default-settings/default-settings.json ${GHOST_INSTALL}/current/core/server/data/schema/default-settings
 COPY --chown=node:node ghost/core/core/server/api/endpoints ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.115 ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.115
 COPY --chown=node:node ghost/core/core/server/data/migrations/versions/5.116 ${GHOST_INSTALL}/current/core/server/data/migrations/versions/5.116
+# knex-migrator's init() runs migrations/init/* only and then records versions/**
+# as done without running them, so a fresh database gets nothing that lives only
+# in a versioned migration. hooks/init/after.js adds the FULLTEXT(ngram) indexes
+# that schema.js cannot express. The base image ships upstream's hooks/init/,
+# which has no `after`, so index.js must be overridden along with it.
+COPY --chown=node:node ghost/core/core/server/data/migrations/hooks/init/after.js ${GHOST_INSTALL}/current/core/server/data/migrations/hooks/init
+COPY --chown=node:node ghost/core/core/server/data/migrations/hooks/init/index.js ${GHOST_INSTALL}/current/core/server/data/migrations/hooks/init
 COPY --chown=node:node ghost/core/core/server/models ${GHOST_INSTALL}/current/core/server/models
 COPY --chown=node:node ghost/core/core/server/services/mail ${GHOST_INSTALL}/current/core/server/services/mail
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeAPI.js ${GHOST_INSTALL}/current/core/server/services/stripe
