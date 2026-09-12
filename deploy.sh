@@ -10,11 +10,9 @@ VERSION="5.116.2-next-r260817"
 # yarn docker:build
 yarn docker:next:build
 
-# Tag for Docker Hubq
-docker tag $IMAGE_NAME:$VERSION jbcdev99ai/$IMAGE_NAME:$VERSION
-
-# Push to Docker Hub
-docker push jbcdev99ai/$IMAGE_NAME:$VERSION
+# Docker Hub への tag / push は行わない（2026-09-11 決定: 配布は S3 経由のみ）。
+# ローカルの $IMAGE_NAME:$VERSION をそのまま .tar にして下の S3 へ上げ、
+# 受け側の deploy-on-ec2.sh が同じキーを docker load する。
 
 # Save image as .tar
 docker save -o $IMAGE_NAME-$VERSION.tar $IMAGE_NAME:$VERSION
