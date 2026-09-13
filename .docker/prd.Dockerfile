@@ -60,12 +60,45 @@ COPY --chown=node:node ghost/core/core/server/services/stripe/services/webhook/C
 COPY --chown=node:node ghost/core/core/server/api/endpoints/member-invoices.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/content-products.js ${GHOST_INSTALL}/current/core/server/api/endpoints
 COPY --chown=node:node ghost/core/core/server/api/endpoints/content-products-admin.js ${GHOST_INSTALL}/current/core/server/api/endpoints
-COPY --chown=node:node ghost/admin/app/utils/currency.js ${GHOST_INSTALL}/current/admin/app/utils
-# The local development Admin build contains symlinks for Admin-X apps. Remove
-# the base image's asset directory before copying the dereferenced production
-# bundle, otherwise Docker cannot replace a directory symlink with a directory.
+# The Admin bundle is built on the host before `docker build`, not inside it:
+# there is no Admin build step in this image, and the base image's own
+# core/built/admin is upstream's build — it carries neither the JPY currency
+# entry nor anything else local. Build it first with:
+#   yarn nx run ghost-admin:build
+#
+# rm -rf first: Docker COPY merges into an existing directory rather than
+# replacing it, so the base image's upstream files would otherwise survive
+# alongside the local ones and leave a mixed bundle.
 RUN rm -rf ${GHOST_INSTALL}/current/core/built/admin
 COPY --chown=node:node ghost/core/core/built/admin ${GHOST_INSTALL}/current/core/built/admin
+
+# Refuse to ship a development Admin bundle. `yarn dev` (ember serve) writes the
+# five Admin-X entries as symlinks to ../../apps/*/dist — Docker COPY does not
+# dereference symlinks, so they land dangling and every
+# /ghost/assets/admin-x-*/<app>.js 404s, which the Admin surfaces as
+# "Loading interrupted / Loadless" on the Settings screen. A production build
+# (admin/lib/asset-delivery) copies real directories and hashes filenames.
+# This guards against `yarn dev` having re-poisoned core/built/admin after the
+# production build and before this build ran.
+RUN set -eu; \
+    for app in admin-x-demo admin-x-settings admin-x-activitypub posts stats; do \
+      if [ -L "${GHOST_INSTALL}/current/core/built/admin/assets/$app" ]; then \
+        echo "ERROR: assets/$app is a symlink — dev build"; exit 1; \
+      fi; \
+      if [ ! -f "${GHOST_INSTALL}/current/core/built/admin/assets/$app/$app.js" ]; then \
+        echo "ERROR: assets/$app/$app.js is missing"; exit 1; \
+      fi; \
+    done; \
+    if grep -q 'ember-cli-live-reload' "${GHOST_INSTALL}/current/core/built/admin/index.html"; then \
+      echo "ERROR: index.html references ember-cli-live-reload — dev build"; exit 1; \
+    fi; \
+    if ! grep -q '%22environment%22%3A%22production%22' "${GHOST_INSTALL}/current/core/built/admin/index.html"; then \
+      echo "ERROR: index.html is not an environment=production build"; exit 1; \
+    fi; \
+    if ! ls "${GHOST_INSTALL}/current/core/built/admin/assets" | grep -qE '^ghost-[0-9a-f]{16,}\.js$'; then \
+      echo "ERROR: no hashed ghost-<hash>.js — dev build"; exit 1; \
+    fi; \
+    echo "OK: production Admin bundle with 5 dereferenced Admin-X apps"
 COPY --chown=node:node ghost/core/core/server/services/url/config.js ${GHOST_INSTALL}/current/core/server/services/url
 COPY --chown=node:node ghost/core/core/server/web/api/endpoints/admin ${GHOST_INSTALL}/current/core/server/web/api/endpoints/admin
 COPY --chown=node:node ghost/core/core/server/web/api/endpoints/content ${GHOST_INSTALL}/current/core/server/web/api/endpoints/content
