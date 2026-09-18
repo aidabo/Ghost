@@ -1,5 +1,3 @@
-// @ts-ignore
-const _ = require('lodash');
 const ObjectId = require('bson-objectid').default;
 const ghostBookshelf = require('./base');
 const errors = require('@tryghost/errors');
@@ -40,9 +38,9 @@ SocialGroupMember = ghostBookshelf.Model.extend({
         this.on('saving', this.validateFields);
     },
 
-    async validateFields(model, attrs, options) {
+    async validateFields(model) {
         logging.info('validateFields model:', JSON.stringify(model));
-        
+
         const userId = model.get('user_id');
         const groupId = model.get('group_id');
         const roleId = model.get('role_id');
@@ -198,6 +196,37 @@ SocialGroupMember = ghostBookshelf.Model.extend({
             logging.warn('Not group admin or owner', groupId, userId);
         }
         return allowed;
+    },
+
+    // Single authoritative predicate for who may EDIT/DELETE a piece of content
+    // (charts, pages, projects, deepzoom jobs). Backend source of truth; the same
+    // value is surfaced to the frontend as a computed `can_edit` flag on read, so
+    // the UI never re-implements the rule.
+    //
+    //   allowed = system admin (Owner/Administrator)
+    //          OR the content author (authorId === userId)
+    //
+    // Content CRUD depends on the STAFF role + system admin + author only — NOT
+    // on the group role. Group roles (owner/admin) govern GROUP MANAGEMENT
+    // (adding members, promoting/demoting members) via canManageGroupMembers,
+    // not content editing. A group owner/admin who is not the author cannot edit
+    // another member's content. (`groupId` is accepted for call-site symmetry but
+    // is intentionally not consulted here.)
+    // eslint-disable-next-line no-unused-vars
+    canEditGroupContent: async function canEditGroupContent({groupId, authorId, userId}) {
+        if (!userId) {
+            return false;
+        }
+
+        // Author can edit their own content.
+        if (authorId && String(authorId) === String(userId)) {
+            return true;
+        }
+
+        // System admin (Owner / Administrator) can edit anything.
+        // @ts-ignore
+        const user = await models.User.findOne({id: userId}, {withRelated: ['roles']});
+        return Boolean(user?.related('roles').some(role => role.get('name') === 'Administrator' || role.get('name') === 'Owner'));
     }
 
 });

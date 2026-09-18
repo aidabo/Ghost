@@ -169,6 +169,32 @@ const assertCanReadRow = async ({ frame, row }) => {
     }
 };
 
+// Mutations (cancel / destroy / publish / unpublish / link/unlink project) are
+// restricted to system admin, the job author (user_id), or a group owner/admin
+// of the job's group — NOT every group member. Integration/host (worker) context
+// bypasses. Single source of truth: SocialGroupMember.canEditGroupContent.
+// Previously these used assertCanReadRow, so any group member could delete or
+// publish a job they did not own.
+const assertCanWriteRow = async ({ frame, row }) => {
+    const currentUserId = getCurrentUserId(frame);
+    const integrationId = getCurrentIntegrationId(frame);
+    if (integrationId) {
+        return;
+    }
+    const targetUserId = await resolveTargetUserId(frame);
+    // @ts-ignore
+    const allowed = await models.SocialGroupMember.canEditGroupContent({
+        groupId: row.group_id,
+        authorId: row.user_id,
+        userId: targetUserId || currentUserId
+    });
+    if (!allowed) {
+        throw new errors.NoPermissionError({
+            message: tpl(messages.noPermission)
+        });
+    }
+};
+
 // @ts-ignore
 const loadModelOrThrow = async (id) => {
     if (!id) {
@@ -204,6 +230,32 @@ const loadRowOrThrow = async (knex, id) => {
     }
 
     return row;
+};
+
+// Stamp computed `can_edit` on each returned job so the frontend shows/hides
+// mutation controls (backend single source of truth). Mirrors the write gate.
+const attachCanEdit = async (entryOrCollection, userId, isAdmin) => {
+    let list = [];
+    const src = (entryOrCollection && entryOrCollection.data !== undefined) ? entryOrCollection.data : entryOrCollection;
+    if (Array.isArray(src)) {
+        list = src;
+    } else if (src && Array.isArray(src.models)) {
+        list = src.models;
+    } else if (src && typeof src.get === 'function') {
+        list = [src];
+    }
+    for (const m of list) {
+        if (!m || typeof m.get !== 'function') {
+            continue;
+        }
+        const canEdit = isAdmin || await models.SocialGroupMember.canEditGroupContent({
+            groupId: m.get('group_id'),
+            authorId: m.get('user_id'),
+            userId
+        });
+        m.set('can_edit', canEdit);
+    }
+    return entryOrCollection;
 };
 
 /** @type {import('@tryghost/api-framework').Controller} */
@@ -254,7 +306,9 @@ const controller = {
             }
 
             // @ts-ignore
-            return await models.SocialAiDziJob.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
+            const result = await models.SocialAiDziJob.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
+            await attachCanEdit(result, targetUserId || currentUserId, isAdmin);
+            return result;
         }
     },
 
@@ -369,7 +423,7 @@ const controller = {
             // fallback below would collapse to null and violate the NOT NULL
             // column for jobs whose user_id is also null.
             const row = await loadRowOrThrow(knex, getJobId(frame));
-            await assertCanReadRow({ frame, row });
+            await assertCanWriteRow({ frame, row });
 
             if (!['queued', 'running'].includes(row.status)) {
                 throw new errors.ValidationError({
@@ -406,7 +460,7 @@ const controller = {
         async query(frame) {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, getJobId(frame));
-            await assertCanReadRow({ frame, row });
+            await assertCanWriteRow({ frame, row });
 
             // Best-effort S3 cleanup of the gallery-bucket objects for this job.
             // The DZI TILES live in a different bucket and are removed by the host
@@ -600,7 +654,7 @@ const controller = {
         async query(frame) {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, getJobId(frame));
-            await assertCanReadRow({frame, row});
+            await assertCanWriteRow({frame, row});
             if (row.status !== 'completed') {
                 throw new errors.ValidationError({message: tpl(messages.invalidTransition)});
             }
@@ -617,7 +671,7 @@ const controller = {
         async query(frame) {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, getJobId(frame));
-            await assertCanReadRow({frame, row});
+            await assertCanWriteRow({frame, row});
             const now = nowMySql();
             await knex(TABLE).where({id: row.id}).update({is_public: false, updated_at: now, updated_by: row.updated_by || row.user_id});
             return serializeRow(await loadRowOrThrow(knex, row.id));
@@ -677,7 +731,7 @@ const controller = {
         async query(frame) {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, getJobId(frame));
-            await assertCanReadRow({frame, row});
+            await assertCanWriteRow({frame, row});
 
             const payload = getActionPayload(frame);
             const projectId = String(payload.project_id || '').trim();
@@ -723,7 +777,7 @@ const controller = {
         async query(frame) {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, getJobId(frame));
-            await assertCanReadRow({frame, row});
+            await assertCanWriteRow({frame, row});
 
             const payload = getActionPayload(frame);
             const projectId = String(payload.project_id || '').trim();

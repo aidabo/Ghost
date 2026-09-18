@@ -8,7 +8,8 @@ const ALLOWED_INCLUDES = ['group', 'user', 'role'];
 
 const messages = {
     notFound: 'group member not found.',
-    duplicateEntry: 'group member already exists for this group and user.'
+    duplicateEntry: 'group member already exists for this group and user.',
+    noRoleChangePermission: 'You do not have permission to change a member role.'
 };
 
 /** @type {import('@tryghost/api-framework').Controller} */
@@ -99,15 +100,34 @@ const controller = {
             'transacting'
         ],
         data: [
-            'group_id', 
-            'user_id', 
-            'status'
+            'group_id',
+            'user_id',
+            'status',
+            // role_id was previously omitted, so the promote/demote UI sent it
+            // but the API framework dropped it and the group role never changed.
+            'role_id'
         ],
         permissions: true,
         async query(frame) {
             try {
+                const payload = frame.data.socialgroupmembers[0] || {};
+                // Changing a member's group role (promote/demote) is restricted
+                // to system admins and the group's owner/admins — the same gate
+                // as adding/removing members.
+                if (payload.role_id !== undefined) {
+                    // @ts-ignore
+                    const allowed = await models.SocialGroupMember.canManageGroupMembers(
+                        payload.group_id,
+                        frame.options?.context?.user
+                    );
+                    if (!allowed) {
+                        throw new errors.NoPermissionError({
+                            message: tpl(messages.noRoleChangePermission)
+                        });
+                    }
+                }
                 // @ts-ignore
-                return await models.SocialGroupMember.edit(frame.data.socialgroupmembers[0], frame.options);
+                return await models.SocialGroupMember.edit(payload, frame.options);
             } catch (err) {
                 logging.error(err);
                 if (err.code === 'ER_DUP_ENTRY') {

@@ -152,16 +152,52 @@ const enforceReadAccessForEntry = async (entry, userId, isAdmin) => {
     });
 };
 
-const enforceWriteAccessForEntry = (entry, userId, isAdmin) => {
+const enforceWriteAccessForEntry = async (entry, userId, isAdmin) => {
     if (isAdmin) {
         return;
     }
 
-    if (!userId || entry.get('created_by') !== userId) {
+    // Author, group owner/admin, or system admin may write. A regular group
+    // member (who can view group content) cannot edit content they did not
+    // author. Single source of truth: SocialGroupMember.canEditGroupContent.
+    // @ts-ignore
+    const allowed = await models.SocialGroupMember.canEditGroupContent({
+        groupId: entry.get('group_id'),
+        authorId: entry.get('created_by'),
+        userId
+    });
+    if (!allowed) {
         throw new errors.NoPermissionError({
             message: tpl(messages.noPermission)
         });
     }
+};
+
+// Stamp a computed `can_edit` on each returned model so the frontend shows/hides
+// edit controls without re-implementing the rule (backend single source of
+// truth). Mirrors the write gate: system admin bypass, else canEditGroupContent.
+const attachCanEdit = async (entryOrCollection, userId, isAdmin) => {
+    let list = [];
+    const src = (entryOrCollection && entryOrCollection.data !== undefined) ? entryOrCollection.data : entryOrCollection;
+    if (Array.isArray(src)) {
+        list = src;
+    } else if (src && Array.isArray(src.models)) {
+        list = src.models;
+    } else if (src && typeof src.get === 'function') {
+        list = [src];
+    }
+    for (const m of list) {
+        if (!m || typeof m.get !== 'function') {
+            continue;
+        }
+        const canEdit = isAdmin || await models.SocialGroupMember.canEditGroupContent({
+            groupId: m.get('group_id'),
+            authorId: m.get('created_by'),
+            userId
+        });
+        m.set('can_edit', canEdit);
+    }
+    return entryOrCollection;
 };
 
 /** @type {import('@tryghost/api-framework').Controller} */
@@ -211,7 +247,9 @@ const controller = {
             }
 
             // @ts-ignore
-            return await models.SocialComponent.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
+            const result = await models.SocialComponent.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
+            await attachCanEdit(result, userId, isAdmin);
+            return result;
         }
     },
 
@@ -238,6 +276,7 @@ const controller = {
             }
 
             await enforceReadAccessForEntry(entry, userId, isAdmin);
+            await attachCanEdit(entry, userId, isAdmin);
             return entry;
         }
     },
@@ -259,6 +298,26 @@ const controller = {
         permissions: true,
         async query(frame) {
             try {
+                const userId = getCurrentUserId(frame);
+                const groupId = frame.data.socialcomponents[0]?.group_id || null;
+                // Creating inside a group requires being a member of that group
+                // (group access). System admins bypass; personal (no-group)
+                // creation is gated only by the staff role permission above.
+                if (groupId && userId) {
+                    const isAdmin = await isAdminUser(userId);
+                    if (!isAdmin) {
+                        // @ts-ignore
+                        const group = await models.SocialGroup.findOne({ id: groupId });
+                        if (!group) {
+                            throw new errors.NotFoundError({ message: tpl(messages.notFound) });
+                        }
+                        // @ts-ignore
+                        const allowed = await models.SocialGroup.canAccessGroup(group, userId, 'write');
+                        if (!allowed) {
+                            throw new errors.NoPermissionError({ message: tpl(messages.noPermission) });
+                        }
+                    }
+                }
                 // @ts-ignore
                 return await models.SocialComponent.add(frame.data.socialcomponents[0], frame.options);
             } catch (err) {
@@ -301,7 +360,7 @@ const controller = {
                     });
                 }
 
-                enforceWriteAccessForEntry(existing, userId, isAdmin);
+                await enforceWriteAccessForEntry(existing, userId, isAdmin);
 
                 const payload = frame.data.socialcomponents[0] || {};
 
@@ -358,7 +417,7 @@ const controller = {
                 });
             }
 
-            enforceWriteAccessForEntry(existing, userId, isAdmin);
+            await enforceWriteAccessForEntry(existing, userId, isAdmin);
 
             // @ts-ignore
             return models.SocialComponent.destroy({ ...frame.options, require: true });

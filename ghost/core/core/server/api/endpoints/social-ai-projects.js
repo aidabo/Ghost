@@ -186,11 +186,30 @@ const assertRowAccess = async ({ frame, row, permission = 'read' }) => {
 // @ts-ignore
 const assertCanReadRow = (args) => assertRowAccess({ ...args, permission: 'read' });
 
-// Review 2026-08-07 #1: destructive operations (destroy) must require write
-// permission — `read` is granted to any valid group member, including archived
-// ones, so a read-only member could otherwise cascade-delete the project.
+// Write (edit/destroy) is restricted to system admin, the content author
+// (user_id), or a group owner/admin of the project's group. A regular group
+// member — even an active one — cannot mutate a project they did not create
+// (canAccessGroup('write') would allow any active member, which is too broad).
+// Integration/host context (workers, server-to-server) bypasses. Single source
+// of truth: SocialGroupMember.canEditGroupContent.
 // @ts-ignore
-const assertCanWriteRow = (args) => assertRowAccess({ ...args, permission: 'write' });
+const assertCanWriteRow = async ({ frame, row }) => {
+    const integrationId = getCurrentIntegrationId(frame);
+    if (integrationId) {
+        return;
+    }
+    const currentUserId = getCurrentUserId(frame);
+    const targetUserId = await resolveTargetUserId(frame);
+    // @ts-ignore
+    const allowed = await models.SocialGroupMember.canEditGroupContent({
+        groupId: row.group_id,
+        authorId: row.user_id,
+        userId: targetUserId || currentUserId
+    });
+    if (!allowed) {
+        throw new errors.NoPermissionError({message: tpl(messages.noPermission)});
+    }
+};
 
 // @ts-ignore
 const loadModelOrThrow = async (id) => {
@@ -223,6 +242,32 @@ const loadRowOrThrow = async (knex, id) => {
         });
     }
     return row;
+};
+
+// Stamp computed `can_edit` on each returned project so the frontend shows/hides
+// edit controls (backend single source of truth). Mirrors the write gate.
+const attachCanEdit = async (entryOrCollection, userId, isAdmin) => {
+    let list = [];
+    const src = (entryOrCollection && entryOrCollection.data !== undefined) ? entryOrCollection.data : entryOrCollection;
+    if (Array.isArray(src)) {
+        list = src;
+    } else if (src && Array.isArray(src.models)) {
+        list = src.models;
+    } else if (src && typeof src.get === 'function') {
+        list = [src];
+    }
+    for (const m of list) {
+        if (!m || typeof m.get !== 'function') {
+            continue;
+        }
+        const canEdit = isAdmin || await models.SocialGroupMember.canEditGroupContent({
+            groupId: m.get('group_id'),
+            authorId: m.get('user_id'),
+            userId
+        });
+        m.set('can_edit', canEdit);
+    }
+    return entryOrCollection;
 };
 
 /** @type {import('@tryghost/api-framework').Controller} */
@@ -279,7 +324,9 @@ const controller = {
             }
 
             // @ts-ignore
-            return await SocialAiProjectModel.findPage(options);
+            const result = await SocialAiProjectModel.findPage(options);
+            await attachCanEdit(result, targetUserId || getCurrentUserId(frame), isAdmin);
+            return result;
         }
     },
 
