@@ -18,11 +18,9 @@ const jobId = frame => frame.options?.id || frame.data?.id || null;
 const defaultSteps = () => [
     ['reference-ingest', 'Read reference input'],
     ['manifest-validate', 'Validate ContentBundle manifest'],
-    ['text-generate', 'Generate content'],
     ['asset-stage', 'Stage media assets'],
     ['asset-process', 'Process media artifacts'],
-    ['manifest-finalize', 'Finalize artifact manifest'],
-    ['draft-register', 'Register Ghost drafts']
+    ['manifest-finalize', 'Finalize artifact manifest']
 ].map(([id, label]) => ({id, type: id, label, status: 'pending', progress: 0, checkpoint: null, result: null, error: null}));
 
 const deriveStatus = steps => {
