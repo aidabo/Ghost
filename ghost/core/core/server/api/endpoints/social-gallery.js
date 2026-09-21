@@ -252,7 +252,7 @@ const resolveUploadedAssetType = ({ filename, contentType }) => {
 };
 
 const wrapStorageError = (message, context, err) => {
-    if (err instanceof errors.GhostError) {
+    if (errors.GhostError && err instanceof errors.GhostError) {
         throw err;
     }
 
@@ -894,6 +894,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
         }),
         asset_type: row.asset_type || null,
         job_id: row.job_id || null,
+        dzi_job_id: row.dzi_job_id || null,
         project_id: row.project_id || null,
         category: row.tag_name || null,
         category_slug: row.tag_slug || null,
@@ -1915,8 +1916,10 @@ const controller = {
             const thumbnailStorageUrl = String(getFrameValue(frame, 'thumbnail_storage_url') || '').trim();
             const requestedAssetType = String(getFrameValue(frame, 'asset_type') || '').trim().toLowerCase();
             const originalFilename = sanitizeFileName(getFrameValue(frame, 'original_filename'));
-            const jobId = String(getFrameValue(frame, 'job_id') || '').trim() || null;
-            const dziJobId = String(getFrameValue(frame, 'dzi_job_id') || '').trim() || null;
+            const target = String(getFrameValue(frame, 'target') || '').trim().toLowerCase();
+            const requestedJobId = String(getFrameValue(frame, 'job_id') || '').trim() || null;
+            const jobId = target === 'deepzoom' ? null : requestedJobId;
+            const dziJobId = String(getFrameValue(frame, 'dzi_job_id') || '').trim() || (target === 'deepzoom' ? requestedJobId : null);
             const chartJobId = String(getFrameValue(frame, 'chart_job_id') || '').trim() || null;
             const contentBundleJobId = String(getFrameValue(frame, 'content_bundle_job_id') || '').trim() || null;
             const socialChartId = String(getFrameValue(frame, 'social_chart_id') || '').trim() || null;
