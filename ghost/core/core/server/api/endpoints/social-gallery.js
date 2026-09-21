@@ -2224,7 +2224,7 @@ const controller = {
             // Source: must be the caller's own asset.
             const source = await knex('social_media_assets')
                 .where({id: assetId})
-                .first('id', 'user_id', 'storage_key', 'storage_url', 'asset_type', 'original_filename');
+                .first('id', 'user_id', 'job_id', 'storage_key', 'storage_url', 'asset_type', 'original_filename');
             if (!source) {
                 throw new errors.NotFoundError({
                     message: tpl(messages.assetRowNotFound, {id: assetId})
@@ -2277,6 +2277,7 @@ const controller = {
                 url: destUrl,
                 assetType: source.asset_type,
                 originalFilename: source.original_filename,
+                jobId: source.job_id || null,
                 projectId,
                 ownerScope: 'chart_jobs',
                 userId
