@@ -94,7 +94,7 @@ const controller = {
             if (options.project_id) query.where('project_id', options.project_id);
             if (options.status) query.where('status', options.status);
             const rows = await query.limit(Math.min(200, Number(options.limit || 50)));
-            return {data: {[DOC_NAME]: rows.map(serialize)}};
+            return rows.map(serialize);
         }
     },
     read: {
@@ -102,7 +102,7 @@ const controller = {
         async query(frame) {
             const row = await loadRow(jobId(frame));
             await assertAccess(frame, row);
-            return {data: {[DOC_NAME]: [serialize(row)]}};
+            return await models.SocialAiContentBundleJob.findOne({id: row.id});
         }
     },
     add: {
@@ -143,7 +143,7 @@ const controller = {
                 updated_at: timestamp,
                 updated_by: actor
             });
-            return {data: {[DOC_NAME]: [serialize(await loadRow(id))]}};
+            return await models.SocialAiContentBundleJob.findOne({id});
         }
     },
     claim: {
@@ -156,12 +156,12 @@ const controller = {
             const row = await models.Base.knex(TABLE).where(function () {
                 this.where('status', 'queued').orWhere(function () { this.where('status', 'running').andWhere('claim_expires_at', '<', timestamp); });
             }).orderBy('updated_at', 'asc').first();
-            if (!row) return {data: {[DOC_NAME]: []}};
+            if (!row) return [];
             const affected = await models.Base.knex(TABLE).where({id: row.id}).where(function () {
                 this.where('status', 'queued').orWhere(function () { this.where('status', 'running').andWhere('claim_expires_at', '<', timestamp); });
             }).update({status: 'running', claim_worker_id: workerId, claim_expires_at: lease, started_at: row.started_at || timestamp, updated_at: timestamp, updated_by: row.updated_by || row.user_id});
-            if (!affected) return {data: {[DOC_NAME]: []}};
-            return {data: {[DOC_NAME]: [serialize(await loadRow(row.id))]}};
+            if (!affected) return [];
+            return serialize(await loadRow(row.id));
         }
     },
     progress: {
@@ -185,7 +185,7 @@ const controller = {
                 steps: JSON.stringify(steps), claim_expires_at: new Date(Date.now() + 300000).toISOString().slice(0, 19).replace('T', ' '),
                 updated_at: timestamp, updated_by: row.updated_by || row.user_id
             });
-            return {data: {[DOC_NAME]: [serialize(await loadRow(row.id))]}};
+            return serialize(await loadRow(row.id));
         }
     },
     complete: {
@@ -199,7 +199,7 @@ const controller = {
             if (step) { step.status = 'completed'; step.progress = 100; step.result = payload.result || null; step.artifacts = payload.artifacts || []; step.completed_at = now(); }
             const status = deriveStatus(steps);
             await models.Base.knex(TABLE).where({id: row.id}).update({status, progress: status === 'completed' ? 100 : row.progress, steps: JSON.stringify(steps), result: payload.result ? JSON.stringify(payload.result) : row.result, artifacts: payload.artifacts ? JSON.stringify(payload.artifacts) : row.artifacts, completed_at: status === 'completed' ? now() : null, claim_worker_id: null, claim_expires_at: null, updated_at: now(), updated_by: row.updated_by || row.user_id});
-            return {data: {[DOC_NAME]: [serialize(await loadRow(row.id))]}};
+            return serialize(await loadRow(row.id));
         }
     },
     fail: {
@@ -212,7 +212,7 @@ const controller = {
             const step = steps.find(item => item.id === payload.step_id) || steps.find(item => item.status === 'running');
             if (step) { step.status = 'failed'; step.error = payload.error_message || payload.error_code || 'step failed'; }
             await models.Base.knex(TABLE).where({id: row.id}).update({status: 'failed', error_code: payload.error_code || 'step_failed', error_message: payload.error_message || 'Content bundle step failed', steps: JSON.stringify(steps), claim_worker_id: null, claim_expires_at: null, updated_at: now(), updated_by: row.updated_by || row.user_id});
-            return {data: {[DOC_NAME]: [serialize(await loadRow(row.id))]}};
+            return serialize(await loadRow(row.id));
         }
     },
     cancel: {
@@ -222,7 +222,7 @@ const controller = {
             await assertAccess(frame, row, true);
             if (!['queued', 'running'].includes(row.status)) throw new errors.ValidationError({message: 'Invalid job transition.'});
             await models.Base.knex(TABLE).where({id: row.id}).update({status: 'canceled', completed_at: now(), updated_at: now(), updated_by: currentUser(frame) || row.updated_by || row.user_id});
-            return {data: {[DOC_NAME]: [serialize(await loadRow(row.id))]}};
+            return serialize(await loadRow(row.id));
         }
     }
 };
