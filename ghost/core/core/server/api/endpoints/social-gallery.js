@@ -701,6 +701,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
             'sma.original_filename as original_filename',
             'sma.asset_type as asset_type',
             'sma.job_id as job_id',
+            'sma.content_bundle_job_id as content_bundle_job_id',
             'sma.project_id as project_id',
             'sma.created_at as created_at',
             'sma.updated_at as updated_at',
@@ -715,13 +716,19 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
             );
         }
 
-        return knex('social_media_assets as sma')
+        const query = knex('social_media_assets as sma')
             .leftJoin('tags as t', 'sma.tag_id', 't.id')
             .select(columns)
-            .where('sma.owner_scope', scope)
+            .where(function () {
+                this.where('sma.owner_scope', scope);
+                if (scope === 'chart_jobs' || scope === 'user' || scope === 'group') {
+                    this.orWhere('sma.owner_scope', 'content_bundles');
+                }
+            })
             .limit(limit + 1)
             .orderBy(`sma.${sortField}`, sortDirection)
             .orderBy('sma.id', sortDirection);
+        return query;
     };
 
     let query = buildAssetTableQuery(true);
@@ -744,6 +751,11 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
                         .from('social_ai_chart_jobs as caj')
                         .whereRaw('caj.id = sma.chart_job_id')
                         .andWhere('caj.user_id', userId);
+                }).orWhereExists(function () {
+                    this.select(1)
+                        .from('social_ai_content_bundle_jobs as cbj')
+                        .whereRaw('cbj.id = sma.content_bundle_job_id')
+                        .andWhere('cbj.user_id', userId);
                 });
             })
             .whereNotExists(function () {
@@ -780,6 +792,11 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
                     .from('social_ai_chart_jobs as pcaj')
                     .whereRaw('pcaj.id = sma.chart_job_id')
                     .andWhere('pcaj.project_id', projectId);
+            }).orWhereExists(function () {
+                this.select(1)
+                    .from('social_ai_content_bundle_jobs as pcbj')
+                    .whereRaw('pcbj.id = sma.content_bundle_job_id')
+                    .andWhere('pcbj.project_id', projectId);
             });
         });
     }
@@ -1127,6 +1144,16 @@ const resolveUploadContext = async (frame) => {
                 message: tpl(messages.noProjectPermission)
             });
         }
+        const contentBundleJobId = String(getFrameValue(frame, 'content_bundle_job_id') || '').trim() || null;
+        let contentBundleJob = null;
+        if (contentBundleJobId) {
+            contentBundleJob = await models.Base.knex('social_ai_content_bundle_jobs')
+                .where({id: contentBundleJobId})
+                .first('id', 'project_id');
+            if (!contentBundleJob || String(contentBundleJob.project_id || '') !== pid) {
+                throw new errors.ValidationError({message: 'content_bundle_job_id does not belong to project_id.'});
+            }
+        }
         // A project is a GENERIC task container (media/chart/deepzoom/posts), not
         // chart-specific. An optional typed subfolder routes the upload into the
         // general project tree gallery/projects/{pid}/{subfolder}/ (e.g. artifacts →
@@ -1149,7 +1176,8 @@ const resolveUploadContext = async (frame) => {
             userId,
             groupId: null,
             projectId: pid,
-            ownerScope: 'chart_jobs',
+            ownerScope: contentBundleJob ? 'content_bundles' : 'chart_jobs',
+            contentBundleJobId: contentBundleJob?.id || null,
             tag
         };
     }
@@ -1688,6 +1716,7 @@ const controller = {
         options: [
             'group_id',
             'job_id',
+            'content_bundle_job_id',
             'social_chart_id',
             'tag',
             'tag_slug',
@@ -1840,6 +1869,7 @@ const controller = {
             'job_id',
             'dzi_job_id',
             'chart_job_id',
+            'content_bundle_job_id',
             'project_id',
             'target',
             'social_chart_id',
@@ -1865,6 +1895,7 @@ const controller = {
             const jobId = String(getFrameValue(frame, 'job_id') || '').trim() || null;
             const dziJobId = String(getFrameValue(frame, 'dzi_job_id') || '').trim() || null;
             const chartJobId = String(getFrameValue(frame, 'chart_job_id') || '').trim() || null;
+            const contentBundleJobId = String(getFrameValue(frame, 'content_bundle_job_id') || '').trim() || null;
             const socialChartId = String(getFrameValue(frame, 'social_chart_id') || '').trim() || null;
 
             if (!storageKey) {
@@ -1897,6 +1928,7 @@ const controller = {
                     jobId,
                     dziJobId,
                     chartJobId,
+                    contentBundleJobId,
                     projectId: uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null,
                     socialChartId,
                     userId: uploadContext.userId,

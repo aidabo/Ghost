@@ -284,6 +284,7 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/content-bundle/jobs/:id/progress', mw.authAdminApi, http(api.socialAiContentBundleJobs.progress));
     router.post('/social/ai/content-bundle/jobs/:id/complete', mw.authAdminApi, http(api.socialAiContentBundleJobs.complete));
     router.post('/social/ai/content-bundle/jobs/:id/fail', mw.authAdminApi, http(api.socialAiContentBundleJobs.fail));
+    router.post('/social/ai/content-bundle/jobs/:id/link-assets', mw.authAdminApi, http(api.socialAiContentBundleJobs.linkAssets));
     router.post('/social/ai/content-bundle/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiContentBundleJobs.cancel));
     // ## social ai chart projects (generic work container, P1 — chart-scoped jobs hang off the general project path)
     router.get('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.browse));

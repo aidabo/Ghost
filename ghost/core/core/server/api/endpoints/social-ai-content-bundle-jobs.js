@@ -1,14 +1,20 @@
 const errors = require('@tryghost/errors');
+const crypto = require('crypto');
 const models = require('../../models');
 const ObjectId = require('bson-objectid').default;
+const storage = require('../../adapters/storage');
+const socialMediaAssets = require('./utils/social-media-assets');
 
 const TABLE = 'social_ai_content_bundle_jobs';
-const DOC_NAME = 'socialaicontentbundlejobs';
 const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const parseJson = (value, fallback) => {
     if (value === null || value === undefined || value === '') return fallback;
-    try { return JSON.parse(value); } catch (e) { return fallback; }
+    try {
+        return JSON.parse(value);
+    } catch (e) {
+        return fallback;
+    }
 };
 const getPayload = frame => frame.data?.socialaicontentbundlejobs?.[0] || frame.data || {};
 const currentUser = frame => frame.options?.context?.user || null;
@@ -154,11 +160,15 @@ const controller = {
             const timestamp = now();
             const lease = new Date(Date.now() + 300000).toISOString().slice(0, 19).replace('T', ' ');
             const row = await models.Base.knex(TABLE).where(function () {
-                this.where('status', 'queued').orWhere(function () { this.where('status', 'running').andWhere('claim_expires_at', '<', timestamp); });
+                this.where('status', 'queued').orWhere(function () {
+                    this.where('status', 'running').andWhere('claim_expires_at', '<', timestamp);
+                });
             }).orderBy('updated_at', 'asc').first();
             if (!row) return [];
             const affected = await models.Base.knex(TABLE).where({id: row.id}).where(function () {
-                this.where('status', 'queued').orWhere(function () { this.where('status', 'running').andWhere('claim_expires_at', '<', timestamp); });
+                this.where('status', 'queued').orWhere(function () {
+                    this.where('status', 'running').andWhere('claim_expires_at', '<', timestamp);
+                });
             }).update({status: 'running', claim_worker_id: workerId, claim_expires_at: lease, started_at: row.started_at || timestamp, updated_at: timestamp, updated_by: row.updated_by || row.user_id});
             if (!affected) return [];
             return serialize(await loadRow(row.id));
@@ -196,7 +206,13 @@ const controller = {
             const payload = getPayload(frame);
             const steps = parseJson(row.steps, []);
             const step = steps.find(item => item.id === payload.step_id) || steps.find(item => item.status === 'running');
-            if (step) { step.status = 'completed'; step.progress = 100; step.result = payload.result || null; step.artifacts = payload.artifacts || []; step.completed_at = now(); }
+            if (step) {
+                step.status = 'completed';
+                step.progress = 100;
+                step.result = payload.result || null;
+                step.artifacts = payload.artifacts || [];
+                step.completed_at = now();
+            }
             const status = deriveStatus(steps);
             await models.Base.knex(TABLE).where({id: row.id}).update({status, progress: status === 'completed' ? 100 : row.progress, steps: JSON.stringify(steps), result: payload.result ? JSON.stringify(payload.result) : row.result, artifacts: payload.artifacts ? JSON.stringify(payload.artifacts) : row.artifacts, completed_at: status === 'completed' ? now() : null, claim_worker_id: null, claim_expires_at: null, updated_at: now(), updated_by: row.updated_by || row.user_id});
             return serialize(await loadRow(row.id));
@@ -210,9 +226,72 @@ const controller = {
             const payload = getPayload(frame);
             const steps = parseJson(row.steps, []);
             const step = steps.find(item => item.id === payload.step_id) || steps.find(item => item.status === 'running');
-            if (step) { step.status = 'failed'; step.error = payload.error_message || payload.error_code || 'step failed'; }
+            if (step) {
+                step.status = 'failed';
+                step.error = payload.error_message || payload.error_code || 'step failed';
+            }
             await models.Base.knex(TABLE).where({id: row.id}).update({status: 'failed', error_code: payload.error_code || 'step_failed', error_message: payload.error_message || 'Content bundle step failed', steps: JSON.stringify(steps), claim_worker_id: null, claim_expires_at: null, updated_at: now(), updated_by: row.updated_by || row.user_id});
             return serialize(await loadRow(row.id));
+        }
+    },
+    linkAssets: {
+        permissions: false,
+        async query(frame) {
+            if (!integration(frame)) throw new errors.NoPermissionError({message: 'Worker integration is required.'});
+            const row = await loadRow(jobId(frame));
+            const payload = getPayload(frame);
+            const assets = Array.isArray(payload.assets) ? payload.assets : [];
+            const mediaIds = [];
+            const postMediaIds = [];
+            const store = storage.getStorage('media');
+            const knex = models.Base.knex;
+            for (const asset of assets) {
+                let mediaId = asset.asset_id || asset.media_id || asset.storage?.assetId || null;
+                const storageUrl = String(asset.storage_url || asset.url || asset.storage?.url || '').trim();
+                if (mediaId) {
+                    const existing = await knex('social_media_assets').where({id: mediaId}).first();
+                    if (!existing) throw new errors.NotFoundError({message: `Content Bundle media asset not found: ${mediaId}`});
+                    await knex('social_media_assets').where({id: mediaId}).update({content_bundle_job_id: row.id, project_id: row.project_id || existing.project_id || null, updated_at: now()});
+                } else {
+                    if (!storageUrl) continue;
+                    mediaId = await socialMediaAssets.upsertAsset({
+                        knex,
+                        store,
+                        url: storageUrl,
+                        thumbnailUrl: asset.thumbnail_url || null,
+                        thumbnailStorageKey: asset.thumbnail_storage_key || null,
+                        assetType: asset.asset_type || asset.type || 'file',
+                        originalFilename: asset.original_filename || asset.file_name || null,
+                        contentBundleJobId: row.id,
+                        projectId: row.project_id || null,
+                        userId: row.user_id || null,
+                        groupId: row.group_id || null,
+                        ownerScope: 'content_bundles'
+                    });
+                }
+                if (!mediaId) continue;
+                mediaIds.push(mediaId);
+                const postId = String(asset.post_id || '').trim();
+                const mediaType = ['image', 'video', 'audio'].includes(String(asset.media_type || asset.asset_type || asset.type || '').toLowerCase())
+                    ? String(asset.media_type || asset.asset_type || asset.type).toLowerCase()
+                    : null;
+                if (postId && mediaType && storageUrl) {
+                    const sourceUrlHash = crypto.createHash('sha256').update(storageUrl).digest('hex');
+                    const role = asset.role === 'feature' ? 'feature' : 'content';
+                    const existing = await knex('post_media').where({post_id: postId, source_url_hash: sourceUrlHash, role}).first();
+                    const values = {media_id: mediaId, media_type: mediaType, source_url: storageUrl, thumbnail_url: asset.thumbnail_url || null, caption: asset.caption || null, alt: asset.alt || null, role, sort_order: Number(asset.sort_order || 0), lexical_node_key: asset.lexical_node_key || null, updated_at: now()};
+                    if (existing) await knex('post_media').where({id: existing.id}).update(values);
+                    else {
+                        const postMediaId = ObjectId().toHexString();
+                        await knex('post_media').insert({id: postMediaId, post_id: postId, source_url_hash: sourceUrlHash, created_at: now(), ...values});
+                        mediaIds.push(mediaId);
+                        postMediaIds.push(postMediaId);
+                    }
+                }
+            }
+            const artifacts = [...parseJson(row.artifacts, []), ...assets.map(asset => ({...asset, media_id: asset.media_id || asset.asset_id || null}))];
+            await knex(TABLE).where({id: row.id}).update({artifacts: JSON.stringify(artifacts), updated_at: now(), updated_by: row.updated_by || row.user_id});
+            return {media_ids: [...new Set(mediaIds)], post_media_ids: postMediaIds, count: mediaIds.length};
         }
     },
     cancel: {
