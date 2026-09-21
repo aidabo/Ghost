@@ -277,8 +277,13 @@ const isMissingThumbnailColumnError = (err) => {
 // NOTE: Keep in sync with content/adapters/storage/s3/src/index.js.
 const sanitizeFileName = (value) => {
     const raw = String(value || '').trim();
-    const base = path.basename(raw).replace(/[^\w.\-()+\u3040-\u30ff\u3400-\u9fff]/g, '-');
+    const base = path.basename(raw).normalize('NFC').replace(/[\\/\0]/g, '-').replace(/[^\p{L}\p{N}\p{M}._()+-]/gu, '-');
     return base || 'upload.bin';
+};
+
+const preserveOriginalFilename = (value) => {
+    const raw = path.basename(String(value || '').trim()).normalize('NFC');
+    return raw || 'upload.bin';
 };
 
 const buildUniqueStorageKey = (targetDir, filename) => {
@@ -1758,7 +1763,7 @@ const controller = {
         permissions: false,
         async query(frame) {
             const filename = sanitizeFileName(getFrameValue(frame, 'filename'));
-            const originalFilename = sanitizeFileName(getFrameValue(frame, 'original_filename') || filename);
+            const originalFilename = preserveOriginalFilename(getFrameValue(frame, 'original_filename') || filename);
             const contentType = String(getFrameValue(frame, 'content_type') || '').trim();
             const contentLengthRaw = getFrameValue(frame, 'content_length');
             const contentLength = contentLengthRaw == null ? null : Number(contentLengthRaw);
@@ -1915,7 +1920,7 @@ const controller = {
             const thumbnailStorageKey = String(getFrameValue(frame, 'thumbnail_storage_key') || '').trim();
             const thumbnailStorageUrl = String(getFrameValue(frame, 'thumbnail_storage_url') || '').trim();
             const requestedAssetType = String(getFrameValue(frame, 'asset_type') || '').trim().toLowerCase();
-            const originalFilename = sanitizeFileName(getFrameValue(frame, 'original_filename'));
+            const originalFilename = preserveOriginalFilename(getFrameValue(frame, 'original_filename'));
             const target = String(getFrameValue(frame, 'target') || '').trim().toLowerCase();
             const requestedJobId = String(getFrameValue(frame, 'job_id') || '').trim() || null;
             const jobId = target === 'deepzoom' ? null : requestedJobId;

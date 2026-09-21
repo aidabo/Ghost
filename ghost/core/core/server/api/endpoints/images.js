@@ -93,7 +93,8 @@ const controller = {
             const store = storage.getStorage('images');
             const uploadContext = await resolveUploadTargetDir(store, frame);
             const userTargetDir = uploadContext.targetDir;
-            const normalizedName = normalizeUploadFilename(frame.file.originalname || frame.file.name || '');
+            const originalFilename = frame.file.originalname || frame.file.name || null;
+            const normalizedName = normalizeUploadFilename(originalFilename || '');
             frame.file.name = normalizedName;
             frame.file.originalname = normalizedName;
             frame.file.ext = path.extname(normalizedName);
@@ -135,6 +136,7 @@ const controller = {
                     store,
                     url: processedImageUrl,
                     assetType: 'image',
+                    originalFilename,
                     userId: uploadContext.userId,
                     groupId: uploadContext.groupId,
                     tag: uploadContext.tag
@@ -166,6 +168,7 @@ const controller = {
                 store,
                 url: imageUrl,
                 assetType: 'image',
+                originalFilename,
                 userId: uploadContext.userId,
                 groupId: uploadContext.groupId,
                 tag: uploadContext.tag
