@@ -62,7 +62,7 @@
     "tb:local:stop": "docker stop tinybird-local && docker rm tinybird-local",
     "tbf:install": "curl https://tinybird.co | sh",
     "tbf": "tb local start && cd ghost/core/core/server/data/tinybird && tb dev",
-    "docker:next:build": "docker build . -f .docker/prd.Dockerfile -t ghost:5.116.2-next-r260921 --no-cache",
+    "docker:next:build": "docker build . -f .docker/prd.Dockerfile -t ghost:$npm_package_deployVersion --no-cache",
     "deploy": "bash ./deploy.sh"
   },
   "resolutions": {
