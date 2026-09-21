@@ -24,12 +24,19 @@ fi
 if [ -z "${VERSION:-}" ]; then
   _VF="$(cd "$(dirname "$0")" && pwd)/deploy.version"
   if [ -f "$_VF" ]; then
-    . "$_VF"
-  else
-    echo "[ERROR] VERSION not set. Pass it: ./deploy-on-ec2.sh <VERSION>"
-    echo "        (or place deploy.version next to this script)"
-    exit 1
+    # Read (do NOT source) the first non-comment line, so both a bare
+    # "5.116.2-..." line and a "VERSION=5.116.2-..." assignment work — and the
+    # file is never executed as a command.
+    VERSION="$(grep -vE '^[[:space:]]*(#|$)' "$_VF" | head -n1)"
+    VERSION="${VERSION#VERSION=}"
+    VERSION="${VERSION#\"}"; VERSION="${VERSION%\"}"
+    VERSION="${VERSION#\'}"; VERSION="${VERSION%\'}"
   fi
+fi
+if [ -z "${VERSION:-}" ]; then
+  echo "[ERROR] VERSION not set. Pass it: ./deploy-on-ec2.sh <VERSION>"
+  echo "        (or place a deploy.version file next to this script)"
+  exit 1
 fi
 
 # Download from S3 (.tar.gz preferred, legacy .tar fallback)
