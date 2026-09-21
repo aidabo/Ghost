@@ -30,8 +30,28 @@ if [ -z "${VERSION:-}" ] || [ "$VERSION" = "undefined" ]; then
   exit 1
 fi
 
-# yarn docker:build
+# Pre-flight: prd.Dockerfile COPYs the host's pre-built Admin bundle and refuses
+# a dev build (its step-27 guard). `yarn dev` rewrites the Admin-X apps as
+# symlinks, so catch that here with a clear message — a production Admin build is
+# required first — instead of failing deep inside the docker build.
+ADMIN_ASSETS="$_SD/ghost/core/core/built/admin/assets"
+for app in admin-x-demo admin-x-settings admin-x-activitypub posts stats; do
+  if [ -L "$ADMIN_ASSETS/$app" ] || [ ! -f "$ADMIN_ASSETS/$app/$app.js" ]; then
+    echo "[ERROR] Admin bundle is a dev build (built/admin/assets/$app is a symlink or missing)."
+    echo "        Run a production Admin build first, then re-run this script:  yarn build"
+    echo "        (see docs/operations-docker-admin-build.md)"
+    exit 1
+  fi
+done
+
+# Build the image; abort before uploading if the build fails (e.g. the Dockerfile
+# Admin guard), so we never `docker save` a non-existent image.
 yarn docker:next:build
+rc=$?
+if [ $rc -ne 0 ]; then
+  echo "[ERROR] Image build failed for $IMAGE_NAME:$VERSION (exit $rc) — not uploading."
+  exit $rc
+fi
 
 # Docker Hub への tag / push は行わない（2026-09-11 決定: 配布は S3 経由のみ）。
 # ローカルの $IMAGE_NAME:$VERSION を gzip 圧縮した .tar.gz にして S3 へ上げ、
