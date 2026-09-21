@@ -322,6 +322,10 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-chart-jobs'), localUtils);
     },
 
+    get socialAiContentBundleJobs() {
+        return apiFramework.pipeline(require('./social-ai-content-bundle-jobs'), localUtils);
+    },
+
     get socialAiProjects() {
         return apiFramework.pipeline(require('./social-ai-projects'), localUtils);
     },

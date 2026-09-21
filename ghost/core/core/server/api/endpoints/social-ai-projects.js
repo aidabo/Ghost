@@ -34,6 +34,14 @@ const JOB_FAMILIES = [
         linkColumn: null,
         assetLinkColumn: 'job_id',
         galleryPrefixParts: ['gallery', 'media_jobs']
+    },
+    {
+        name: 'content-bundle',
+        jobsTable: 'social_ai_content_bundle_jobs',
+        junctionTable: null,
+        linkColumn: null,
+        assetLinkColumn: null,
+        galleryPrefixParts: ['gallery', 'content_bundles']
     }
 ];
 

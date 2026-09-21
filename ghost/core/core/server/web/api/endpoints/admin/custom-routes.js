@@ -276,6 +276,15 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/chart/jobs/:id/link-assets', mw.authAdminApi, http(api.socialAiChartJobs.linkAssets));
     router.post('/social/ai/chart/jobs/:id/rerun', mw.authAdminApi, http(api.socialAiChartJobs.rerun));
     router.del('/social/ai/chart/jobs/:id', mw.authAdminApi, http(api.socialAiChartJobs.destroy));
+    // ## social ai content bundle jobs
+    router.get('/social/ai/content-bundle/jobs', mw.authAdminApi, http(api.socialAiContentBundleJobs.browse));
+    router.get('/social/ai/content-bundle/jobs/:id', mw.authAdminApi, http(api.socialAiContentBundleJobs.read));
+    router.post('/social/ai/content-bundle/jobs', mw.authAdminApi, http(api.socialAiContentBundleJobs.add));
+    router.post('/social/ai/content-bundle/jobs/claim', mw.authAdminApi, http(api.socialAiContentBundleJobs.claim));
+    router.post('/social/ai/content-bundle/jobs/:id/progress', mw.authAdminApi, http(api.socialAiContentBundleJobs.progress));
+    router.post('/social/ai/content-bundle/jobs/:id/complete', mw.authAdminApi, http(api.socialAiContentBundleJobs.complete));
+    router.post('/social/ai/content-bundle/jobs/:id/fail', mw.authAdminApi, http(api.socialAiContentBundleJobs.fail));
+    router.post('/social/ai/content-bundle/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiContentBundleJobs.cancel));
     // ## social ai chart projects (generic work container, P1 — chart-scoped jobs hang off the general project path)
     router.get('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.browse));
     router.post('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.add));
