@@ -2,6 +2,8 @@
 const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const models = require('../../models');
+const storage = require('../../adapters/storage');
+const socialMediaAssets = require('./utils/social-media-assets');
 // @ts-ignore
 //const logging = require('@tryghost/logging');
 
@@ -59,6 +61,49 @@ const isAdminUser = async (userId) => {
 };
 
 const nowMySql = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+const mediaAssetType = (mimeType, fileName) => {
+    const mime = String(mimeType || '').toLowerCase();
+    if (mime.startsWith('image/')) return 'image';
+    if (mime.startsWith('video/')) return 'video';
+    if (mime.startsWith('audio/')) return 'audio';
+    const name = String(fileName || '').toLowerCase();
+    if (/\.(png|jpe?g|gif|webp|avif)$/.test(name)) return 'image';
+    if (/\.(mp4|mov|webm|m4v|ogv)$/.test(name)) return 'video';
+    if (/\.(mp3|wav|m4a|aac|flac)$/.test(name)) return 'audio';
+    return 'file';
+};
+
+const registerProjectArtifacts = async (row, artifactManifest, artifacts) => {
+    if (!row?.project_id) return;
+    const items = Array.isArray(artifactManifest?.items) ? artifactManifest.items : [];
+    const fallback = Array.isArray(artifacts) ? artifacts : [];
+    const candidates = [...items, ...fallback].map(item => ({
+        storageKey: item.storageKey || item.storage_key || null,
+        storageUrl: item.storageUrl || item.storage_url || item.url || null,
+        fileName: item.fileName || item.file_name || null,
+        mimeType: item.mimeType || item.mime_type || null
+    })).filter(item => item.storageUrl || item.storageKey);
+    const seen = new Set();
+    const store = storage.getStorage('media');
+    for (const item of candidates) {
+        const identity = String(item.storageKey || item.storageUrl || '').trim();
+        if (!identity || seen.has(identity)) continue;
+        seen.add(identity);
+        await socialMediaAssets.upsertAsset({
+            knex: models.Base.knex,
+            store,
+            url: String(item.storageUrl || item.storageKey).trim(),
+            assetType: mediaAssetType(item.mimeType, item.fileName),
+            originalFilename: item.fileName,
+            jobId: row.id,
+            projectId: row.project_id,
+            userId: row.user_id || null,
+            groupId: row.group_id || null,
+            ownerScope: 'media_jobs'
+        });
+    }
+};
 
 // @ts-ignore
 const getJobId = (frame) => frame.options?.id || frame.data?.id || null;
@@ -800,6 +845,12 @@ const controller = {
                     updated_at: now,
                     updated_by: row.updated_by || row.user_id
                 });
+
+            await registerProjectArtifacts(
+                row,
+                payloadInput.artifact_manifest_json || formatJsonField(row.artifact_manifest_json, null),
+                payloadInput.artifacts_json || formatJsonField(row.artifacts_json, [])
+            );
 
             const next = await loadRowOrThrow(knex, row.id);
             return serializeRow(next);

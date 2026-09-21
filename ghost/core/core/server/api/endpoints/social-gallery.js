@@ -723,6 +723,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
                 this.where('sma.owner_scope', scope);
                 if (scope === 'chart_jobs' || scope === 'user' || scope === 'group') {
                     this.orWhere('sma.owner_scope', 'content_bundles');
+                    this.orWhere('sma.owner_scope', 'media_jobs');
                 }
             })
             .limit(limit + 1)
@@ -756,6 +757,11 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
                         .from('social_ai_content_bundle_jobs as cbj')
                         .whereRaw('cbj.id = sma.content_bundle_job_id')
                         .andWhere('cbj.user_id', userId);
+                }).orWhereExists(function () {
+                    this.select(1)
+                        .from('social_ai_media_jobs as mj')
+                        .whereRaw('mj.id = sma.job_id')
+                        .andWhere('mj.user_id', userId);
                 });
             })
             .whereNotExists(function () {
@@ -797,6 +803,11 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
                     .from('social_ai_content_bundle_jobs as pcbj')
                     .whereRaw('pcbj.id = sma.content_bundle_job_id')
                     .andWhere('pcbj.project_id', projectId);
+            }).orWhereExists(function () {
+                this.select(1)
+                    .from('social_ai_media_jobs as pmj')
+                    .whereRaw('pmj.id = sma.job_id')
+                    .andWhere('pmj.project_id', projectId);
             });
         });
     }
