@@ -188,3 +188,7 @@ ghost/core/core/shared/config/env/*.json
 .omc/
 yalc.lock
 .codex
+
+# Vite writes a transient timestamped config while loading vite.config.*;
+# normally auto-deleted, but an interrupted build can leave it behind.
+*.timestamp-*.mjs
