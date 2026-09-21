@@ -702,6 +702,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
             'sma.asset_type as asset_type',
             'sma.job_id as job_id',
             'sma.content_bundle_job_id as content_bundle_job_id',
+            'sma.dzi_job_id as dzi_job_id',
             'sma.project_id as project_id',
             'sma.created_at as created_at',
             'sma.updated_at as updated_at',
@@ -724,6 +725,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
                 if (scope === 'chart_jobs' || scope === 'user' || scope === 'group') {
                     this.orWhere('sma.owner_scope', 'content_bundles');
                     this.orWhere('sma.owner_scope', 'media_jobs');
+                    this.orWhere('sma.owner_scope', 'deepzoom');
                 }
             })
             .limit(limit + 1)
@@ -762,6 +764,11 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
                         .from('social_ai_media_jobs as mj')
                         .whereRaw('mj.id = sma.job_id')
                         .andWhere('mj.user_id', userId);
+                }).orWhereExists(function () {
+                    this.select(1)
+                        .from('social_ai_dzi_jobs as dzj')
+                        .whereRaw('dzj.id = sma.dzi_job_id')
+                        .andWhere('dzj.user_id', userId);
                 });
             })
             .whereNotExists(function () {
@@ -808,6 +815,11 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
                     .from('social_ai_media_jobs as pmj')
                     .whereRaw('pmj.id = sma.job_id')
                     .andWhere('pmj.project_id', projectId);
+            }).orWhereExists(function () {
+                this.select(1)
+                    .from('social_ai_dzi_job_projects as pdjp')
+                    .whereRaw('pdjp.dzi_job_id = sma.dzi_job_id')
+                    .andWhere('pdjp.project_id', projectId);
             });
         });
     }
