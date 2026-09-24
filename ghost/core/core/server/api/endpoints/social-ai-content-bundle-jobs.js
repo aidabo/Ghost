@@ -104,6 +104,7 @@ const controller = {
         }
     },
     read: {
+        options: ['id'],
         permissions: false,
         async query(frame) {
             const row = await loadRow(jobId(frame));
