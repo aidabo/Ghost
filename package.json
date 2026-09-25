@@ -1,7 +1,7 @@
 {
   "name": "@ghost-next/monorepo",
-  "version": "5.116.2-next-r260921",
-  "deployVersion": "5.116.2-next-r260921",
+  "version": "5.116.2-next-r260925",
+  "deployVersion": "5.116.2-next-r260925",
   "description": "The professional publishing platform customized with SNS functionality",
   "private": true,
   "repository": "git@github.com:aidabo/Ghost.git",
