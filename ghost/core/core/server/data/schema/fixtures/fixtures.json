@@ -1219,6 +1219,51 @@
                     "object_type": "socialaimediajob"
                 },
                 {
+                    "name": "Add Social AI Content Bundle Jobs",
+                    "action_type": "add",
+                    "object_type": "socialaicontentbundlejob"
+                },
+                {
+                    "name": "Browse Social AI Content Bundle Jobs",
+                    "action_type": "browse",
+                    "object_type": "socialaicontentbundlejob"
+                },
+                {
+                    "name": "Claim Social AI Content Bundle Jobs",
+                    "action_type": "claim",
+                    "object_type": "socialaicontentbundlejob"
+                },
+                {
+                    "name": "Progress Social AI Content Bundle Jobs",
+                    "action_type": "progress",
+                    "object_type": "socialaicontentbundlejob"
+                },
+                {
+                    "name": "Complete Social AI Content Bundle Jobs",
+                    "action_type": "complete",
+                    "object_type": "socialaicontentbundlejob"
+                },
+                {
+                    "name": "Fail Social AI Content Bundle Jobs",
+                    "action_type": "fail",
+                    "object_type": "socialaicontentbundlejob"
+                },
+                {
+                    "name": "Link Social AI Content Bundle Assets",
+                    "action_type": "linkAssets",
+                    "object_type": "socialaicontentbundlejob"
+                },
+                {
+                    "name": "Cancel Social AI Content Bundle Jobs",
+                    "action_type": "cancel",
+                    "object_type": "socialaicontentbundlejob"
+                },
+                {
+                    "name": "Read Social AI Content Bundle Jobs",
+                    "action_type": "read",
+                    "object_type": "socialaicontentbundlejob"
+                },
+                {
                     "name": "Add Social AI SMS Logs",
                     "action_type": "add",
                     "object_type": "socialaismslog"
@@ -1725,6 +1770,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
+                    "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",
                     "socialbookmark": "all",
@@ -1812,6 +1858,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
+                    "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",
                     "socialchart": "all",
@@ -1871,6 +1918,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
+                    "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",
                     "socialbookmark": "all",
@@ -1930,6 +1978,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
+                    "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",
                     "socialbookmark": "all",
@@ -1985,6 +2034,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
+                    "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",
                     "socialbookmark": "all",
