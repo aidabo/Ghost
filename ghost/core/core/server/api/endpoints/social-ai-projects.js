@@ -42,6 +42,17 @@ const JOB_FAMILIES = [
         linkColumn: null,
         assetLinkColumn: null,
         galleryPrefixParts: ['gallery', 'content_bundles']
+    },
+    {
+        // News Agent family (2026-09-29) — its own table, own asset link column,
+        // own junction (which carries item_key/post_id: one job = many articles)
+        // and own owner_scope/S3 prefix. Never chart's.
+        name: 'news',
+        jobsTable: 'social_ai_news_jobs',
+        junctionTable: 'social_ai_news_job_media',
+        linkColumn: 'news_job_id',
+        assetLinkColumn: 'news_job_id',
+        galleryPrefixParts: ['gallery', 'news_jobs']
     }
 ];
 

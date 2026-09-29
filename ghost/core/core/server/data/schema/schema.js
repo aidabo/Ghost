@@ -1347,6 +1347,11 @@ module.exports = {
         // Content Bundle artifact link. A plain indexed link: assets are
         // finalized through the gallery before/after worker registration.
         content_bundle_job_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        // News-job artifact link (News Agent family, separate from chart). A plain
+        // indexed link, NOT a FK: news artifacts are written by the worker BEFORE
+        // the job's asset rows are linked. Cleanup is handled explicitly by the
+        // news-jobs destroy endpoint and by the JOB_FAMILIES project cascade.
+        news_job_id: {type: 'string', maxlength: 24, nullable: true, index: true},
         // Plain indexed link to social_ai_chart_projects (NOT a FK, same reasoning
         // as chart_job_id). Lets project-scoped gallery, direct project uploads and
         // the "clear project artifacts" action target rows by project_id directly.
@@ -1363,8 +1368,10 @@ module.exports = {
         // Idempotency key for chart-job artifact uploads. Created by
         // 2026-08-07-00-00-03-add-chart-job-assets-unique-key.js, which init()
         // never runs, so a fresh DB would have no such constraint at all.
+        // Same for news jobs (2026-09-29-00-00-03-add-news-job-assets-unique-key.js).
         '@@UNIQUE_CONSTRAINTS@@': [
-            ['chart_job_id', 'storage_key_hash']
+            ['chart_job_id', 'storage_key_hash'],
+            ['news_job_id', 'storage_key_hash']
         ]
     },
 
@@ -2382,6 +2389,48 @@ module.exports = {
         ]
     },
 
+    // News Agent — pipeline job table. A SEPARATE FAMILY from chart: chart draws
+    // relationship diagrams, news makes news jobs (user decision 2026-09-29). Job
+    // ids are never shared across families; every `news-*` type shares this table.
+    // `steps` is the pipeline; `items` is the WORK LIST (one entry per selected
+    // article) so the desk UI can show "article 3 of 8 finished" rather than only a
+    // percentage. The endpoint derives `progress` from `items` when present.
+    social_ai_news_jobs: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        type: {type: 'string', maxlength: 100, nullable: false, defaultTo: 'news-read'},
+        status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued'},
+        progress: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        current_step_id: {type: 'string', maxlength: 191, nullable: true},
+        status_message: {type: 'string', maxlength: 500, nullable: true},
+        steps: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
+        items: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
+        payload: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
+        result: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
+        artifacts: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
+        error_code: {type: 'string', maxlength: 100, nullable: true},
+        error_message: {type: 'text', nullable: true},
+        project_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        user_id: {type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true, index: true},
+        group_id: {type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', setNullDelete: true},
+        scope_type: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'user'},
+        claim_worker_id: {type: 'string', maxlength: 191, nullable: true},
+        claim_expires_at: {type: 'dateTime', nullable: true},
+        retry_count: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        created_at: {type: 'dateTime', nullable: false},
+        created_by: {type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true},
+        updated_at: {type: 'dateTime', nullable: false},
+        updated_by: {type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true},
+        started_at: {type: 'dateTime', nullable: true},
+        completed_at: {type: 'dateTime', nullable: true},
+        '@@INDEXES@@': [
+            ['status'],
+            ['type', 'status'],
+            ['project_id', 'status'],
+            ['user_id', 'status'],
+            ['status', 'claim_expires_at']
+        ]
+    },
+
     social_ai_chart_job_media: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
         chart_job_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_ai_chart_jobs.id', cascadeDelete: true},
@@ -2396,6 +2445,30 @@ module.exports = {
         '@@INDEXES@@': [
             ['chart_job_id', 'role', 'sort_order'],
             ['chart_job_id', 'person_name']
+        ]
+    },
+
+    // News-job ↔ media junction. Unlike chart (one job = one article's picture), a
+    // news job carries MANY articles, so the junction records WHICH article each
+    // artifact belongs to: `item_key` is the job's items[].key (slug) and `post_id`
+    // is the Ghost post id when the item came from one.
+    social_ai_news_job_media: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        news_job_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_ai_news_jobs.id', cascadeDelete: true},
+        media_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_media_assets.id', cascadeDelete: true},
+        role: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'output', index: true},
+        source_kind: {type: 'string', maxlength: 20, nullable: true},
+        step_id: {type: 'string', maxlength: 64, nullable: true},
+        item_key: {type: 'string', maxlength: 191, nullable: true, index: true},
+        post_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        person_name: {type: 'string', maxlength: 191, nullable: true, index: true},
+        sort_order: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        caption: {type: 'string', maxlength: 2000, nullable: true},
+        created_at: {type: 'dateTime', nullable: false},
+        '@@INDEXES@@': [
+            ['news_job_id', 'role', 'sort_order'],
+            ['news_job_id', 'item_key'],
+            ['item_key', 'source_kind']
         ]
     },
 

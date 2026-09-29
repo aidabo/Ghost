@@ -691,7 +691,7 @@ const listByPrefix = async (store, prefix, limit, nextCursor, type) => {
     };
 };
 
-const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, projectId, limit, nextCursor, type, orderBy }) => {
+const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, newsJobId, projectId, limit, nextCursor, type, orderBy }) => {
     const knex = models.Base.knex;
     const cursor = parseDbNextCursor(nextCursor);
     const sortField = orderBy?.field === 'updated_at' ? 'updated_at' : 'created_at';
@@ -707,6 +707,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
             'sma.asset_type as asset_type',
             'sma.job_id as job_id',
             'sma.content_bundle_job_id as content_bundle_job_id',
+            'sma.news_job_id as news_job_id',
             'sma.dzi_job_id as dzi_job_id',
             'sma.project_id as project_id',
             'sma.created_at as created_at',
@@ -731,6 +732,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
                     this.orWhere('sma.owner_scope', 'content_bundles');
                     this.orWhere('sma.owner_scope', 'media_jobs');
                     this.orWhere('sma.owner_scope', 'deepzoom');
+                    this.orWhere('sma.owner_scope', 'news_jobs');
                 }
             })
             .limit(limit + 1)
@@ -774,6 +776,14 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
                         .from('social_ai_dzi_jobs as dzj')
                         .whereRaw('dzj.id = sma.dzi_job_id')
                         .andWhere('dzj.user_id', userId);
+                }).orWhereExists(function () {
+                    // News Agent family — same reasoning as chart: the worker
+                    // writes artifacts with a null user_id, so ownership is
+                    // resolved through the OWNING news job.
+                    this.select(1)
+                        .from('social_ai_news_jobs as nj')
+                        .whereRaw('nj.id = sma.news_job_id')
+                        .andWhere('nj.user_id', userId);
                 });
             })
             .whereNotExists(function () {
@@ -801,6 +811,13 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
         query = query.andWhere('sma.chart_job_id', chartJobId);
     }
 
+    // News Agent family: one job = many articles, so the artifacts of a single
+    // article are picked out of the junction by item_key (handled by the caller);
+    // this filters to one job.
+    if (newsJobId) {
+        query = query.andWhere('sma.news_job_id', newsJobId);
+    }
+
     if (projectId) {
         // Project artifacts = rows tagged directly (project_id, e.g. direct
         // uploads) OR produced by a job of this project (chart_job_id -> project).
@@ -825,6 +842,11 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, pro
                     .from('social_ai_dzi_job_projects as pdjp')
                     .whereRaw('pdjp.dzi_job_id = sma.dzi_job_id')
                     .andWhere('pdjp.project_id', projectId);
+            }).orWhereExists(function () {
+                this.select(1)
+                    .from('social_ai_news_jobs as pnj')
+                    .whereRaw('pnj.id = sma.news_job_id')
+                    .andWhere('pnj.project_id', projectId);
             });
         });
     }
@@ -1038,6 +1060,17 @@ const resolveGalleryScope = ({ target, groupId, propertyId, personId, chartId, p
         };
     }
 
+    // News-job artifacts (voice / video / stills / paper pages). Its own scope
+    // and its own folder — never chart's.
+    if (normalizedTarget === 'news_jobs' || normalizedTarget === 'newsjob') {
+        return {
+            scope: 'news_jobs',
+            propertyId: null,
+            groupId: null,
+            personId: null
+        };
+    }
+
     if (normalizedTarget === 'chart' || normalizedChartId) {
         return {
             scope: 'chart',
@@ -1183,6 +1216,19 @@ const resolveUploadContext = async (frame) => {
                 throw new errors.ValidationError({message: 'content_bundle_job_id does not belong to project_id.'});
             }
         }
+        // News Agent family: same shape as the content-bundle branch above, but its
+        // own table and its own owner_scope so the artifacts land under the news
+        // family's scope rather than being misfiled as chart's.
+        const newsJobId = String(getFrameValue(frame, 'news_job_id') || '').trim() || null;
+        let newsJob = null;
+        if (newsJobId) {
+            newsJob = await models.Base.knex('social_ai_news_jobs')
+                .where({id: newsJobId})
+                .first('id', 'project_id');
+            if (!newsJob || String(newsJob.project_id || '') !== pid) {
+                throw new errors.ValidationError({message: 'news_job_id does not belong to project_id.'});
+            }
+        }
         // A project is a GENERIC task container (media/chart/deepzoom/posts), not
         // chart-specific. An optional typed subfolder routes the upload into the
         // general project tree gallery/projects/{pid}/{subfolder}/ (e.g. artifacts →
@@ -1205,8 +1251,9 @@ const resolveUploadContext = async (frame) => {
             userId,
             groupId: null,
             projectId: pid,
-            ownerScope: contentBundleJob ? 'content_bundles' : 'chart_jobs',
+            ownerScope: newsJob ? 'news_jobs' : (contentBundleJob ? 'content_bundles' : 'chart_jobs'),
             contentBundleJobId: contentBundleJob?.id || null,
+            newsJobId: newsJob?.id || null,
             tag
         };
     }
@@ -1235,6 +1282,34 @@ const resolveUploadContext = async (frame) => {
             groupId: null,
             jobId,
             ownerScope: 'chart_jobs',
+            tag
+        };
+    }
+
+    // News-job target: gallery/news_jobs/{24-char-hex-job-id}/  (owner_scope = 'news_jobs')
+    if (resolvedScope.scope === 'news_jobs') {
+        if (!userId) {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.userRequired)
+            });
+        }
+
+        // The job id is issued by the backend; an upload must reference an
+        // existing news job. Inventing an id here would orphan the artifacts.
+        const jobId = String(getFrameValue(frame, 'job_id') || getFrameValue(frame, 'news_job_id') || '').trim();
+        if (!/^[a-f0-9]{24}$/i.test(jobId)) {
+            throw new errors.BadRequestError({
+                message: 'job_id (24-char news job id) is required for news_jobs uploads.'
+            });
+        }
+        const baseDir = path.posix.join(root, 'gallery', 'news_jobs', jobId);
+        return {
+            mediaStore,
+            targetDir: mediaStore.getTargetDir(baseDir),
+            userId,
+            groupId: null,
+            jobId,
+            ownerScope: 'news_jobs',
             tag
         };
     }
@@ -1465,6 +1540,60 @@ const controller = {
             });
             listed.meta.scope = 'chart_jobs';
             listed.meta.chart_job_id = chartJobId;
+            listed.meta.type = type;
+            return listed;
+        }
+    },
+
+    // News-job artifacts: owner_scope='news_jobs' rows registered by the news
+    // worker via link-assets. A separate action from `chartjobs` because the
+    // families never share a job id or an owner_scope. Requires a browser
+    // session; optional news_job_id filter scopes to one job.
+    newsjobs: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'limit',
+            'next_cursor',
+            'type',
+            'news_job_id',
+            'include',
+            'page',
+            'fields',
+            'filter',
+            'order',
+            'debug'
+        ],
+        permissions: false,
+        async query(frame) {
+            const userId = frame.options?.context?.user;
+            if (!userId) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.userRequired)
+                });
+            }
+
+            const limit = parseLimit(frame.options?.limit);
+            const nextCursor = frame.options?.next_cursor || null;
+            const type = parseType(frame.options?.type);
+            const newsJobId = String(frame.options?.news_job_id || '').trim() || null;
+            const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
+
+            const listed = await listByAssetTable({
+                scope: 'news_jobs',
+                userId,
+                groupId: null,
+                jobId: null,
+                chartJobId: null,
+                newsJobId,
+                limit,
+                nextCursor,
+                type,
+                orderBy
+            });
+            listed.meta.scope = 'news_jobs';
+            listed.meta.news_job_id = newsJobId;
             listed.meta.type = type;
             return listed;
         }
@@ -1746,6 +1875,7 @@ const controller = {
             'group_id',
             'job_id',
             'content_bundle_job_id',
+            'news_job_id',
             'social_chart_id',
             'tag',
             'tag_slug',
@@ -1899,6 +2029,7 @@ const controller = {
             'dzi_job_id',
             'chart_job_id',
             'content_bundle_job_id',
+            'news_job_id',
             'project_id',
             'target',
             'social_chart_id',
@@ -1941,6 +2072,9 @@ const controller = {
             }
 
             const uploadContext = await resolveUploadContext(frame);
+            // The resolver only returns newsJobId when the job belongs to the
+            // project, so its answer wins over the raw frame value.
+            const newsJobId = uploadContext.newsJobId || String(getFrameValue(frame, 'news_job_id') || '').trim() || null;
             const assetType = [TYPE_IMAGE, TYPE_VIDEO, TYPE_AUDIO, TYPE_FILE].includes(requestedAssetType)
                 ? requestedAssetType
                 : inferAssetTypeByKey(storageKey);
@@ -1960,6 +2094,7 @@ const controller = {
                     dziJobId,
                     chartJobId,
                     contentBundleJobId,
+                    newsJobId,
                     projectId: uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null,
                     socialChartId,
                     userId: uploadContext.userId,
@@ -1998,6 +2133,7 @@ const controller = {
                     original_filename: originalFilename || null,
                     job_id: jobId,
                     dzi_job_id: dziJobId,
+                    news_job_id: newsJobId,
                     social_chart_id: socialChartId,
                     asset_type: assetType,
                     owner_scope: uploadContext.ownerScope || (uploadContext.groupId ? 'group' : 'user'),
