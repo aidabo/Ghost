@@ -50,6 +50,9 @@ const serializeVersion = row => ({
     profile_id: row.profile_id,
     version: Number(row.version),
     image_asset_id: row.image_asset_id || null,
+    image_url: row.image_url || null,
+    thumbnail_url: row.thumbnail_url || null,
+    storage_key: row.storage_key || null,
     project_id: row.project_id || null,
     source_kind: row.source_kind,
     generation_model: row.generation_model || null,
@@ -81,7 +84,11 @@ const serializeProfile = (row, versions = []) => ({
 
 async function versionsFor(knex, profileIds) {
     if (!profileIds.length) return new Map();
-    const rows = await knex(VERSIONS).whereIn('profile_id', profileIds).orderBy('version', 'desc');
+    const rows = await knex(VERSIONS)
+        .leftJoin(ASSETS, `${VERSIONS}.image_asset_id`, `${ASSETS}.id`)
+        .whereIn(`${VERSIONS}.profile_id`, profileIds)
+        .select(`${VERSIONS}.*`, `${ASSETS}.storage_url as image_url`, `${ASSETS}.thumbnail_url`, `${ASSETS}.storage_key`)
+        .orderBy(`${VERSIONS}.version`, 'desc');
     const grouped = new Map();
     for (const row of rows) {
         const list = grouped.get(row.profile_id) || [];
