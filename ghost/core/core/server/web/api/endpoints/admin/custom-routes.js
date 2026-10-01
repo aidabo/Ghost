@@ -302,6 +302,13 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/news/jobs/:id/link-assets', mw.authAdminApi, http(api.socialAiNewsJobs.linkAssets));
     router.post('/social/ai/news/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiNewsJobs.cancel));
     router.del('/social/ai/news/jobs/:id', mw.authAdminApi, http(api.socialAiNewsJobs.destroy));
+    // ## social ai news avatar profiles
+    router.get('/social/ai/news/avatar-profiles', mw.authAdminApi, http(api.socialAiAvatarProfiles.browse));
+    router.get('/social/ai/news/avatar-profiles/:id', mw.authAdminApi, http(api.socialAiAvatarProfiles.read));
+    router.post('/social/ai/news/avatar-profiles', mw.authAdminApi, http(api.socialAiAvatarProfiles.add));
+    router.put('/social/ai/news/avatar-profiles/:id', mw.authAdminApi, http(api.socialAiAvatarProfiles.edit));
+    router.post('/social/ai/news/avatar-profiles/:id/versions', mw.authAdminApi, http(api.socialAiAvatarProfiles.addVersion));
+    router.post('/social/ai/news/avatar-profiles/:id/versions/:version/activate', mw.authAdminApi, http(api.socialAiAvatarProfiles.activateVersion));
     // ## social ai chart projects (generic work container, P1 — chart-scoped jobs hang off the general project path)
     router.get('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.browse));
     router.post('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.add));
