@@ -2389,6 +2389,58 @@ module.exports = {
         ]
     },
 
+    // News avatar identity/profile. The image itself stays in
+    // social_media_assets so the shared Gallery/Project search remains the
+    // source of truth. This table only maps a stable presenter persona to a
+    // voice tune and provider.
+    social_ai_avatar_profiles: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        slug: {type: 'string', maxlength: 191, nullable: false, unique: true},
+        display_name: {type: 'string', maxlength: 191, nullable: false},
+        description: {type: 'string', maxlength: 2000, nullable: true},
+        voice_provider: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'qwen'},
+        voice_name: {type: 'string', maxlength: 191, nullable: false},
+        locale: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'ja-JP'},
+        persona: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'neutral'},
+        gender_presentation: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'neutral'},
+        provider: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'self-hosted'},
+        default_for_news: {type: 'boolean', nullable: false, defaultTo: false, index: true},
+        status: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'draft', index: true, validations: {isIn: [['draft', 'active', 'retired']]}},
+        rights_status: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'pending', validations: {isIn: [['pending', 'approved', 'restricted']]}},
+        disclosure_label: {type: 'string', maxlength: 191, nullable: true},
+        created_by: {type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true},
+        created_at: {type: 'dateTime', nullable: false},
+        updated_at: {type: 'dateTime', nullable: false},
+        '@@INDEXES@@': [
+            ['status', 'default_for_news'],
+            ['voice_provider', 'voice_name', 'locale']
+        ]
+    },
+
+    // Immutable avatar image versions. A profile can be retired or pointed at
+    // a newer version without changing old News job output reproducibility.
+    social_ai_avatar_profile_versions: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        profile_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_ai_avatar_profiles.id', cascadeDelete: true},
+        version: {type: 'integer', nullable: false, unsigned: true},
+        image_asset_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'social_media_assets.id', setNullDelete: true},
+        project_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        source_kind: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'uploaded', validations: {isIn: [['uploaded', 'generated']]}},
+        generation_model: {type: 'string', maxlength: 191, nullable: true},
+        prompt_hash: {type: 'string', maxlength: 64, nullable: true},
+        status: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'draft', index: true, validations: {isIn: [['draft', 'active', 'retired']]}},
+        approved_by: {type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true},
+        created_at: {type: 'dateTime', nullable: false},
+        updated_at: {type: 'dateTime', nullable: false},
+        '@@INDEXES@@': [
+            ['profile_id', 'status'],
+            ['project_id', 'status']
+        ],
+        '@@UNIQUE_CONSTRAINTS@@': [
+            ['profile_id', 'version']
+        ]
+    },
+
     // News Agent — pipeline job table. A SEPARATE FAMILY from chart: chart draws
     // relationship diagrams, news makes news jobs (user decision 2026-09-29). Job
     // ids are never shared across families; every `news-*` type shares this table.
