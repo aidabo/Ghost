@@ -144,6 +144,7 @@ const upsertAsset = async ({
     socialChartId,
     chartJobId,
     contentBundleJobId,
+    newsJobId,
     projectId,
     userId,
     memberId,
@@ -182,6 +183,7 @@ const upsertAsset = async ({
             social_chart_id: normalizeJobId(socialChartId),
             chart_job_id: normalizeJobId(chartJobId),
             content_bundle_job_id: normalizeJobId(contentBundleJobId),
+            news_job_id: normalizeJobId(newsJobId),
             project_id: normalizeJobId(projectId),
             tag_id: tag?.id || null,
             tag_slug: tag?.slug || null,
@@ -201,6 +203,7 @@ const upsertAsset = async ({
             dzi_job_id: payload.dzi_job_id,
             social_chart_id: payload.social_chart_id,
             content_bundle_job_id: payload.content_bundle_job_id,
+            news_job_id: payload.news_job_id,
             tag_id: payload.tag_id,
             tag_slug: payload.tag_slug,
             updated_at: payload.updated_at
@@ -256,9 +259,12 @@ const upsertAsset = async ({
             const isMissingContentBundleJobIdColumn =
                 (message.includes('unknown column') || message.includes('has no column named')) &&
                 message.includes('content_bundle_job_id');
+            const isMissingNewsJobIdColumn =
+                (message.includes('unknown column') || message.includes('has no column named')) &&
+                message.includes('news_job_id');
             const isMissingStorageKeyHashColumn = isMissingStorageKeyHashColumnError(err);
 
-            if (!isMissingThumbnailColumn && !isMissingJobIdColumn && !isMissingDziJobIdColumn && !isMissingSocialChartIdColumn && !isMissingProjectIdColumn && !isMissingContentBundleJobIdColumn && !isMissingStorageKeyHashColumn) {
+            if (!isMissingThumbnailColumn && !isMissingJobIdColumn && !isMissingDziJobIdColumn && !isMissingSocialChartIdColumn && !isMissingProjectIdColumn && !isMissingContentBundleJobIdColumn && !isMissingNewsJobIdColumn && !isMissingStorageKeyHashColumn) {
                 throw err;
             }
 
@@ -276,6 +282,9 @@ const upsertAsset = async ({
             }
             if (isMissingContentBundleJobIdColumn) {
                 delete fallbackPayload.content_bundle_job_id;
+            }
+            if (isMissingNewsJobIdColumn) {
+                delete fallbackPayload.news_job_id;
             }
             if (isMissingStorageKeyHashColumn) {
                 delete fallbackPayload.storage_key_hash;

@@ -172,6 +172,11 @@ module.exports = function customApiRoutes(router) {
     // ## gallery
     router.get('/social/gallery/chartjobs', mw.authAdminApi, http(api.socialGallery.chartjobs));
     router.get('/social/gallery/chartjobs/', mw.authAdminApi, http(api.socialGallery.chartjobs));
+
+    // News Agent artifacts (owner_scope='news_jobs'). Separate route from
+    // chartjobs — the families never share a job id or a scope.
+    router.get('/social/gallery/newsjobs', mw.authAdminApi, http(api.socialGallery.newsjobs));
+    router.get('/social/gallery/newsjobs/', mw.authAdminApi, http(api.socialGallery.newsjobs));
     // Project-scoped gallery (all media of a project).
     router.get('/social/gallery/project', mw.authAdminApi, http(api.socialGallery.project));
     router.get('/social/gallery/project/', mw.authAdminApi, http(api.socialGallery.project));
@@ -286,6 +291,17 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/content-bundle/jobs/:id/fail', mw.authAdminApi, http(api.socialAiContentBundleJobs.fail));
     router.post('/social/ai/content-bundle/jobs/:id/link-assets', mw.authAdminApi, http(api.socialAiContentBundleJobs.linkAssets));
     router.post('/social/ai/content-bundle/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiContentBundleJobs.cancel));
+    // ## social ai news jobs (News Agent family — separate from chart)
+    router.get('/social/ai/news/jobs', mw.authAdminApi, http(api.socialAiNewsJobs.browse));
+    router.get('/social/ai/news/jobs/:id', mw.authAdminApi, http(api.socialAiNewsJobs.read));
+    router.post('/social/ai/news/jobs', mw.authAdminApi, http(api.socialAiNewsJobs.add));
+    router.post('/social/ai/news/jobs/claim', mw.authAdminApi, http(api.socialAiNewsJobs.claim));
+    router.post('/social/ai/news/jobs/:id/progress', mw.authAdminApi, http(api.socialAiNewsJobs.progress));
+    router.post('/social/ai/news/jobs/:id/complete', mw.authAdminApi, http(api.socialAiNewsJobs.complete));
+    router.post('/social/ai/news/jobs/:id/fail', mw.authAdminApi, http(api.socialAiNewsJobs.fail));
+    router.post('/social/ai/news/jobs/:id/link-assets', mw.authAdminApi, http(api.socialAiNewsJobs.linkAssets));
+    router.post('/social/ai/news/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiNewsJobs.cancel));
+    router.del('/social/ai/news/jobs/:id', mw.authAdminApi, http(api.socialAiNewsJobs.destroy));
     // ## social ai chart projects (generic work container, P1 — chart-scoped jobs hang off the general project path)
     router.get('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.browse));
     router.post('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.add));

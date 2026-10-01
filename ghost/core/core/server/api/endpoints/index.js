@@ -326,6 +326,10 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-content-bundle-jobs'), localUtils);
     },
 
+    get socialAiNewsJobs() {
+        return apiFramework.pipeline(require('./social-ai-news-jobs'), localUtils);
+    },
+
     get socialAiProjects() {
         return apiFramework.pipeline(require('./social-ai-projects'), localUtils);
     },
