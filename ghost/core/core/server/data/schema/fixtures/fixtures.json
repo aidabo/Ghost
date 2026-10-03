@@ -1913,7 +1913,7 @@
                     "personstory": ["add", "destroy", "edit"],
                     "personstoryepisode": ["add", "destroy", "edit"],
                     "personstoryseries": ["add", "destroy", "edit"],
-                    "publishcontent": ["add", "destroy", "edit"],
+                    "publishcontent": ["add", "browse", "destroy", "edit", "read"],
                     "socialaiagentsetting": "all",
                     "socialaichat": "all",
                     "socialaidevice": "all",
