@@ -710,6 +710,8 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
             'sma.news_job_id as news_job_id',
             'sma.dzi_job_id as dzi_job_id',
             'sma.project_id as project_id',
+            'njm.post_id as post_id',
+            'np.title as post_title',
             'sma.created_at as created_at',
             'sma.updated_at as updated_at',
             't.name as tag_name',
@@ -725,6 +727,10 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
 
         const query = knex('social_media_assets as sma')
             .leftJoin('tags as t', 'sma.tag_id', 't.id')
+            .leftJoin('social_ai_news_job_media as njm', function () {
+                this.on('njm.media_id', 'sma.id').andOn('njm.role', '=', knex.raw('?', ['output']));
+            })
+            .leftJoin('posts as np', 'np.id', 'njm.post_id')
             .select(columns)
             .where(function () {
                 this.where('sma.owner_scope', scope);
@@ -923,6 +929,8 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
         job_id: row.job_id || null,
         dzi_job_id: row.dzi_job_id || null,
         project_id: row.project_id || null,
+        post_id: row.post_id || null,
+        post_title: row.post_title || null,
         category: row.tag_name || null,
         category_slug: row.tag_slug || null,
         created_at: row.created_at || null,
