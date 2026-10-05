@@ -388,7 +388,8 @@ const controller = {
             'group_id',
             'name',
             'description',
-            'tags'
+            'tags',
+            'project_purposes'
         ],
         permissions: false,
         async query(frame) {
@@ -427,6 +428,9 @@ const controller = {
                 tags: typeof payloadInput.tags === 'string'
                     ? payloadInput.tags
                     : JSON.stringify(payloadInput.tags || []),
+                project_purposes: typeof payloadInput.project_purposes === 'string'
+                    ? payloadInput.project_purposes
+                    : JSON.stringify(payloadInput.project_purposes || []),
                 status: socialAiProjectsUtil.PROJECT_STATUS.DRAFT,
                 user_id: targetUserId || currentUserId,
                 group_id: groupId
@@ -440,7 +444,7 @@ const controller = {
     edit: {
         headers: { cacheInvalidate: false },
         options: ['id'],
-        data: ['name', 'description', 'tags', 'status'],
+        data: ['name', 'description', 'tags', 'project_purposes', 'status'],
         permissions: false,
         async query(frame) {
             const knex = models.Base.knex;
@@ -469,6 +473,11 @@ const controller = {
                     });
                 }
                 update.status = status;
+            }
+            if (payloadInput.project_purposes !== undefined) {
+                update.project_purposes = typeof payloadInput.project_purposes === 'string'
+                    ? payloadInput.project_purposes
+                    : JSON.stringify(payloadInput.project_purposes || []);
             }
             if (payloadInput.description !== undefined) {
                 update.description = payloadInput.description || null;

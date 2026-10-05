@@ -2374,6 +2374,9 @@ module.exports = {
         // generic, plan §3-1). LIKE-scan searchable; normalized table only if a
         // tag-search requirement appears (review L3).
         tags: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
+        // Optional controlled purpose hints for UI discovery only. A Project
+        // remains generic and may carry several purposes at once.
+        project_purposes: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
         // User-controlled PUBLICATION state — enum: draft | published, set on
         // the project detail page. NOT derived from the jobs (review M2: the
         // old derived draft/active/completed scheme was removed).
