@@ -2467,6 +2467,8 @@ module.exports = {
         scope_type: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'user'},
         claim_worker_id: {type: 'string', maxlength: 191, nullable: true},
         claim_expires_at: {type: 'dateTime', nullable: true},
+        claim_generation: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        claim_token: {type: 'string', maxlength: 36, nullable: true},
         retry_count: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
         created_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true},
