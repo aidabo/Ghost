@@ -1,4 +1,5 @@
 const tpl = require('@tryghost/tpl');
+const {randomUUID} = require('crypto');
 const errors = require('@tryghost/errors');
 const logging = require('@tryghost/logging');
 const models = require('../../models');
@@ -233,6 +234,7 @@ const serialize = row => ({
     user_id: row.user_id || null,
     group_id: row.group_id || null,
     scope_type: row.scope_type || 'user',
+    claim_generation: Number(row.claim_generation || 0),
     claim_worker_id: row.claim_worker_id || null,
     claim_expires_at: row.claim_expires_at || null,
     created_at: row.created_at,
@@ -292,9 +294,42 @@ const assertWorker = (frame, row) => {
     if (!integration(frame)) {
         throw new errors.NoPermissionError({message: tpl(messages.workerRequired)});
     }
-    const caller = String(getActionPayload(frame).claim_worker_id || '').trim();
+    const payload = getActionPayload(frame);
+    const caller = String(payload.claim_worker_id || '').trim();
+    if (Number(row.claim_generation || 0) > 0) {
+        if (!caller || caller !== row.claim_worker_id || typeof payload.claim_token !== 'string'
+            || payload.claim_token !== row.claim_token || !Number.isSafeInteger(payload.claim_generation)
+            || payload.claim_generation !== Number(row.claim_generation)
+            || row.status !== 'running' || !row.claim_expires_at
+            || (row.claim_expires_at instanceof Date ? row.claim_expires_at.getTime() <= Date.now() : row.claim_expires_at <= now())) {
+            throw new errors.ValidationError({message: tpl(messages.notLeaseHolder), code: 'NEWS_JOB_LEASE_LOST'});
+        }
+        return;
+    }
     if (row.claim_worker_id && caller && caller !== row.claim_worker_id) {
         throw new errors.ValidationError({message: tpl(messages.notLeaseHolder)});
+    }
+};
+
+// Credentials come from the request, never from a later row read. Every modern
+// mutation rechecks them in SQL so a reclaim between read and write fences it.
+const updateJob = async (frame, row, patch, knex = models.Base.knex) => {
+    const generation = Number(row.claim_generation || 0);
+    const query = knex(TABLE).where({id: row.id, claim_generation: generation});
+    if (generation > 0) {
+        const payload = getActionPayload(frame);
+        query.where({
+            status: 'running',
+            claim_worker_id: payload.claim_worker_id,
+            claim_token: payload.claim_token,
+            claim_generation: payload.claim_generation
+        }).where('claim_expires_at', '>', now());
+    }
+    if (['completed', 'failed', 'canceled'].includes(patch.status)) {
+        patch = {...patch, claim_token: null, claim_worker_id: null, claim_expires_at: null};
+    }
+    if (!(await query.update(patch))) {
+        throw new errors.ValidationError({message: tpl(messages.notLeaseHolder), code: 'NEWS_JOB_LEASE_LOST'});
     }
 };
 
@@ -417,9 +452,20 @@ const controller = {
                 throw new errors.NoPermissionError({message: tpl(messages.workerRequired)});
             }
             const types = acceptedTypes(payloadInput);
-            const workerId = String(payloadInput.worker_id || 'news-runner');
+            const modern = payloadInput.claim_protocol === 2;
+            if (payloadInput.claim_protocol !== undefined && !modern) {
+                throw new errors.ValidationError({message: 'Unsupported news job claim protocol.'});
+            }
+            const workerId = String(payloadInput.worker_id || 'news-runner').trim();
+            if (!workerId) {
+                throw new errors.ValidationError({message: 'worker_id is required.'});
+            }
             const timestamp = now();
-            const row = await models.Base.knex(TABLE).whereIn('type', types).where(function () {
+            const candidate = models.Base.knex(TABLE).whereIn('type', types);
+            if (!modern) {
+                candidate.where('claim_generation', 0);
+            }
+            const row = await candidate.where(function () {
                 this.where('status', 'queued').orWhere(function () {
                     this.where('status', 'running').andWhere('claim_expires_at', '<', timestamp);
                 });
@@ -427,22 +473,26 @@ const controller = {
             if (!row) {
                 return [];
             }
-            const affected = await models.Base.knex(TABLE).where({id: row.id, type: row.type}).whereIn('type', types).where(function () {
-                this.where('status', 'queued').orWhere(function () {
-                    this.where('status', 'running').andWhere('claim_expires_at', '<', timestamp);
-                });
-            }).update({
+            const generation = Number(row.claim_generation || 0);
+            const claim = {
                 status: 'running',
+                claim_generation: modern ? generation + 1 : 0,
+                claim_token: modern ? randomUUID() : null,
                 claim_worker_id: workerId,
                 claim_expires_at: leaseExpiry(),
                 started_at: row.started_at || timestamp,
                 updated_at: timestamp,
                 updated_by: row.updated_by || row.user_id
-            });
+            };
+            const affected = await models.Base.knex(TABLE).where({id: row.id, type: row.type, claim_generation: generation}).whereIn('type', types).where(function () {
+                this.where('status', 'queued').orWhere(function () {
+                    this.where('status', 'running').andWhere('claim_expires_at', '<', timestamp);
+                });
+            }).update(claim);
             if (!affected) {
                 return [];
             }
-            return serialize(await loadRow(row.id));
+            return {...serialize({...row, ...claim}), ...(modern ? {claim_token: claim.claim_token} : {})};
         }
     },
 
@@ -494,7 +544,10 @@ const controller = {
                 : derived;
 
             const timestamp = now();
-            await models.Base.knex(TABLE).where({id: row.id}).update({
+            if (Number(row.claim_generation || 0) > 0 && payloadInput.status && payloadInput.status !== 'running') {
+                throw new errors.ValidationError({message: tpl(messages.invalidTransition)});
+            }
+            await updateJob(frame, row, {
                 // `claim` already moved the job to `running`; a progress report does
                 // not decide status (same rule as chart). A caller that wants to
                 // move it must say so explicitly.
@@ -567,7 +620,7 @@ const controller = {
                 ? `${failedItems.length} article(s) failed: ${failedItems.map(item => item.key).join(', ')}`
                 : null;
 
-            await models.Base.knex(TABLE).where({id: row.id}).update({
+            await updateJob(frame, row, {
                 status,
                 progress: finished ? 100 : (derived === null ? row.progress : derived),
                 status_message: payloadInput.status_message || summarizeItems(items) || row.status_message,
@@ -617,7 +670,7 @@ const controller = {
                 const status = resolveJobStatus(steps, items, row.status);
                 const finished = status === 'completed' || status === 'failed';
                 const failedItems = items.filter(entry => entry.status === 'failed');
-                await models.Base.knex(TABLE).where({id: row.id}).update({
+                await updateJob(frame, row, {
                     status,
                     progress: finished ? 100 : (derived === null ? row.progress : derived),
                     status_message: payloadInput.status_message || summarizeItems(items) || row.status_message,
@@ -639,7 +692,7 @@ const controller = {
                 step.status = 'failed';
                 step.error = errorText || step.error;
             }
-            await models.Base.knex(TABLE).where({id: row.id}).update({
+            await updateJob(frame, row, {
                 status: 'failed',
                 error_code: payloadInput.error_code || 'step_failed',
                 error_message: errorText || 'News job step failed',
@@ -662,173 +715,185 @@ const controller = {
             if (!integration(frame)) {
                 throw new errors.NoPermissionError({message: tpl(messages.workerRequired)});
             }
-            const knex = models.Base.knex;
             const row = await loadRow(jobId(frame));
             const payloadInput = getActionPayload(frame);
-            const assets = Array.isArray(payloadInput.assets) ? payloadInput.assets : [];
-            const removedKeys = Array.isArray(payloadInput.removed_keys)
-                ? payloadInput.removed_keys.map(String).map(s => s.trim()).filter(Boolean)
-                : [];
-            const mediaIds = [];
+            const modern = Number(row.claim_generation || 0) > 0;
+            if (modern) {
+                assertWorker(frame, row);
+                assertOpen(row);
+            }
+            const link = async (knex) => {
+                const assets = Array.isArray(payloadInput.assets) ? payloadInput.assets : [];
+                const removedKeys = Array.isArray(payloadInput.removed_keys)
+                    ? payloadInput.removed_keys.map(String).map(s => s.trim()).filter(Boolean)
+                    : [];
+                const mediaIds = [];
 
-            // Idempotency key is storage_key_hash ALONE (same rule as chart, H1):
-            // a different job republishing the same S3 path reuses the existing row
-            // and re-points news_job_id at the latest publisher — never a duplicate.
-            for (const asset of assets) {
-                const storageKey = String(asset.storage_key || '').trim();
-                const storageUrl = String(asset.storage_url || '').trim();
-                if (!storageKey || !storageUrl) {
-                    continue;
-                }
-                const storageKeyHash = socialMediaAssets.buildStorageKeyHash(storageKey);
-                const assetType = String(asset.asset_type || 'file').trim().toLowerCase();
-                const VALID_ROLES = ['input', 'source', 'material', 'intermediate', 'preview', 'output'];
-                const VALID_SOURCE_KINDS = ['real', 'ai', 'interview'];
-                const role = VALID_ROLES.includes(asset.role) ? asset.role : 'output';
-                const sourceKind = VALID_SOURCE_KINDS.includes(asset.source_kind) ? asset.source_kind : null;
-                const sortOrder = Number.isFinite(Number(asset.sort_order)) ? Math.max(0, Number(asset.sort_order)) : 0;
-                const timestamp = now();
+                // Idempotency key is storage_key_hash ALONE (same rule as chart, H1):
+                // a different job republishing the same S3 path reuses the existing row
+                // and re-points news_job_id at the latest publisher — never a duplicate.
+                for (const asset of assets) {
+                    const storageKey = String(asset.storage_key || '').trim();
+                    const storageUrl = String(asset.storage_url || '').trim();
+                    if (!storageKey || !storageUrl) {
+                        continue;
+                    }
+                    const storageKeyHash = socialMediaAssets.buildStorageKeyHash(storageKey);
+                    const assetType = String(asset.asset_type || 'file').trim().toLowerCase();
+                    const VALID_ROLES = ['input', 'source', 'material', 'intermediate', 'preview', 'output'];
+                    const VALID_SOURCE_KINDS = ['real', 'ai', 'interview'];
+                    const role = VALID_ROLES.includes(asset.role) ? asset.role : 'output';
+                    const sourceKind = VALID_SOURCE_KINDS.includes(asset.source_kind) ? asset.source_kind : null;
+                    const sortOrder = Number.isFinite(Number(asset.sort_order)) ? Math.max(0, Number(asset.sort_order)) : 0;
+                    const timestamp = now();
 
-                // project_id comes from the JOB, never from the worker's payload.
-                const jobProjectId = row.project_id || null;
-                let mediaId;
-                const existing = await knex('social_media_assets')
-                    .where({storage_key_hash: storageKeyHash})
-                    .first();
+                    // project_id comes from the JOB, never from the worker's payload.
+                    const jobProjectId = row.project_id || null;
+                    let mediaId;
+                    const existing = await knex('social_media_assets')
+                        .where({storage_key_hash: storageKeyHash})
+                        .first();
 
-                if (existing) {
-                    await knex('social_media_assets')
-                        .where({id: existing.id})
-                        .update({
-                            storage_key: storageKey,
-                            storage_url: storageUrl,
-                            thumbnail_url: asset.thumbnail_url || existing.thumbnail_url || null,
-                            original_filename: asset.original_filename || existing.original_filename || null,
-                            asset_type: assetType,
-                            news_job_id: row.id,
-                            project_id: jobProjectId || existing.project_id || null,
-                            user_id: existing.user_id || row.user_id || null,
-                            group_id: existing.group_id || row.group_id || null,
-                            updated_at: timestamp
-                        });
-                    mediaId = existing.id;
-                } else {
-                    mediaId = ObjectId().toHexString();
-                    try {
+                    if (existing) {
                         await knex('social_media_assets')
-                            .insert({
-                                id: mediaId,
+                            .where({id: existing.id})
+                            .update({
                                 storage_key: storageKey,
-                                storage_key_hash: storageKeyHash,
                                 storage_url: storageUrl,
-                                thumbnail_url: asset.thumbnail_url || null,
-                                original_filename: asset.original_filename || null,
+                                thumbnail_url: asset.thumbnail_url || existing.thumbnail_url || null,
+                                original_filename: asset.original_filename || existing.original_filename || null,
                                 asset_type: assetType,
-                                owner_scope: OWNER_SCOPE,
-                                project_id: jobProjectId,
-                                user_id: row.user_id || null,
-                                group_id: row.group_id || null,
                                 news_job_id: row.id,
-                                created_at: timestamp,
+                                project_id: jobProjectId || existing.project_id || null,
+                                user_id: existing.user_id || row.user_id || null,
+                                group_id: existing.group_id || row.group_id || null,
                                 updated_at: timestamp
                             });
-                    } catch (err) {
-                        // unique (news_job_id, storage_key_hash): a racing insert
-                        // loses and we fall back to updating the winner's row.
-                        if (String(err?.code || '').toUpperCase() === 'ER_DUP_ENTRY') {
-                            const dup = await knex('social_media_assets')
-                                .where({storage_key_hash: storageKeyHash})
-                                .first();
-                            if (!dup) {
-                                throw err;
-                            }
+                        mediaId = existing.id;
+                    } else {
+                        mediaId = ObjectId().toHexString();
+                        try {
                             await knex('social_media_assets')
-                                .where({id: dup.id})
-                                .update({
+                                .insert({
+                                    id: mediaId,
+                                    storage_key: storageKey,
+                                    storage_key_hash: storageKeyHash,
                                     storage_url: storageUrl,
-                                    thumbnail_url: asset.thumbnail_url || dup.thumbnail_url || null,
-                                    original_filename: asset.original_filename || dup.original_filename || null,
+                                    thumbnail_url: asset.thumbnail_url || null,
+                                    original_filename: asset.original_filename || null,
                                     asset_type: assetType,
+                                    owner_scope: OWNER_SCOPE,
+                                    project_id: jobProjectId,
+                                    user_id: row.user_id || null,
+                                    group_id: row.group_id || null,
                                     news_job_id: row.id,
+                                    created_at: timestamp,
                                     updated_at: timestamp
                                 });
-                            mediaId = dup.id;
-                        } else {
-                            throw err;
+                        } catch (err) {
+                            // unique (news_job_id, storage_key_hash): a racing insert
+                            // loses and we fall back to updating the winner's row.
+                            if (String(err?.code || '').toUpperCase() === 'ER_DUP_ENTRY') {
+                                const dup = await knex('social_media_assets')
+                                    .where({storage_key_hash: storageKeyHash})
+                                    .first();
+                                if (!dup) {
+                                    throw err;
+                                }
+                                await knex('social_media_assets')
+                                    .where({id: dup.id})
+                                    .update({
+                                        storage_url: storageUrl,
+                                        thumbnail_url: asset.thumbnail_url || dup.thumbnail_url || null,
+                                        original_filename: asset.original_filename || dup.original_filename || null,
+                                        asset_type: assetType,
+                                        news_job_id: row.id,
+                                        updated_at: timestamp
+                                    });
+                                mediaId = dup.id;
+                            } else {
+                                throw err;
+                            }
                         }
                     }
+
+                    // Junction: WHICH article this artifact belongs to. This is what a
+                    // single link column cannot express, and why the news family needs
+                    // its own junction rather than chart's.
+                    const itemKey = String(asset.item_key || '').trim() || null;
+                    const postId = String(asset.post_id || '').trim() || null;
+                    const existingJunction = await knex(JUNCTION)
+                        .where({news_job_id: row.id, media_id: mediaId})
+                        .first();
+                    if (existingJunction) {
+                        await knex(JUNCTION)
+                            .where({id: existingJunction.id})
+                            .update({
+                                role: role || existingJunction.role,
+                                source_kind: sourceKind || existingJunction.source_kind,
+                                step_id: asset.step_id || existingJunction.step_id || null,
+                                item_key: itemKey || existingJunction.item_key || null,
+                                post_id: postId || existingJunction.post_id || null,
+                                person_name: asset.person_name || existingJunction.person_name || null,
+                                sort_order: Number.isFinite(Number(asset.sort_order))
+                                    ? Math.max(0, Number(asset.sort_order))
+                                    : existingJunction.sort_order,
+                                caption: asset.caption || existingJunction.caption || null
+                                // NB: the junction has no `updated_at` column — do not write one.
+                            });
+                    } else {
+                        await knex(JUNCTION)
+                            .insert({
+                                id: ObjectId().toHexString(),
+                                news_job_id: row.id,
+                                media_id: mediaId,
+                                role,
+                                source_kind: sourceKind,
+                                step_id: asset.step_id || null,
+                                item_key: itemKey,
+                                post_id: postId,
+                                person_name: asset.person_name || null,
+                                sort_order: sortOrder,
+                                caption: asset.caption || null,
+                                created_at: timestamp
+                            });
+                    }
+
+                    mediaIds.push(mediaId);
                 }
 
-                // Junction: WHICH article this artifact belongs to. This is what a
-                // single link column cannot express, and why the news family needs
-                // its own junction rather than chart's.
-                const itemKey = String(asset.item_key || '').trim() || null;
-                const postId = String(asset.post_id || '').trim() || null;
-                const existingJunction = await knex(JUNCTION)
-                    .where({news_job_id: row.id, media_id: mediaId})
-                    .first();
-                if (existingJunction) {
-                    await knex(JUNCTION)
-                        .where({id: existingJunction.id})
-                        .update({
-                            role: role || existingJunction.role,
-                            source_kind: sourceKind || existingJunction.source_kind,
-                            step_id: asset.step_id || existingJunction.step_id || null,
-                            item_key: itemKey || existingJunction.item_key || null,
-                            post_id: postId || existingJunction.post_id || null,
-                            person_name: asset.person_name || existingJunction.person_name || null,
-                            sort_order: Number.isFinite(Number(asset.sort_order))
-                                ? Math.max(0, Number(asset.sort_order))
-                                : existingJunction.sort_order,
-                            caption: asset.caption || existingJunction.caption || null
-                            // NB: the junction has no `updated_at` column — do not write one.
-                        });
-                } else {
-                    await knex(JUNCTION)
-                        .insert({
-                            id: ObjectId().toHexString(),
-                            news_job_id: row.id,
-                            media_id: mediaId,
-                            role,
-                            source_kind: sourceKind,
-                            step_id: asset.step_id || null,
-                            item_key: itemKey,
-                            post_id: postId,
-                            person_name: asset.person_name || null,
-                            sort_order: sortOrder,
-                            caption: asset.caption || null,
-                            created_at: timestamp
-                        });
+                // A key that publishJob deleted from S3 must not keep its gallery row.
+                // Scoped to this family's owner_scope; the junction rows cascade via FK.
+                const removedSet = new Set(removedKeys);
+                for (const key of removedSet) {
+                    const stillRegistered = assets.some(a => String(a.storage_key || '').trim() === key);
+                    if (stillRegistered) {
+                        continue;
+                    }
+                    await knex('social_media_assets')
+                        .where({storage_key: key, owner_scope: OWNER_SCOPE})
+                        .del();
                 }
 
-                mediaIds.push(mediaId);
-            }
+                const artifacts = [...parseJson(row.artifacts, []), ...assets];
+                await updateJob(frame, row, {
+                    artifacts: JSON.stringify(artifacts),
+                    updated_at: now(),
+                    updated_by: row.updated_by || row.user_id
+                }, knex);
 
-            // A key that publishJob deleted from S3 must not keep its gallery row.
-            // Scoped to this family's owner_scope; the junction rows cascade via FK.
-            const removedSet = new Set(removedKeys);
-            for (const key of removedSet) {
-                const stillRegistered = assets.some(a => String(a.storage_key || '').trim() === key);
-                if (stillRegistered) {
-                    continue;
-                }
-                await knex('social_media_assets')
-                    .where({storage_key: key, owner_scope: OWNER_SCOPE})
-                    .del();
-            }
-
-            const artifacts = [...parseJson(row.artifacts, []), ...assets];
-            await knex(TABLE).where({id: row.id}).update({
-                artifacts: JSON.stringify(artifacts),
-                updated_at: now(),
-                updated_by: row.updated_by || row.user_id
-            });
-
-            return {
-                media_ids: [...new Set(mediaIds)],
-                count: mediaIds.length,
-                removed_count: removedKeys.length
+                return {
+                    media_ids: [...new Set(mediaIds)],
+                    count: mediaIds.length,
+                    removed_count: removedKeys.length
+                };
             };
+            return models.Base.knex.transaction(async (trx) => {
+                // Lock generation zero too: a legacy read may race promotion to
+                // v2, and its asset changes must roll back on a lost generation.
+                await updateJob(frame, row, modern ? {claim_expires_at: leaseExpiry()} : {claim_generation: 0}, trx);
+                return link(trx);
+            });
         }
     },
 
@@ -841,12 +906,18 @@ const controller = {
             if (!['queued', 'running'].includes(row.status)) {
                 throw new errors.ValidationError({message: tpl(messages.invalidTransition)});
             }
-            await models.Base.knex(TABLE).where({id: row.id}).update({
+            const affected = await models.Base.knex(TABLE).where({id: row.id}).whereIn('status', ['queued', 'running']).update({
                 status: 'canceled',
+                claim_token: null,
+                claim_worker_id: null,
+                claim_expires_at: null,
                 completed_at: now(),
                 updated_at: now(),
                 updated_by: currentUser(frame) || row.updated_by || row.user_id
             });
+            if (!affected) {
+                throw new errors.ValidationError({message: tpl(messages.invalidTransition)});
+            }
             return serialize(await loadRow(row.id));
         }
     },

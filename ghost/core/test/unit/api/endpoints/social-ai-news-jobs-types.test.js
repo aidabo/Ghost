@@ -20,6 +20,8 @@ describe('News job type routing', function () {
         await database.schema.createTable(TABLE, (table) => {
             table.string('id').primary();
             table.integer('progress');
+            table.integer('claim_generation').notNullable().defaultTo(0);
+            table.string('claim_token');
             [
                 'type', 'status', 'current_step_id', 'status_message', 'steps', 'items', 'payload',
                 'result', 'artifacts', 'project_id', 'user_id', 'group_id', 'scope_type',
