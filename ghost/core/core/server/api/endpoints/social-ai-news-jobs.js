@@ -49,6 +49,31 @@ const OWNER_SCOPE = 'news_jobs';
 
 const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 
+const DEFAULT_JOB_TYPE = 'news-read';
+// Lip-sync is reserved for explicit future workers; creating it stays disabled.
+const CLAIMABLE_JOB_TYPES = new Set([DEFAULT_JOB_TYPE, 'news-avatar-lipsync']);
+
+const validateCreateType = payloadInput => {
+    const type = payloadInput.type === undefined ? DEFAULT_JOB_TYPE : payloadInput.type;
+    if (typeof type !== 'string' || type.trim() !== DEFAULT_JOB_TYPE) {
+        throw new errors.ValidationError({message: 'Unsupported news job type.'});
+    }
+    if (payloadInput.steps !== undefined && (!Array.isArray(payloadInput.steps)
+        || [...payloadInput.steps].some(step => !step || Array.isArray(step) || step.type !== type.trim()))) {
+        throw new errors.ValidationError({message: 'News job steps must match the job type.'});
+    }
+    return type.trim();
+};
+
+const acceptedTypes = payloadInput => {
+    const types = payloadInput.accepted_types === undefined ? [DEFAULT_JOB_TYPE] : payloadInput.accepted_types;
+    if (!Array.isArray(types) || !types.length
+        || [...types].some(type => typeof type !== 'string' || !CLAIMABLE_JOB_TYPES.has(type))) {
+        throw new errors.ValidationError({message: 'accepted_types must be a nonempty array of supported news job types.'});
+    }
+    return [...new Set(types)];
+};
+
 // An item in these states is "done" for progress purposes. A failed item still
 // counts as done: the bar measures how far the run got, not how well it went.
 const TERMINAL_ITEM_STATUSES = new Set(['completed', 'failed', 'skipped']);
@@ -341,6 +366,7 @@ const controller = {
             if (!actor) {
                 throw new errors.NoPermissionError({message: tpl(messages.userRequired)});
             }
+            const type = validateCreateType(payloadInput);
             const owner = await models.Base.knex('users').where({id: actor}).first('id');
             if (!owner) {
                 throw new errors.ValidationError({message: 'user_id does not exist.'});
@@ -352,7 +378,6 @@ const controller = {
                 }
             }
 
-            const type = String(payloadInput.type || 'news-read').trim();
             const id = payloadInput.id || ObjectId().toHexString();
             const timestamp = now();
             const steps = buildSteps({...payloadInput, type});
@@ -391,9 +416,10 @@ const controller = {
             if (!integration(frame)) {
                 throw new errors.NoPermissionError({message: tpl(messages.workerRequired)});
             }
+            const types = acceptedTypes(payloadInput);
             const workerId = String(payloadInput.worker_id || 'news-runner');
             const timestamp = now();
-            const row = await models.Base.knex(TABLE).where(function () {
+            const row = await models.Base.knex(TABLE).whereIn('type', types).where(function () {
                 this.where('status', 'queued').orWhere(function () {
                     this.where('status', 'running').andWhere('claim_expires_at', '<', timestamp);
                 });
@@ -401,7 +427,7 @@ const controller = {
             if (!row) {
                 return [];
             }
-            const affected = await models.Base.knex(TABLE).where({id: row.id}).where(function () {
+            const affected = await models.Base.knex(TABLE).where({id: row.id, type: row.type}).whereIn('type', types).where(function () {
                 this.where('status', 'queued').orWhere(function () {
                     this.where('status', 'running').andWhere('claim_expires_at', '<', timestamp);
                 });
