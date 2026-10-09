@@ -46,6 +46,41 @@ const TYPE_IMAGE = 'image';
 const TYPE_VIDEO = 'video';
 const TYPE_AUDIO = 'audio';
 const TYPE_FILE = 'file';
+const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
+
+const getCurrentUserId = frame => frame.options?.context?.user || null;
+const getCurrentIntegrationId = frame => frame.options?.context?.integration || null;
+
+const isAdminUser = async (userId) => {
+    if (!userId) {
+        return false;
+    }
+    // @ts-ignore
+    const user = await models.User.findOne({id: userId}, {withRelated: ['roles']});
+    if (!user) {
+        return false;
+    }
+    const roles = user.related('roles')?.models || [];
+    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
+};
+
+const assertCanReadRow = async ({frame, row}) => {
+    const currentUserId = getCurrentUserId(frame);
+    if (getCurrentIntegrationId(frame) || await isAdminUser(currentUserId)) {
+        return;
+    }
+    if (row.group_id) {
+        // @ts-ignore
+        const group = await models.SocialGroup.findOne({id: row.group_id});
+        if (!group || !(await models.SocialGroup.canAccessGroup(group, currentUserId, 'read'))) {
+            throw new errors.NoPermissionError({message: tpl(messages.noProjectPermission)});
+        }
+        return;
+    }
+    if (String(row.user_id || '') !== String(currentUserId || '')) {
+        throw new errors.NoPermissionError({message: tpl(messages.noProjectPermission)});
+    }
+};
 
 const typeExtensions = {
     [TYPE_IMAGE]: new Set(['gif', 'jpg', 'jpeg', 'png', 'svg', 'svgz', 'webp']),
