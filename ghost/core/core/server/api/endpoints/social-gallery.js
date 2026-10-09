@@ -1705,8 +1705,9 @@ const controller = {
         ],
         permissions: false,
         async query(frame) {
-            const userId = frame.options?.context?.user;
-            if (!userId) {
+            const userId = getCurrentUserId(frame);
+            const integrationId = getCurrentIntegrationId(frame);
+            if (!userId && !integrationId) {
                 throw new errors.NoPermissionError({
                     message: tpl(messages.userRequired)
                 });
@@ -1718,9 +1719,6 @@ const controller = {
                 });
             }
 
-            // Ownership: mirror the projects module rule — deny only when it is
-            // someone else's PERSONAL project (group projects fall through; the
-            // row-level chart_jobs guard in listByAssetTable still scopes data).
             const knex = models.Base.knex;
             const project = await knex('social_ai_projects')
                 .where({id: projectId})
@@ -1730,11 +1728,10 @@ const controller = {
                     message: tpl(messages.projectNotFound, {projectId})
                 });
             }
-            if (String(project.user_id || '') !== String(userId) && !project.group_id) {
-                throw new errors.NoPermissionError({
-                    message: tpl(messages.noProjectPermission)
-                });
-            }
+            // Use the same ownership, admin, integration, and group-membership
+            // policy as the project read endpoint.
+            await assertCanReadRow({frame, row: project});
+            const scopedUserId = userId || null;
 
             const limit = parseLimit(frame.options?.limit);
             const nextCursor = frame.options?.next_cursor || null;
@@ -1743,7 +1740,7 @@ const controller = {
 
             const listed = await listByAssetTable({
                 scope: 'chart_jobs',
-                userId,
+                userId: scopedUserId,
                 groupId: null,
                 jobId: null,
                 chartJobId: null,
