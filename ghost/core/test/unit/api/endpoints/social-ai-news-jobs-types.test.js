@@ -226,4 +226,15 @@ describe('News job type routing', function () {
         assert.equal(created.type, 'news-read');
         assert.deepEqual(created.steps, steps);
     });
+
+    it('allows the lipsync job type only when the explicit feature flag is enabled', async function () {
+        process.env.NEWS_AVATAR_LIPSYNC_ENABLED = 'true';
+        try {
+            const created = await endpoint.add.query(createFrame({type: 'news-avatar-lipsync', payload: {avatar_lipsync: {mode: 'image-audio'}}}));
+            assert.equal(created.type, 'news-avatar-lipsync');
+            assert.equal(created.steps[0].type, 'news-avatar-lipsync');
+        } finally {
+            delete process.env.NEWS_AVATAR_LIPSYNC_ENABLED;
+        }
+    });
 });
