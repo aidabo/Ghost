@@ -1223,7 +1223,7 @@ const resolveUploadContext = async (frame) => {
     // Chart project target: gallery/chart_projects/{projectId}/ (owner_scope
     // 'chart_jobs' + project_id). Direct uploads into a project from the UI.
     if (resolvedScope.scope === 'project') {
-        if (!userId) {
+        if (!userId && !getCurrentIntegrationId(frame)) {
             throw new errors.NoPermissionError({
                 message: tpl(messages.userRequired)
             });
@@ -1234,8 +1234,6 @@ const resolveUploadContext = async (frame) => {
                 message: tpl(messages.projectRequired)
             });
         }
-        // Ownership: mirror the projects rule — deny only someone else's PERSONAL
-        // project (group projects fall through).
         const project = await models.Base.knex('social_ai_projects')
             .where({id: pid})
             .first('id', 'user_id', 'group_id');
@@ -1244,11 +1242,7 @@ const resolveUploadContext = async (frame) => {
                 message: tpl(messages.projectNotFound, {projectId: pid})
             });
         }
-        if (String(project.user_id || '') !== String(userId) && !project.group_id) {
-            throw new errors.NoPermissionError({
-                message: tpl(messages.noProjectPermission)
-            });
-        }
+        await assertCanReadRow({frame, row: project});
         const contentBundleJobId = String(getFrameValue(frame, 'content_bundle_job_id') || '').trim() || null;
         let contentBundleJob = null;
         if (contentBundleJobId) {
