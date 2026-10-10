@@ -2302,6 +2302,17 @@ module.exports = {
         source_name: {type: 'string', maxlength: 500, nullable: true},
         publication_name: {type: 'string', maxlength: 500, nullable: false},
         edition: {type: 'string', maxlength: 500, nullable: false},
+        // Desk links into the tag vocabulary (Ghost tags.id): medium_id is a
+        // classification:"medium" tag, face_id a "face" tag — one DZI job is one
+        // scanned page (面). Plain columns, no FK/index: the display strings above
+        // are authoritative snapshots and a missing tag must never block job
+        // creation. E-book jobs leave both NULL.
+        medium_id: {type: 'string', maxlength: 24, nullable: true},
+        face_id: {type: 'string', maxlength: 24, nullable: true},
+        // Publication day of the scanned edition (posts.published_at semantics):
+        // set on create (backdating) or filled by publish when still unset;
+        // legacy/e-book NULLs fall back to completed_at for display and ordering.
+        published_at: {type: 'dateTime', nullable: true},
         pages: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
         preview_url: {type: 'string', maxlength: 2000, nullable: true},
         error: {type: 'string', maxlength: 2000, nullable: true},
