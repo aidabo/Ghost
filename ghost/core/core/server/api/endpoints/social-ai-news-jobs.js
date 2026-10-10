@@ -51,12 +51,14 @@ const OWNER_SCOPE = 'news_jobs';
 const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 
 const DEFAULT_JOB_TYPE = 'news-read';
-// Lip-sync is reserved for explicit future workers; creating it stays disabled.
+const LIPSYNC_JOB_TYPE = 'news-avatar-lipsync';
 const CLAIMABLE_JOB_TYPES = new Set([DEFAULT_JOB_TYPE, 'news-avatar-lipsync']);
+const lipsyncEnabled = () => String(process.env.NEWS_AVATAR_LIPSYNC_ENABLED || '').toLowerCase() === 'true';
 
 const validateCreateType = payloadInput => {
     const type = payloadInput.type === undefined ? DEFAULT_JOB_TYPE : payloadInput.type;
-    if (typeof type !== 'string' || type.trim() !== DEFAULT_JOB_TYPE) {
+    if (typeof type !== 'string' || ![DEFAULT_JOB_TYPE, LIPSYNC_JOB_TYPE].includes(type.trim())
+        || (type.trim() === LIPSYNC_JOB_TYPE && !lipsyncEnabled())) {
         throw new errors.ValidationError({message: 'Unsupported news job type.'});
     }
     if (payloadInput.steps !== undefined && (!Array.isArray(payloadInput.steps)
