@@ -56,6 +56,9 @@ const serializeRow = (row) => ({
     source_name: row.source_name,
     publication_name: row.publication_name,
     edition: row.edition,
+    medium_id: row.medium_id || null,
+    face_id: row.face_id || null,
+    published_at: row.published_at || null,
     pages: row.pages ? JSON.parse(row.pages) : [],
     preview_url: row.preview_url || null,
     is_public: Boolean(row.is_public),
@@ -351,6 +354,9 @@ const controller = {
             'source_name',
             'publication_name',
             'edition',
+            'medium_id',
+            'face_id',
+            'published_at',
             'preview_url'
         ],
         permissions: false,
@@ -376,6 +382,21 @@ const controller = {
                 });
             }
 
+            // Optional desk links + paper day. The UI sends '' when a field is
+            // cleared — store NULL. Validate the date so a typo cannot reach
+            // the dateTime column as an unparseable string.
+            const mediumId = String(payloadInput.medium_id || '').trim() || null;
+            const faceId = String(payloadInput.face_id || '').trim() || null;
+            const publishedAtRaw = String(payloadInput.published_at || '').trim();
+            let publishedAt = null;
+            if (publishedAtRaw) {
+                const parsed = new Date(publishedAtRaw);
+                if (Number.isNaN(parsed.getTime())) {
+                    throw new errors.ValidationError({message: 'published_at must be a valid date.'});
+                }
+                publishedAt = parsed.toISOString().slice(0, 19).replace('T', ' ');
+            }
+
             // @ts-ignore
             const added = await models.SocialAiDziJob.add({
                 ...payloadInput,
@@ -383,7 +404,10 @@ const controller = {
                 // database column is NOT NULL, so never pass NULL on create.
                 is_public: payloadInput.is_public ?? false,
                 user_id: targetUserId || currentUserId,
-                group_id: groupId
+                group_id: groupId,
+                medium_id: mediumId,
+                face_id: faceId,
+                published_at: publishedAt
             }, frame.options);
 
             // Link this job's source-PDF and preview assets by stamping dzi_job_id
@@ -659,7 +683,14 @@ const controller = {
                 throw new errors.ValidationError({message: tpl(messages.invalidTransition)});
             }
             const now = nowMySql();
-            await knex(TABLE).where({id: row.id}).update({is_public: true, updated_at: now, updated_by: row.updated_by || row.user_id});
+            // posts semantics (models/post.js): publishing stamps published_at
+            // only when it is still unset — a backdated date survives, and
+            // unpublish keeps whatever is stored.
+            const update = {is_public: true, updated_at: now, updated_by: row.updated_by || row.user_id};
+            if (!row.published_at) {
+                update.published_at = now;
+            }
+            await knex(TABLE).where({id: row.id}).update(update);
             return serializeRow(await loadRowOrThrow(knex, row.id));
         }
     },

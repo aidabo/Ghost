@@ -10,6 +10,9 @@ const serialize = row => ({
     id: row.id,
     publication_name: row.publication_name,
     edition: row.edition,
+    medium_id: row.medium_id || null,
+    face_id: row.face_id || null,
+    published_at: row.published_at || null,
     source_name: row.source_name || null,
     status: row.status,
     pages: row.pages ? JSON.parse(row.pages) : [],
@@ -38,6 +41,9 @@ const controller = {
             const page = Math.max(1, Number(frame.options?.page || 1));
             const rows = await models.Base.knex('social_ai_dzi_jobs')
                 .where({status: 'completed', is_public: true})
+                // Sort by paper day: published_at when present, completed_at for
+                // legacy/e-book rows. A delayed scan must not jump to the top.
+                .orderByRaw('coalesce(published_at, completed_at) desc')
                 .orderBy('completed_at', 'desc')
                 .limit(limit)
                 .offset((page - 1) * limit);
