@@ -31,6 +31,8 @@ module.exports = function apiRoutes() {
     // ## Posts
     router.get('/posts', mw.authAdminApi, http(api.posts.browse));
     router.get('/posts/export', mw.authAdminApi, http(api.posts.exportCSV));
+    // Staff read of post_media (news desk 素材 tab) — includes drafts, can scope by post_id.
+    router.get('/post-media', mw.authAdminApi, http(api.postMediaAdmin.browse));
 
     router.post('/posts', mw.authAdminApi, http(api.posts.add));
     router.del('/posts', mw.authAdminApi, http(api.posts.bulkDestroy));
