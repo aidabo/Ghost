@@ -1,7 +1,7 @@
 const errors = require('@tryghost/errors');
 const models = require('../../models');
 
-const TABLE = 'social_ai_news_broadcast_selections';
+const TABLE = 'social_ai_avatar_broadcast_selections';
 const JOBS = 'social_ai_news_jobs';
 const JUNCTION = 'social_ai_news_job_media';
 const ASSETS = 'social_media_assets';
@@ -66,11 +66,15 @@ const renditionOf = (itemKey, name) => {
 };
 
 const selectionQuery = (knex) => knex(`${TABLE} as s`)
-    .leftJoin(`${JUNCTION} as jm`, 'jm.id', 's.news_job_media_id')
-    .leftJoin(`${ASSETS} as a`, 'a.id', 'jm.media_id')
+    .leftJoin(`${ASSETS} as a`, 'a.id', 's.media_id')
+    .leftJoin(`${JUNCTION} as jm`, function () {
+        this.on('jm.media_id', '=', 'a.id')
+            .andOn('jm.post_id', '=', 's.post_id')
+            .andOn('jm.news_job_id', '=', 'a.news_job_id');
+    })
     .leftJoin(`${JOBS} as j`, 'j.id', 'jm.news_job_id')
     .select(
-        's.post_id', 's.project_id', 's.news_job_media_id', 's.rendition', 's.revision', 's.updated_at',
+        's.post_id', 's.project_id', 's.rendition', 's.revision', 's.updated_at',
         's.updated_by', 'jm.item_key', 'jm.news_job_id', 'a.id as media_id', 'a.storage_url', 'a.storage_key', 'a.original_filename'
     );
 
@@ -79,7 +83,6 @@ const serializeSelection = row => ({
     project_id: row.project_id || null,
     news_job_id: row.news_job_id || null,
     item_key: row.item_key || null,
-    news_job_media_id: row.news_job_media_id,
     media_id: row.media_id || null,
     rendition: row.rendition,
     name: row.original_filename || String(row.storage_key || '').split('/').pop() || null,
@@ -169,14 +172,13 @@ const controller = {
                     }
                     if (!(await isAdmin(actor))) {
                         if (!existing || existing.updated_by !== actor) {
-                            if (!existing?.news_job_media_id) {
+                            if (!existing?.media_id) {
                                 throw new errors.NoPermissionError({message: 'You are not allowed to restore this broadcast.'});
                             }
-                            const sourceJob = await trx(`${JUNCTION} as jm`)
-                                .join(`${JOBS} as j`, 'j.id', 'jm.news_job_id')
-                                .where('jm.id', existing.news_job_media_id)
-                                .select('j.*')
-                                .first();
+                            const selectedMedia = await trx(ASSETS).where({id: existing.media_id}).first();
+                            const sourceJob = selectedMedia?.news_job_id
+                                ? await trx(JOBS).where({id: selectedMedia.news_job_id}).first()
+                                : null;
                             if (!sourceJob) {
                                 throw new errors.NoPermissionError({message: 'You are not allowed to restore this broadcast.'});
                             }
@@ -187,7 +189,7 @@ const controller = {
                     const next = {
                         post_id: postId,
                         project_id: null,
-                        news_job_media_id: null,
+                        media_id: null,
                         rendition: 'legacy-default',
                         revision: actualRevision + 1,
                         updated_by: actor,
@@ -232,7 +234,7 @@ const controller = {
                     'a.owner_scope': 'news_jobs',
                     'a.project_id': job.project_id || null
                 })
-                .select('jm.id as news_job_media_id', 'jm.media_id', 'a.storage_url', 'a.storage_key', 'a.original_filename')
+                .select('jm.media_id', 'a.storage_url', 'a.storage_key', 'a.original_filename')
                 .then(rows => rows.find(row => (row.original_filename || String(row.storage_key || '').split('/').pop()) === requestedName));
             if (!candidate || !/^https?:\/\//i.test(String(candidate.storage_url || ''))) {
                 throw new errors.NotFoundError({message: 'The selected broadcast artifact is not available.'});
@@ -260,7 +262,7 @@ const controller = {
                 const next = {
                     post_id: postId,
                     project_id: job.project_id || null,
-                    news_job_media_id: candidate.news_job_media_id,
+                    media_id: candidate.media_id,
                     rendition,
                     revision: actualRevision + 1,
                     updated_by: actor,

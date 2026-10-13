@@ -33,6 +33,7 @@ describe('News broadcast selections', function () {
             table.string('asset_type');
             table.string('owner_scope');
             table.string('project_id');
+            table.string('news_job_id');
             table.string('storage_url');
             table.string('storage_key');
             table.string('original_filename');
@@ -45,10 +46,10 @@ describe('News broadcast selections', function () {
             table.string('item_key');
             table.string('post_id');
         });
-        await database.schema.createTable('social_ai_news_broadcast_selections', (table) => {
+        await database.schema.createTable('social_ai_avatar_broadcast_selections', (table) => {
             table.string('post_id').primary();
             table.string('project_id');
-            table.string('news_job_media_id').unique();
+            table.string('media_id').unique();
             table.string('rendition');
             table.integer('revision');
             table.string('created_by');
@@ -78,7 +79,7 @@ describe('News broadcast selections', function () {
     });
 
     beforeEach(async function () {
-        for (const table of ['social_ai_news_broadcast_selections', 'social_ai_news_job_media', 'social_media_assets', 'social_ai_news_jobs', 'posts']) {
+        for (const table of ['social_ai_avatar_broadcast_selections', 'social_ai_news_job_media', 'social_media_assets', 'social_ai_news_jobs', 'posts']) {
             await database(table).del();
         }
         await database('posts').insert({id: 'aaaaaaaaaaaaaaaaaaaaaaaa'});
@@ -93,8 +94,8 @@ describe('News broadcast selections', function () {
             items: JSON.stringify([{key: 'story-one', post_id: 'aaaaaaaaaaaaaaaaaaaaaaaa', status: 'completed'}])
         });
         await database('social_media_assets').insert([
-            {id: 'eeeeeeeeeeeeeeeeeeeeeeee', asset_type: 'video', owner_scope: 'news_jobs', project_id: 'dddddddddddddddddddddddd', storage_url: 'https://cdn.example/story-one-avatar.mp4', storage_key: 'projects/p/video/story-one-avatar.mp4', original_filename: 'story-one-avatar.mp4'},
-            {id: 'ffffffffffffffffffffffff', asset_type: 'video', owner_scope: 'news_jobs', project_id: 'dddddddddddddddddddddddd', storage_url: 'https://cdn.example/story-one-photo-avatar-lipsync-abcdefabcdefabcdefabcdef.mp4', storage_key: 'projects/p/video/story-one-photo-avatar-lipsync-abcdefabcdefabcdefabcdef.mp4', original_filename: 'story-one-photo-avatar-lipsync-abcdefabcdefabcdefabcdef.mp4'}
+            {id: 'eeeeeeeeeeeeeeeeeeeeeeee', asset_type: 'video', owner_scope: 'news_jobs', project_id: 'dddddddddddddddddddddddd', news_job_id: 'bbbbbbbbbbbbbbbbbbbbbbbb', storage_url: 'https://cdn.example/story-one-avatar.mp4', storage_key: 'projects/p/video/story-one-avatar.mp4', original_filename: 'story-one-avatar.mp4'},
+            {id: 'ffffffffffffffffffffffff', asset_type: 'video', owner_scope: 'news_jobs', project_id: 'dddddddddddddddddddddddd', news_job_id: 'cccccccccccccccccccccccc', storage_url: 'https://cdn.example/story-one-photo-avatar-lipsync-abcdefabcdefabcdefabcdef.mp4', storage_key: 'projects/p/video/story-one-photo-avatar-lipsync-abcdefabcdefabcdefabcdef.mp4', original_filename: 'story-one-photo-avatar-lipsync-abcdefabcdefabcdefabcdef.mp4'}
         ]);
         await database('social_ai_news_job_media').insert([
             {id: '111111111111111111111111', news_job_id: 'bbbbbbbbbbbbbbbbbbbbbbbb', media_id: 'eeeeeeeeeeeeeeeeeeeeeeee', role: 'output', item_key: 'story-one', post_id: 'aaaaaaaaaaaaaaaaaaaaaaaa'},
@@ -121,7 +122,7 @@ describe('News broadcast selections', function () {
         assert.equal(next.revision, 2);
         assert.equal(next.rendition, 'photo-slideshow-lipsync');
         assert.equal(next.media_id, 'ffffffffffffffffffffffff');
-        assert.equal(await database('social_ai_news_broadcast_selections').where({post_id: 'aaaaaaaaaaaaaaaaaaaaaaaa'}).count('* as count').first().then(row => Number(row.count)), 1);
+        assert.equal(await database('social_ai_avatar_broadcast_selections').where({post_id: 'aaaaaaaaaaaaaaaaaaaaaaaa'}).count('* as count').first().then(row => Number(row.count)), 1);
     });
 
     it('rejects stale revisions and artifacts linked to another post', async function () {
@@ -159,6 +160,6 @@ describe('News broadcast selections', function () {
         assert.equal(restored.rendition, 'legacy-default');
         assert.equal(restored.revision, 2);
         assert.equal(restored.media_id, null);
-        assert.equal((await database('social_ai_news_broadcast_selections').where({post_id: 'aaaaaaaaaaaaaaaaaaaaaaaa'}).first()).revision, 2);
+        assert.equal((await database('social_ai_avatar_broadcast_selections').where({post_id: 'aaaaaaaaaaaaaaaaaaaaaaaa'}).first()).revision, 2);
     });
 });
