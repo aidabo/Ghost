@@ -30,6 +30,9 @@ const User = {
     ensureMediaFolderAlias: async () => 'alias'
 };
 
+// knex stand-in answering only the public-group lookup.
+const publicGroupsKnex = () => ({where: () => ({pluck: async () => ['pub']})});
+
 // Load `target` with its (and staff-scope's) `models` require replaced, so no
 // Ghost model, config or storage is initialised.
 const loadWith = (target, models, extraStubs = {}) => {
@@ -60,51 +63,63 @@ describe('staff-scope', function () {
     let staffScope;
 
     before(function () {
-        staffScope = loadWith(helperPath, {User});
+        staffScope = loadWith(helperPath, {User, Base: {knex: publicGroupsKnex}});
     });
 
     it('classifies system admins, Super Editor and others', async function () {
-        assert.deepEqual(await staffScope.getStaffScope('owner'), {isSystemAdmin: true, isNoGroupReader: false});
-        assert.deepEqual(await staffScope.getStaffScope('admin'), {isSystemAdmin: true, isNoGroupReader: false});
-        assert.deepEqual(await staffScope.getStaffScope('legacy'), {isSystemAdmin: true, isNoGroupReader: false});
-        assert.deepEqual(await staffScope.getStaffScope('se'), {isSystemAdmin: false, isNoGroupReader: true});
-        assert.deepEqual(await staffScope.getStaffScope('se-admin'), {isSystemAdmin: true, isNoGroupReader: false});
-        assert.deepEqual(await staffScope.getStaffScope('editor'), {isSystemAdmin: false, isNoGroupReader: false});
-        assert.deepEqual(await staffScope.getStaffScope('missing'), {isSystemAdmin: false, isNoGroupReader: false});
-        assert.deepEqual(await staffScope.getStaffScope(null), {isSystemAdmin: false, isNoGroupReader: false});
+        const none = {isSystemAdmin: false, isNoGroupReader: false, publicGroupIds: []};
+        const admin = {isSystemAdmin: true, isNoGroupReader: false, publicGroupIds: []};
+        assert.deepEqual(await staffScope.getStaffScope('owner'), admin);
+        assert.deepEqual(await staffScope.getStaffScope('admin'), admin);
+        assert.deepEqual(await staffScope.getStaffScope('legacy'), admin);
+        assert.deepEqual(await staffScope.getStaffScope('se'), {isSystemAdmin: false, isNoGroupReader: true, publicGroupIds: ['pub']});
+        assert.deepEqual(await staffScope.getStaffScope('se-admin'), admin);
+        assert.deepEqual(await staffScope.getStaffScope('editor'), none);
+        assert.deepEqual(await staffScope.getStaffScope('missing'), none);
+        assert.deepEqual(await staffScope.getStaffScope(null), none);
     });
 
-    it('lets Super Editor past the row check only on rows without a group', function () {
-        const se = {isSystemAdmin: false, isNoGroupReader: true};
-        const admin = {isSystemAdmin: true, isNoGroupReader: false};
-        const editor = {isSystemAdmin: false, isNoGroupReader: false};
+    it('lets Super Editor past the row check only on newsroom rows (no group / public group)', function () {
+        const se = {isSystemAdmin: false, isNoGroupReader: true, publicGroupIds: ['pub']};
+        const admin = {isSystemAdmin: true, isNoGroupReader: false, publicGroupIds: []};
+        const editor = {isSystemAdmin: false, isNoGroupReader: false, publicGroupIds: []};
         const model = groupId => ({get: key => (key === 'group_id' ? groupId : undefined)});
 
         assert.equal(staffScope.canReadRowAsNoGroupReader(se, {group_id: null}), true);
         assert.equal(staffScope.canReadRowAsNoGroupReader(se, model(null)), true);
+        assert.equal(staffScope.canReadRowAsNoGroupReader(se, {group_id: 'pub'}), true);
+        assert.equal(staffScope.canReadRowAsNoGroupReader(se, model('pub')), true);
         assert.equal(staffScope.canReadRowAsNoGroupReader(se, {group_id: 'family'}), false);
         assert.equal(staffScope.canReadRowAsNoGroupReader(se, model('family')), false);
         assert.equal(staffScope.canReadRowAsNoGroupReader(se, null), false);
         assert.equal(staffScope.canReadRowAsNoGroupReader(editor, {group_id: null}), false);
+        assert.equal(staffScope.canReadRowAsNoGroupReader(editor, {group_id: 'pub'}), false);
 
         assert.equal(staffScope.bypassesRowCheck(admin, {group_id: 'family'}), true);
         assert.equal(staffScope.bypassesRowCheck(se, {group_id: 'family'}), false);
         assert.equal(staffScope.bypassesRowCheck(se, {group_id: null}), true);
+        assert.equal(staffScope.bypassesRowCheck(se, {group_id: 'pub'}), true);
         assert.equal(staffScope.bypassesRowCheck(editor, {group_id: null}), false);
         assert.equal(staffScope.bypassesRowCheck(null, {group_id: null}), false);
+
+        assert.equal(staffScope.isNewsroomGroup(se, 'pub'), true);
+        assert.equal(staffScope.isNewsroomGroup(se, 'family'), false);
+        assert.equal(staffScope.isNewsroomGroup(editor, 'pub'), false);
     });
 
     it('builds an NQL scope a caller filter cannot widen', function () {
         const db = knex({client: 'mysql2'});
         const sql = filter => nql(filter).querySQL(db('t')).toString();
-        const clause = staffScope.noGroupOrOwnFilter('u1', 'user_id');
+        const se = {isNoGroupReader: true, publicGroupIds: ['pub1', 'pub2']};
+        const seNoPublic = {isNoGroupReader: true, publicGroupIds: []};
+        const clause = staffScope.newsroomOrOwnFilter(se, 'u1', 'user_id');
 
-        assert.equal(clause, '(group_id:null,user_id:u1)');
-        assert.equal(staffScope.noGroupOrOwnFilter('u1'), '(group_id:null,created_by:u1)');
+        assert.equal(clause, '(group_id:null,group_id:[pub1,pub2],user_id:u1)');
+        assert.equal(staffScope.newsroomOrOwnFilter(seNoPublic, 'u1'), '(group_id:null,created_by:u1)');
         assert.equal(staffScope.andFilter('', clause), clause);
         assert.equal(
             sql(staffScope.andFilter('status:aa,status:bb', clause)),
-            'select * from `t` where ((`t`.`status` = \'aa\' or `t`.`status` = \'bb\') and (`t`.`group_id` is null or `t`.`user_id` = \'u1\'))'
+            'select * from `t` where ((`t`.`status` = \'aa\' or `t`.`status` = \'bb\') and (`t`.`group_id` is null or `t`.`group_id` in (\'pub1\', \'pub2\') or `t`.`user_id` = \'u1\'))'
         );
     });
 });
@@ -139,6 +154,11 @@ describe('Super Editor scope on knex-backed listings', function () {
             ['media_id', 'role', 'post_id'].forEach(column => table.string(column));
         });
         await database.schema.createTable('estate_property_media', table => table.string('media_id'));
+        await database.schema.createTable('social_groups', (table) => {
+            table.string('id').primary();
+            table.string('type');
+        });
+        await database('social_groups').insert([{id: 'pub', type: 'public'}, {id: 'family', type: 'family'}]);
         for (const name of [
             'social_ai_chart_jobs', 'social_ai_content_bundle_jobs', 'social_ai_media_jobs', 'social_ai_dzi_jobs',
             'social_ai_projects', 'social_charts'
@@ -165,7 +185,8 @@ describe('Super Editor scope on knex-backed listings', function () {
         // job, one from a family-group job whose asset row kept a null group_id.
         await database('social_ai_chart_jobs').insert([
             {id: 'cj-open', user_id: 'editor', group_id: null},
-            {id: 'cj-family', user_id: 'editor', group_id: 'family'}
+            {id: 'cj-family', user_id: 'editor', group_id: 'family'},
+            {id: 'cj-pub', user_id: 'editor', group_id: 'pub'}
         ]);
         await database('social_media_assets').insert([
             {id: 'a-open', storage_key: 'k1', owner_scope: 'chart_jobs', chart_job_id: 'cj-open', created_at: '2000-01-01 00:00:01'},
@@ -173,12 +194,17 @@ describe('Super Editor scope on knex-backed listings', function () {
             {id: 'a-family-row', storage_key: 'k3', owner_scope: 'chart_jobs', group_id: 'family', created_at: '2000-01-01 00:00:03'},
             {id: 'u-other', storage_key: 'k4', owner_scope: 'user', user_id: 'editor', created_at: '2000-01-01 00:00:04'},
             {id: 'u-other-family', storage_key: 'k5', owner_scope: 'user', user_id: 'editor', group_id: 'family', created_at: '2000-01-01 00:00:05'},
-            {id: 'u-own', storage_key: 'k6', owner_scope: 'user', user_id: 'se', created_at: '2000-01-01 00:00:06'}
+            {id: 'u-own', storage_key: 'k6', owner_scope: 'user', user_id: 'se', created_at: '2000-01-01 00:00:06'},
+            {id: 'a-pub-job', storage_key: 'k7', owner_scope: 'chart_jobs', chart_job_id: 'cj-pub', created_at: '2000-01-01 00:00:07'},
+            {id: 'a-pub-row', storage_key: 'k8', owner_scope: 'chart_jobs', group_id: 'pub', created_at: '2000-01-01 00:00:08'},
+            {id: 'a-pub-row-family-job', storage_key: 'k9', owner_scope: 'chart_jobs', group_id: 'pub', chart_job_id: 'cj-family', created_at: '2000-01-01 00:00:09'},
+            {id: 'u-other-pub', storage_key: 'k10', owner_scope: 'media_jobs', user_id: 'editor', group_id: 'pub', created_at: '2000-01-01 00:00:10'}
         ]);
         await database('social_ai_news_jobs').insert([
             {id: 'n-open', user_id: 'editor', group_id: null, status: 'queued', updated_at: '2000-01-01 00:00:01'},
             {id: 'n-family', user_id: 'editor', group_id: 'family', status: 'queued', updated_at: '2000-01-01 00:00:02'},
-            {id: 'n-own-family', user_id: 'se', group_id: 'family', status: 'queued', updated_at: '2000-01-01 00:00:03'}
+            {id: 'n-own-family', user_id: 'se', group_id: 'family', status: 'queued', updated_at: '2000-01-01 00:00:03'},
+            {id: 'n-pub', user_id: 'editor', group_id: 'pub', status: 'queued', updated_at: '2000-01-01 00:00:04'}
         ]);
     });
 
@@ -199,14 +225,17 @@ describe('Super Editor scope on knex-backed listings', function () {
             });
         });
 
-        it('chart-job gallery: Super Editor sees no-group artifacts, never family ones', async function () {
-            assert.deepEqual(ids(await gallery.chartjobs.query(userFrame('se'))), ['a-open']);
-            assert.deepEqual(ids(await gallery.chartjobs.query(userFrame('editor'))), ['a-family-job', 'a-open']);
+        it('chart-job gallery: Super Editor sees no-group and public-group artifacts, never family ones', async function () {
+            // u-other-pub: a media-job upload in the public group (the chart-job
+            // listing also carries media_jobs rows); a-pub-row-family-job is
+            // excluded because its producing job is in the family group.
+            assert.deepEqual(ids(await gallery.chartjobs.query(userFrame('se'))), ['a-open', 'a-pub-job', 'a-pub-row', 'u-other-pub']);
+            assert.deepEqual(ids(await gallery.chartjobs.query(userFrame('editor'))), ['a-family-job', 'a-open', 'a-pub-job', 'a-pub-row-family-job', 'u-other-pub']);
             assert.deepEqual(ids(await gallery.chartjobs.query(userFrame('owner'))), []);
         });
 
-        it('user gallery: Super Editor sees every no-group upload, others only their own', async function () {
-            assert.deepEqual(ids(await gallery.user.query(userFrame('se'))), ['u-other', 'u-own']);
+        it('user gallery: Super Editor sees every no-group / public-group upload, others only their own no-group ones', async function () {
+            assert.deepEqual(ids(await gallery.user.query(userFrame('se'))), ['u-other', 'u-other-pub', 'u-own']);
             assert.deepEqual(ids(await gallery.user.query(userFrame('editor'))), ['u-other']);
         });
     });
@@ -222,20 +251,22 @@ describe('Super Editor scope on knex-backed listings', function () {
             });
         });
 
-        it('browse: Super Editor sees no-group jobs + its own, Editor only its own', async function () {
-            assert.deepEqual(ids(await news.browse.query(userFrame('se'))), ['n-open', 'n-own-family']);
-            assert.deepEqual(ids(await news.browse.query(userFrame('editor'))), ['n-family', 'n-open']);
-            assert.deepEqual(ids(await news.browse.query(userFrame('owner'))), ['n-family', 'n-open', 'n-own-family']);
+        it('browse: Super Editor sees no-group / public-group jobs + its own, Editor only its own', async function () {
+            assert.deepEqual(ids(await news.browse.query(userFrame('se'))), ['n-open', 'n-own-family', 'n-pub']);
+            assert.deepEqual(ids(await news.browse.query(userFrame('editor'))), ['n-family', 'n-open', 'n-pub']);
+            assert.deepEqual(ids(await news.browse.query(userFrame('owner'))), ['n-family', 'n-open', 'n-own-family', 'n-pub']);
         });
 
         it('read: Super Editor reads a no-group job, not a family one', async function () {
             assert.equal((await news.read.query(userFrame('se', {id: 'n-open'}))).id, 'n-open');
+            assert.equal((await news.read.query(userFrame('se', {id: 'n-pub'}))).id, 'n-pub');
             await assert.rejects(news.read.query(userFrame('se', {id: 'n-family'})), {errorType: 'NoPermissionError'});
             await assert.rejects(news.read.query(userFrame('legacy-none', {id: 'n-open'})), {errorType: 'NoPermissionError'});
         });
 
         it('cancel: Super Editor gets no write on another user\'s no-group job', async function () {
             await assert.rejects(news.cancel.query(userFrame('se', {id: 'n-open'})), {errorType: 'NoPermissionError'});
+            await assert.rejects(news.cancel.query(userFrame('se', {id: 'n-pub'})), {errorType: 'NoPermissionError'});
         });
     });
 });
@@ -244,7 +275,8 @@ describe('Super Editor scope on social charts (narrowed from admin bypass)', fun
     let charts;
     const rows = {
         open: {id: 'open', created_by: 'editor', group_id: null},
-        family: {id: 'family-chart', created_by: 'editor', group_id: 'family'}
+        family: {id: 'family-chart', created_by: 'editor', group_id: 'family'},
+        pub: {id: 'pub-chart', created_by: 'editor', group_id: 'pub'}
     };
     const asModel = row => ({
         get: key => row[key],
@@ -254,6 +286,7 @@ describe('Super Editor scope on social charts (narrowed from admin bypass)', fun
     });
     const models = {
         User,
+        Base: {knex: publicGroupsKnex},
         SocialChart: {
             findOne: async ({id}) => {
                 const row = Object.values(rows).find(r => r.id === id);
@@ -285,6 +318,9 @@ describe('Super Editor scope on social charts (narrowed from admin bypass)', fun
         await assert.rejects(charts.read.query(frame('se', {}, {id: 'family-chart'})), {errorType: 'NoPermissionError'});
         await charts.read.query(frame('owner', {}, {id: 'family-chart'}));
         await assert.rejects(charts.read.query(frame('editor-2', {}, {id: 'open'})), {errorType: 'NoPermissionError'});
+        // Public group: Super Editor reads without membership; Editor does not gain it.
+        assert.equal((await charts.read.query(frame('se', {}, {id: 'pub-chart'}))).get('can_edit'), true);
+        await assert.rejects(charts.read.query(frame('editor-2', {}, {id: 'pub-chart'})), {errorType: 'NoPermissionError'});
     });
 
     it('write: no-group chart yes, family chart and family-group create no', async function () {
@@ -293,11 +329,19 @@ describe('Super Editor scope on social charts (narrowed from admin bypass)', fun
         await assert.rejects(charts.destroy.query(frame('se', {id: 'family-chart'})), {errorType: 'NoPermissionError'});
         await assert.rejects(charts.add.query(frame('se', {}, {socialcharts: [{title: 'x', group_id: 'family'}]})), {errorType: 'NoPermissionError'});
         await charts.add.query(frame('owner', {}, {socialcharts: [{title: 'x', group_id: 'family'}]}));
+        await charts.edit.query(frame('se', {id: 'pub-chart'}, {socialcharts: [{title: 'x'}]}));
+        await charts.add.query(frame('se', {}, {socialcharts: [{title: 'x', group_id: 'pub'}]}));
+        await assert.rejects(charts.add.query(frame('editor', {}, {socialcharts: [{title: 'x', group_id: 'pub'}]})), {errorType: 'NoPermissionError'});
     });
 
     it('browse: Super Editor gets the no-group-or-own clause AND-ed onto the caller filter', async function () {
         const result = await charts.browse.query(frame('se', {filter: 'status:aa,status:bb'}));
-        assert.equal(result.options.filter, '(status:aa,status:bb)+(group_id:null,created_by:se)');
+        assert.equal(result.options.filter, '(status:aa,status:bb)+(group_id:null,group_id:[pub],created_by:se)');
+        // A public group it is not a member of: no own-rows restriction.
+        const pubResult = await charts.browse.query(frame('se', {group_id: 'pub'}));
+        assert.equal(pubResult.options.filter, 'group_id:pub');
+        const familyResult = await charts.browse.query(frame('se', {group_id: 'family'}));
+        assert.equal(familyResult.options.filter, 'group_id:family+created_by:se');
         const adminResult = await charts.browse.query(frame('owner', {filter: 'status:aa'}));
         assert.equal(adminResult.options.filter, 'status:aa');
         const editorResult = await charts.browse.query(frame('editor', {}));

@@ -67,7 +67,8 @@ const assertAccess = async (frame, row, write = false) => {
     const actor = currentUser(frame);
     const scope = await staffScope.getStaffScope(actor);
     if (integration(frame) || scope.isSystemAdmin) return;
-    // Super Editor reads every no-group job; writes stay owner-only.
+    // Super Editor reads every newsroom (no-group / public-group) job; writes
+    // stay owner-only.
     if (!write && staffScope.canReadRowAsNoGroupReader(scope, row)) return;
     if (!actor || row.user_id !== actor) throw new errors.NoPermissionError({message: 'You are not allowed to access this content bundle job.'});
     if (write && row.group_id) {
@@ -95,8 +96,11 @@ const controller = {
             const query = models.Base.knex(TABLE).select('*').orderBy('updated_at', 'desc');
             const scope = await staffScope.getStaffScope(actor);
             if (scope.isNoGroupReader && !integration(frame)) {
-                // Super Editor: every no-group job + its own.
-                query.where(qb => qb.whereNull('group_id').orWhere('user_id', actor));
+                // Super Editor: every newsroom job + its own.
+                query.where((qb) => {
+                    staffScope.whereNewsroomGroup(qb, 'group_id', scope);
+                    qb.orWhere('user_id', actor);
+                });
             } else if (!integration(frame) && !scope.isSystemAdmin) {
                 query.where('user_id', actor);
             }

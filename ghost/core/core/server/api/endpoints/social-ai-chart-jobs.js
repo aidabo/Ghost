@@ -108,7 +108,8 @@ const deriveJobStatus = (steps) => {
 };
 
 // System admin (Owner / Administrator / Admin). Super Editor is not: it only
-// reads no-group jobs/projects (see browse / assertProjectAccess), writes as a
+// reads newsroom (no-group / public-group) jobs/projects (see browse /
+// assertProjectAccess), writes as a
 // normal user.
 // @ts-ignore
 const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
@@ -150,8 +151,12 @@ const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) =
     }
 
     const currentUserId = getCurrentUserId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
-    if (isAdmin) {
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (scope.isSystemAdmin) {
+        return;
+    }
+    // Super Editor reads a public group without membership (writes unchanged).
+    if (permission === 'read' && staffScope.isNewsroomGroup(scope, groupId)) {
         return;
     }
 
@@ -394,13 +399,21 @@ const controller = {
                     filter: baseFilter ? `${baseFilter}+project_id:${projectId}` : `project_id:${projectId}`
                 };
             } else if (!integrationId && !isAdmin && !groupId && targetUserId) {
-                // Super Editor also sees every no-group job.
+                // Super Editor also sees every newsroom (no-group / public-group) job.
                 const baseFilter = String(frame.options?.filter || '').trim();
                 options = {
                     ...options,
                     filter: scope.isNoGroupReader
-                        ? staffScope.andFilter(baseFilter, staffScope.noGroupOrOwnFilter(targetUserId, 'user_id'))
+                        ? staffScope.andFilter(baseFilter, staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id'))
                         : (baseFilter ? `${baseFilter}+user_id:${targetUserId}` : `user_id:${targetUserId}`)
+                };
+            } else if (!integrationId && !isAdmin && groupId && scope?.isNoGroupReader) {
+                // Super Editor may pass a public group it is not a member of, so
+                // the group must reach the query (the bare group_id option is
+                // not a permitted findPage option).
+                options = {
+                    ...options,
+                    filter: staffScope.andFilter(String(frame.options?.filter || '').trim(), `group_id:${groupId}`)
                 };
             }
 

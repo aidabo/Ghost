@@ -111,7 +111,8 @@ const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) =
 
     const currentUserId = getCurrentUserId(frame);
     const scope = await staffScope.getStaffScope(currentUserId);
-    if (scope.isSystemAdmin) {
+    // Super Editor: a public group needs no membership (read or write).
+    if (scope.isSystemAdmin || staffScope.isNewsroomGroup(scope, groupId)) {
         return;
     }
 
@@ -169,10 +170,10 @@ const assertCanWriteRow = async ({ frame, row }) => {
     if (integrationId) {
         return;
     }
-    // Super Editor may mutate jobs with no group (newsroom jobs); group jobs
-    // go through the author / system admin rule below.
+    // Super Editor may mutate newsroom jobs (no group or a public group);
+    // other group jobs go through the author / system admin rule below.
     const scope = await staffScope.getStaffScope(currentUserId);
-    if (scope.isNoGroupReader && staffScope.isNoGroupRow(row)) {
+    if (staffScope.canReadRowAsNoGroupReader(scope, row)) {
         return;
     }
     const targetUserId = await resolveTargetUserId(frame);
@@ -295,11 +296,11 @@ const controller = {
             // Scope non-admins to their own jobs; system admin sees all.
             const scope = await staffScope.getStaffScope(currentUserId);
             if (scope.isNoGroupReader) {
-                // Super Editor: the requested (member) group, else every
-                // no-group job + its own. Composed into the NQL filter, which
+                // Super Editor: the requested (member or public) group, else
+                // every newsroom job + its own. Composed into the NQL filter, which
                 // findPage applies (the bare user_id/group_id options are not
                 // permitted findPage options and never reach the query).
-                const clause = groupId ? `group_id:${groupId}` : staffScope.noGroupOrOwnFilter(currentUserId, 'user_id');
+                const clause = groupId ? `group_id:${groupId}` : staffScope.newsroomOrOwnFilter(scope, currentUserId, 'user_id');
                 // @ts-ignore
                 frame.options.filter = staffScope.andFilter(frame.options.filter, clause);
             } else if (!scope.isSystemAdmin && targetUserId) {

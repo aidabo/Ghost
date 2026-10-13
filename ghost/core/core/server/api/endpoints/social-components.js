@@ -137,8 +137,8 @@ const enforceReadAccessForEntry = async (entry, userId, scope) => {
 };
 
 const enforceWriteAccessForEntry = async (entry, userId, scope) => {
-    // System admin writes anything; Super Editor only rows with no group (its
-    // newsroom rows). Group rows go through the normal path below.
+    // System admin writes anything; Super Editor only newsroom rows (no group
+    // or a public group). Other group rows go through the normal path below.
     if (staffScope.bypassesRowCheck(scope, entry)) {
         return;
     }
@@ -161,7 +161,7 @@ const enforceWriteAccessForEntry = async (entry, userId, scope) => {
 
 // Stamp a computed `can_edit` on each returned model so the frontend shows/hides
 // edit controls without re-implementing the rule (backend single source of
-// truth). Mirrors the write gate: system admin / Super Editor-on-no-group bypass,
+// truth). Mirrors the write gate: system admin / Super Editor-on-newsroom bypass,
 // else canEditGroupContent.
 const attachCanEdit = async (entryOrCollection, userId, scope) => {
     let list = [];
@@ -224,14 +224,16 @@ const controller = {
 
             if (!scope.isSystemAdmin) {
                 if (requestedGroupId) {
-                    const groupReadable = await canReadGroup(requestedGroupId, userId);
+                    // Super Editor reads a public group without membership.
+                    const groupReadable = staffScope.isNewsroomGroup(scope, requestedGroupId) || await canReadGroup(requestedGroupId, userId);
                     if (!groupReadable) {
                         appendCreatedByFilter(frame, userId);
                     }
                 } else if (scope.isNoGroupReader) {
-                    // Super Editor: every no-group row + its own rows. Always
-                    // AND-ed, so a caller filter cannot widen it.
-                    const clause = staffScope.noGroupOrOwnFilter(userId);
+                    // Super Editor: every newsroom (no-group / public-group)
+                    // row + its own rows. Always AND-ed, so a caller filter
+                    // cannot widen it.
+                    const clause = staffScope.newsroomOrOwnFilter(scope, userId);
                     frame.options.filter = staffScope.andFilter(frame.options.filter, clause);
                 } else {
                     appendCreatedByFilter(frame, userId);
@@ -293,12 +295,12 @@ const controller = {
                 const userId = getCurrentUserId(frame);
                 const groupId = frame.data.socialcomponents[0]?.group_id || null;
                 // Creating inside a group requires being a member of that group
-                // (group access). System admins bypass (Super Editor does not);
-                // personal (no-group) creation is gated only by the staff role
-                // permission above.
+                // (group access). System admins bypass; Super Editor only for a
+                // public group. Personal (no-group) creation is gated only by
+                // the staff role permission above.
                 if (groupId && userId) {
                     const scope = await staffScope.getStaffScope(userId);
-                    if (!scope.isSystemAdmin) {
+                    if (!scope.isSystemAdmin && !staffScope.isNewsroomGroup(scope, groupId)) {
                         // @ts-ignore
                         const group = await models.SocialGroup.findOne({ id: groupId });
                         if (!group) {
@@ -358,7 +360,7 @@ const controller = {
                 const payload = frame.data.socialcomponents[0] || {};
 
                 // Reassigning the page owner (created_by) is owner/admin only
-                // (Super Editor: no-group rows only, same as its write bypass).
+                // (Super Editor: newsroom rows only, same as its write bypass).
                 // The generic save path reverts created_by (the deprecated x_by
                 // guard in base/plugins/events.js onUpdating), so it must be
                 // applied separately with internal context. Always strip

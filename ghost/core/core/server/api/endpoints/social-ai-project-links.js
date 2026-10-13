@@ -57,8 +57,9 @@ const assertProjectAccess = async (knex, projectId, frame, permission = 'read') 
         throw new errors.NoPermissionError({message: tpl(messages.userRequired)});
     }
 
-    // System admin: every project. Super Editor: no-group projects only (read
-    // and link writes, as before); group projects need membership below.
+    // System admin: every project. Super Editor: newsroom (no-group /
+    // public-group) projects only (read and link writes, as before); other
+    // group projects need membership below.
     const scope = await staffScope.getStaffScope(currentUserId);
     if (staffScope.bypassesRowCheck(scope, project)) {
         return project;
