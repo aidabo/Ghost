@@ -347,10 +347,11 @@ const controller = {
                         ? staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id')
                         : `user_id:${targetUserId}`)
                 };
-            } else if (!integrationId && !isAdmin && groupId && scope?.isNoGroupReader) {
-                // Super Editor may pass a public group it is not a member of, so
-                // the group must reach the query (the bare group_id option is
-                // not a permitted findPage option).
+            } else if (!integrationId && !isAdmin && groupId) {
+                // The checked group must reach the query: the bare group_id
+                // option is not a permitted findPage option, so without this a
+                // member of one group listed every project (and a Super Editor
+                // passing a public group listed everything).
                 options = {
                     ...options,
                     filter: staffScope.andFilter(frame.options?.filter, `group_id:${staffScope.nqlId(groupId, 'group_id')}`)

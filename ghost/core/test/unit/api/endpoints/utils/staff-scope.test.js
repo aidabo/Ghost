@@ -12,6 +12,7 @@ const chartJobsPath = require.resolve('../../../../../core/server/api/endpoints/
 const dziPath = require.resolve('../../../../../core/server/api/endpoints/social-ai-dzi-jobs');
 const projectLinksPath = require.resolve('../../../../../core/server/api/endpoints/social-ai-project-links');
 const projectsPath = require.resolve('../../../../../core/server/api/endpoints/social-ai-projects');
+const mediaJobsPath = require.resolve('../../../../../core/server/api/endpoints/social-ai-media-jobs');
 
 // Group ids must be ObjectId-shaped: endpoints reject anything else before it
 // reaches NQL.
@@ -157,7 +158,7 @@ describe('staff-scope', function () {
             assert.throws(() => staffScope.andFilter(evil, clause), {errorType: 'BadRequestError'}, evil);
         }
         // Balanced filters stay accepted, quoted parentheses included.
-        assert.equal(staffScope.andFilter('title:\'a)b\'', 'x:1'), '(title:\'a)b\')+x:1');
+        assert.equal(staffScope.andFilter('title:\'a)b\'', 'x:1'), '(title:\'a)b\' )+x:1');
     });
 
     it('F5: values interpolated into NQL must be a single token', function () {
@@ -168,6 +169,18 @@ describe('staff-scope', function () {
         }
         assert.throws(() => staffScope.nqlId(`${FAM},id:-null`), {errorType: 'BadRequestError'});
     });
+
+    it('R3: single-letter and spaced values stay valid once wrapped, scope still the outer AND', function () {
+        for (const [filter, row] of [['category:B', {category: 'B'}], ['x: a', {x: 'a'}], ['x:a', {x: 'a'}]]) {
+            const wrapped = staffScope.andFilter(filter, 'group_id:null');
+            assert.equal(matches(wrapped, {...row, group_id: null}), true, filter);
+            assert.equal(matches(wrapped, {...row, group_id: FAM}), false, filter);
+        }
+    });
+
+    it('R5: nqlId accepts upper-case hex and lower-cases it', function () {
+        assert.equal(staffScope.nqlId(FAM.toUpperCase()), FAM);
+    });
 });
 
 describe('Super Editor scope on knex-backed listings', function () {
@@ -177,7 +190,7 @@ describe('Super Editor scope on knex-backed listings', function () {
         SocialGroup: {
             findOne: async ({id}) => ({id, get: () => 'active'}),
             // Only 'editor' is a member of the family group.
-            canAccessGroup: async (group, userId) => userId === 'editor' && group.id === FAM
+            canAccessGroup: async (group, userId) => userId === 'editor' && String(group.id).toLowerCase() === FAM
         },
         SocialGroupMember: {
             canEditGroupContent: async ({authorId, userId}) => authorId === userId || ['owner', 'admin'].includes(userId)
@@ -186,9 +199,15 @@ describe('Super Editor scope on knex-backed listings', function () {
             findOne: async ({id}) => {
                 const row = await database('social_ai_projects').where({id}).first();
                 return row ? {...row, get: key => row[key], toJSON: () => row} : null;
-            }
+            },
+            findPage: async options => ({data: [], options})
         },
-        SocialAiChartJob: {findPage: async options => ({data: [], options})}
+        SocialAiChartJob: {findPage: async options => ({data: [], options})},
+        SocialAiDziJob: {
+            findPage: async options => ({data: [], options}),
+            add: async data => ({id: 'dz-new', ...data})
+        },
+        SocialAiMediaJob: {findPage: async options => ({data: [], options})}
     };
 
     before(async function () {
@@ -211,7 +230,7 @@ describe('Super Editor scope on knex-backed listings', function () {
         });
         await database.schema.createTable('posts', (table) => {
             table.string('id').primary();
-            table.string('title');
+            ['title', 'type', 'group_id', 'created_by'].forEach(column => table.string(column));
         });
         await database.schema.createTable('social_ai_news_job_media', (table) => {
             ['media_id', 'news_job_id', 'role', 'post_id'].forEach(column => table.string(column));
@@ -235,7 +254,7 @@ describe('Super Editor scope on knex-backed listings', function () {
                 table.string('id').primary();
                 table.string('user_id');
                 table.string('group_id');
-                ['project_id', 'name', 'status', 'description', 'tags', 'updated_at', 'updated_by']
+                ['project_id', 'name', 'status', 'description', 'tags', 'updated_at', 'updated_by', 'preview_url', 'source_path']
                     .forEach(column => table.string(column));
             });
         }
@@ -282,9 +301,20 @@ describe('Super Editor scope on knex-backed listings', function () {
             {id: 'page-family', group_id: FAM, created_by: 'editor'},
             {id: 'page-open', group_id: null, created_by: 'editor'}
         ]);
+        await database('posts').insert([
+            {id: 'post-page-family', type: 'page', group_id: FAM, created_by: 'editor'},
+            {id: 'post-page-open', type: 'page', group_id: null, created_by: 'editor'}
+        ]);
         await database('social_ai_project_links').insert([
             {id: 'l-family', project_id: 'p-open', link_type: 'stackpage', link_id: 'page-family', link_title: 'family page', sort_order: 1},
-            {id: 'l-open', project_id: 'p-open', link_type: 'stackpage', link_id: 'page-open', link_title: 'open page', sort_order: 2}
+            {id: 'l-open', project_id: 'p-open', link_type: 'stackpage', link_id: 'page-open', link_title: 'open page', sort_order: 2},
+            // R1: the host stores a Ghost page (posts) id for stackpage links.
+            {id: 'l-ghost-page-family', project_id: 'p-open', link_type: 'stackpage', link_id: 'post-page-family', sort_order: 3},
+            {id: 'l-ghost-page-open', project_id: 'p-open', link_type: 'stackpage', link_id: 'post-page-open', sort_order: 4},
+            {id: 'l-unknown', project_id: 'p-open', link_type: 'stackpage', link_id: 'no-such-page', link_title: 'typed', sort_order: 5},
+            // L1: gallery targets use the gallery newsroom-asset rule.
+            {id: 'l-asset-open', project_id: 'p-open', link_type: 'gallery', link_id: 'a-open', sort_order: 6},
+            {id: 'l-asset-family-project', project_id: 'p-open', link_type: 'gallery', link_id: 'a-family-project-job', sort_order: 7}
         ]);
         await database('social_ai_dzi_jobs').insert([
             {id: 'dz-open', user_id: 'editor', group_id: null},
@@ -429,6 +459,76 @@ describe('Super Editor scope on knex-backed listings', function () {
         });
     });
 
+    describe('review 2: group_id scoping (P1), DZI asset ownership (P2), unlink (L2)', function () {
+        let projects;
+        let chartJobs;
+        let dzi;
+        let media;
+        const stubs = {
+            '../../adapters/storage': {getStorage: () => ({})},
+            './utils/social-media-assets': {},
+            '@tryghost/logging': {warn: () => {}, error: () => {}}
+        };
+
+        before(async function () {
+            projects = loadWith(projectsPath, models, stubs);
+            chartJobs = loadWith(chartJobsPath, models, stubs);
+            dzi = loadWith(dziPath, models, stubs);
+            media = loadWith(mediaJobsPath, models, stubs);
+            await database('social_media_assets').insert([
+                {id: 'v-asset', storage_key: 'v1', storage_url: 'https://cdn/victim.jpg', user_id: 'victim', owner_scope: 'user'},
+                {id: 'o-asset', storage_key: 'o1', storage_url: 'https://cdn/own.pdf', user_id: 'editor', owner_scope: 'user'},
+                {id: 'v-stamped', storage_key: 'v2', storage_url: 'https://cdn/victim2.jpg', user_id: 'victim', owner_scope: 'user', dzi_job_id: 'dz-del'},
+                {id: 'o-stamped', storage_key: 'o2', storage_url: 'https://cdn/own2.jpg', user_id: 'editor', owner_scope: 'user', dzi_job_id: 'dz-del'}
+            ]);
+            await database('social_ai_dzi_jobs').insert([
+                {id: 'dz-del', user_id: 'editor', group_id: null, preview_url: 'https://cdn/victim2.jpg'}
+            ]);
+        });
+
+        const browse = (endpoint, user, options = {}) => endpoint.browse.query({options: {context: {user}, ...options}, data: {}});
+        const famRow = {group_id: FAM, user_id: 'someone', project_id: null};
+        const otherRow = {group_id: '0000000000000000000000c1', user_id: 'someone', project_id: null};
+
+        it('P1: a member passing group_id gets that group AND-ed (projects, chart jobs, DZI, media)', async function () {
+            for (const endpoint of [projects, chartJobs, dzi, media]) {
+                const {options} = await browse(endpoint, 'editor', {group_id: FAM});
+                assert.equal(matches(options.filter, famRow), true);
+                assert.equal(matches(options.filter, otherRow), false);
+            }
+            // Upper-case id is accepted and lower-cased (R5).
+            const {options} = await browse(chartJobs, 'editor', {group_id: FAM.toUpperCase()});
+            assert.equal(matches(options.filter, famRow), true);
+            // Without group_id, DZI / media listings are left as they are today.
+            assert.equal((await browse(dzi, 'editor')).options.filter, undefined);
+            assert.equal((await browse(media, 'editor')).options.filter, undefined);
+        });
+
+        it('P2: DZI add stamps only the owner\'s assets; destroy never deletes someone else\'s asset', async function () {
+            await dzi.add.query({
+                options: {context: {user: 'editor'}},
+                data: {socialaidzijobs: [{
+                    source_path: 'https://cdn/own.pdf',
+                    preview_url: 'https://cdn/victim.jpg',
+                    publication_name: 'p',
+                    edition: 'e'
+                }]}
+            });
+            const stamped = await database('social_media_assets').whereIn('id', ['v-asset', 'o-asset']).orderBy('id');
+            assert.deepEqual(stamped.map(r => [r.id, r.dzi_job_id]), [['o-asset', 'dz-new'], ['v-asset', null]]);
+
+            await dzi.destroy.query({options: {id: 'dz-del', context: {user: 'editor'}}, data: {}});
+            const left = (await database('social_media_assets').whereIn('id', ['v-stamped', 'o-stamped'])).map(r => r.id);
+            assert.deepEqual(left, ['v-stamped']);
+        });
+
+        it('L2: unlinkProject needs the project side to be readable', async function () {
+            const unlink = (user, id, projectId) => dzi.unlinkProject.query({options: {id, context: {user}}, data: {project_id: projectId}});
+            await assert.rejects(unlink('se', 'dz-free', 'p-family'), {errorType: 'NoPermissionError'});
+            await unlink('se', 'dz-free', 'p-open');
+        });
+    });
+
     describe('project links (F3)', function () {
         let links;
 
@@ -438,8 +538,12 @@ describe('Super Editor scope on knex-backed listings', function () {
 
         it('Super Editor reading another user\'s newsroom project only sees links to targets it may read', async function () {
             const browse = user => links.browse.query({options: {id: 'p-open', context: {user}}, data: {}});
-            assert.deepEqual((await browse('se')).data.map(l => l.id), ['l-open']);
-            assert.deepEqual((await browse('editor')).data.map(l => l.id), ['l-family', 'l-open']);
+            assert.deepEqual((await browse('se')).data.map(l => l.id), [
+                'l-open', 'l-ghost-page-open', 'l-unknown', 'l-asset-open'
+            ]);
+            assert.deepEqual((await browse('editor')).data.map(l => l.id), [
+                'l-family', 'l-open', 'l-ghost-page-family', 'l-ghost-page-open', 'l-unknown', 'l-asset-open', 'l-asset-family-project'
+            ]);
             await assert.rejects(browse('editor-2'), {errorType: 'NoPermissionError'});
         });
     });
@@ -545,12 +649,12 @@ describe('Super Editor scope on social charts (narrowed from admin bypass)', fun
 
     it('browse: Super Editor gets the newsroom-or-own clause AND-ed onto the caller filter', async function () {
         const result = await charts.browse.query(frame('se', {filter: 'status:aa,status:bb'}));
-        assert.equal(result.options.filter, `(status:aa,status:bb)+(group_id:null,group_id:[${PUB}],created_by:se)`);
+        assert.equal(result.options.filter, `(status:aa,status:bb )+(group_id:null,group_id:[${PUB}],created_by:se)`);
         // A public group it is not a member of: no own-rows restriction.
         const pubResult = await charts.browse.query(frame('se', {group_id: PUB}));
         assert.equal(pubResult.options.filter, `group_id:${PUB}`);
         const familyResult = await charts.browse.query(frame('se', {group_id: FAM}));
-        assert.equal(familyResult.options.filter, `(group_id:${FAM})+created_by:se`);
+        assert.equal(familyResult.options.filter, `(group_id:${FAM} )+created_by:se`);
         const adminResult = await charts.browse.query(frame('owner', {filter: 'status:aa'}));
         assert.equal(adminResult.options.filter, 'status:aa');
         const editorResult = await charts.browse.query(frame('editor', {}));
@@ -648,7 +752,7 @@ describe('Super Editor scope on chart-job browse (F3 / F5 / F8)', function () {
         await assert.rejects(chartJobs.browse.query(frame('se', {type: 'x,id:-null'})), {errorType: 'BadRequestError'});
         await assert.rejects(chartJobs.browse.query(frame('editor', {type: 'x,id:-null'})), {errorType: 'BadRequestError'});
         const {options} = await chartJobs.browse.query(frame('editor', {type: 'csv-create', filter: 'status:aa,status:bb'}));
-        assert.equal(options.filter, '((status:aa,status:bb)+user_id:editor)+type:csv-create');
+        assert.equal(options.filter, '((status:aa,status:bb )+user_id:editor )+type:csv-create');
         assert.equal(matches(options.filter, {status: 'aa', user_id: 'other', type: 'csv-create'}), false);
     });
 });

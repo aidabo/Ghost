@@ -237,8 +237,10 @@ const assertCanWriteProject = async (frame, project) => {
     if (getCurrentIntegrationId(frame)) {
         return;
     }
-    // Super Editor manages newsroom projects of any owner.
-    if (staffScope.canManageAsNewsroomEditor(await staffScope.getStaffScope(getCurrentUserId(frame)), project)) {
+    // System admin (legacy 'Admin' included, which canEditGroupContent does
+    // not know); Super Editor manages newsroom projects of any owner.
+    const scope = await staffScope.getStaffScope(getCurrentUserId(frame));
+    if (scope.isSystemAdmin || staffScope.canManageAsNewsroomEditor(scope, project)) {
         return;
     }
     // @ts-ignore
@@ -392,6 +394,14 @@ const controller = {
                     frame.options.filter = staffScope.andFilter(frame.options.filter, `id:-[${excludeIds.join(',')}]`);
                 }
             } else if (!scope.isSystemAdmin && targetUserId) {
+                // The checked group must reach the query (the bare group_id
+                // option never does). Without group_id the listing is left as
+                // it is today: the user_id option below is not applied by
+                // findPage either (pre-existing, see report).
+                if (groupId && !getCurrentIntegrationId(frame)) {
+                    // @ts-ignore
+                    frame.options.filter = staffScope.andFilter(frame.options.filter, `group_id:${staffScope.nqlId(groupId, 'group_id')}`);
+                }
                 // @ts-ignore
                 frame.options.user_id = targetUserId;
             }
@@ -510,19 +520,14 @@ const controller = {
                 const assetUrls = [payloadInput.source_path, payloadInput.preview_url]
                     .map(u => String(u || '').trim())
                     .filter(u => /^https?:\/\//i.test(u));
-                if (jobId && assetUrls.length) {
-                    // Only stamp assets not linked to another job yet, or
-                    // uploaded by this job's owner: a known URL must not
-                    // re-point someone else's asset at this job.
-                    const ownerId = targetUserId || currentUserId || null;
+                // Only the job owner's own uploads are stamped: a known URL
+                // must never pull someone else's asset into this job (destroy
+                // would then delete it).
+                const ownerId = targetUserId || currentUserId || null;
+                if (jobId && ownerId && assetUrls.length) {
                     await models.Base.knex('social_media_assets')
                         .whereIn('storage_url', assetUrls)
-                        .where((qb) => {
-                            qb.whereNull('dzi_job_id');
-                            if (ownerId) {
-                                qb.orWhere('user_id', ownerId);
-                            }
-                        })
+                        .where('user_id', ownerId)
                         .update({dzi_job_id: jobId});
                 }
             } catch (err) {
@@ -622,9 +627,16 @@ const controller = {
                             cursor = listed?.nextCursor || null;
                         } while (cursor);
                     }
-                    // (b) preview image (outside the job folder)
+                    // (b) preview image (outside the job folder) — only when the
+                    // job owner uploaded it: preview_url is caller-supplied and
+                    // may name someone else's file.
                     if (row.preview_url && typeof mediaStore.urlToPath === 'function') {
-                        await deleteKey(mediaStore.urlToPath(row.preview_url));
+                        const ownPreview = await knex('social_media_assets')
+                            .where({storage_url: row.preview_url, user_id: row.user_id})
+                            .first('id');
+                        if (ownPreview) {
+                            await deleteKey(mediaStore.urlToPath(row.preview_url));
+                        }
                     }
                 }
             } catch (err) {
@@ -636,13 +648,19 @@ const controller = {
             // dzi_job_id link (both PDF + preview, stamped at job creation) AND, as a
             // fallback for rows created before that linking existed, the source PDF by
             // its storage_key path and the preview by its storage_url.
+            // Rows matched by link or preview URL are deleted only when the job
+            // owner uploaded them; rows under the job's own folder always.
             try {
                 const q = knex('social_media_assets')
-                    .where('dzi_job_id', row.id)
-                    .orWhereRaw('storage_key LIKE ?', [`%gallery/deepzoom/${row.id}/%`]);
-                if (row.preview_url) {
-                    q.orWhere('storage_url', row.preview_url);
-                }
+                    .whereRaw('storage_key LIKE ?', [`%gallery/deepzoom/${row.id}/%`])
+                    .orWhere(function () {
+                        this.where('user_id', row.user_id).where(function () {
+                            this.where('dzi_job_id', row.id);
+                            if (row.preview_url) {
+                                this.orWhere('storage_url', row.preview_url);
+                            }
+                        });
+                    });
                 await q.del();
             } catch (err) {
                 logging.warn(`[social-ai-dzi-jobs] asset row cleanup failed for job ${row.id}: ${err?.message || err}`);
@@ -904,6 +922,12 @@ const controller = {
             const projectId = String(payload.project_id || '').trim();
             if (!projectId) {
                 throw new errors.ValidationError({message: 'project_id is required'});
+            }
+            // The project side must be readable (a vanished project can
+            // always be unlinked).
+            const project = await knex('social_ai_projects').where({id: projectId}).first();
+            if (project && !(await canReadProject(frame, project, await staffScope.getStaffScope(getCurrentUserId(frame))))) {
+                throw new errors.NoPermissionError({message: tpl(messages.noPermission)});
             }
 
             await knex('social_ai_dzi_job_projects')

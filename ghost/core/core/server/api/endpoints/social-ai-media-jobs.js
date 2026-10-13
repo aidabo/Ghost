@@ -419,6 +419,14 @@ const controller = {
                 targetUserId,
                 permission: 'read'
             });
+            // The checked group must reach the query (the bare group_id option
+            // is not a permitted findPage option). Without group_id the listing
+            // stays as it is today (unscoped, pre-existing).
+            const currentUserId = getCurrentUserId(frame);
+            if (groupId && !getCurrentIntegrationId(frame) && !(currentUserId && await isAdminUser(currentUserId))) {
+                // @ts-ignore
+                frame.options.filter = staffScope.andFilter(frame.options.filter, `group_id:${staffScope.nqlId(groupId, 'group_id')}`);
+            }
             // @ts-ignore
             return await models.SocialAiMediaJob.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
         }

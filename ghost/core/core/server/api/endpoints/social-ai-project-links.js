@@ -85,32 +85,54 @@ const assertProjectAccess = async (knex, projectId, frame, permission = 'read') 
     return project;
 };
 
-// Link target table + owner column per link_type.
+// Link target tables + owner column per link_type, looked up in order. The
+// host stores a Ghost page id (posts, type=page) as a stackpage link_id; a
+// social_components id is accepted too.
 const LINK_TARGETS = {
-    post: ['posts', 'created_by'],
-    stackpage: ['social_components', 'created_by'],
-    gallery: ['social_media_assets', 'user_id']
+    post: [['posts', 'created_by']],
+    stackpage: [['social_components', 'created_by'], ['posts', 'created_by']],
+    gallery: [['social_media_assets', 'user_id']]
 };
 
 // A Super Editor reading another user's newsroom project sees only the links
 // whose target it may read itself (newsroom target, its own, or a group it is
-// a member of): a newsroom project can link family / private content, and the
-// link row carries that content's title and URL. Links whose target is gone
-// are dropped too.
+// a member of): a newsroom project can link family / private content. Gallery
+// targets are judged with the gallery's newsroom-asset rule. A link whose
+// target is not found is kept: its title / URL came from the project writer,
+// not from a protected row.
 // @ts-ignore
 const filterReadableLinks = async (knex, rows, userId, scope) => {
     const targets = new Map();
-    for (const [type, [table, ownerColumn]] of Object.entries(LINK_TARGETS)) {
-        const ids = rows.filter(row => row.link_type === type).map(row => row.link_id);
-        if (!ids.length) {
-            continue;
+    for (const [type, tables] of Object.entries(LINK_TARGETS)) {
+        let ids = [...new Set(rows.filter(row => row.link_type === type).map(row => String(row.link_id)))];
+        for (const [table, ownerColumn] of tables) {
+            if (!ids.length) {
+                break;
+            }
+            const found = await knex(table).whereIn('id', ids).select('id', 'group_id', `${ownerColumn} as owner_id`);
+            let newsroomAssets = null;
+            if (table === 'social_media_assets' && found.length) {
+                newsroomAssets = new Set((await knex('social_media_assets as sma')
+                    .whereIn('sma.id', found.map(target => target.id))
+                    .where(qb => staffScope.whereNewsroomAsset(qb, scope))
+                    .pluck('sma.id')).map(String));
+            }
+            found.forEach((target) => {
+                const newsroom = newsroomAssets
+                    ? newsroomAssets.has(String(target.id))
+                    : staffScope.isNewsroomRow(target, scope.publicGroupIds);
+                targets.set(`${type}:${target.id}`, {...target, newsroom});
+            });
+            const foundIds = new Set(found.map(target => String(target.id)));
+            ids = ids.filter(id => !foundIds.has(id));
         }
-        const found = await knex(table).whereIn('id', ids).select('id', 'group_id', `${ownerColumn} as owner_id`);
-        found.forEach(target => targets.set(`${type}:${target.id}`, target));
     }
 
     const memberOf = new Map();
     const canReadGroup = async (groupId) => {
+        if (!groupId) {
+            return false;
+        }
         if (!memberOf.has(groupId)) {
             // @ts-ignore
             const group = await models.SocialGroup.findOne({id: groupId});
@@ -123,11 +145,9 @@ const filterReadableLinks = async (knex, rows, userId, scope) => {
     const readable = [];
     for (const row of rows) {
         const target = targets.get(`${row.link_type}:${row.link_id}`);
-        if (!target) {
-            continue;
-        }
         if (
-            staffScope.isNewsroomRow(target, scope.publicGroupIds) ||
+            !target ||
+            target.newsroom ||
             String(target.owner_id || '') === String(userId) ||
             await canReadGroup(target.group_id)
         ) {

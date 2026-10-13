@@ -421,12 +421,12 @@ const controller = {
                         excludeProjectIds: await staffScope.loadNonNewsroomProjectIds(scope)
                     })
                     : `user_id:${targetUserId}`);
-            } else if (!integrationId && !isAdmin && groupId && scope?.isNoGroupReader) {
-                // Super Editor may pass a public group it is not a member of, so
-                // the group must reach the query (the bare group_id option is
-                // not a permitted findPage option).
+            } else if (!integrationId && !isAdmin && groupId) {
+                // The checked group must reach the query: the bare group_id
+                // option is not a permitted findPage option, so without this a
+                // member of one group listed every job.
                 filter = staffScope.andFilter(filter, `group_id:${staffScope.nqlId(groupId, 'group_id')}`);
-                const excluded = await staffScope.loadNonNewsroomProjectIds(scope);
+                const excluded = scope?.isNoGroupReader ? await staffScope.loadNonNewsroomProjectIds(scope) : [];
                 if (excluded.length) {
                     filter = staffScope.andFilter(filter, `(project_id:null,project_id:-[${excluded.join(',')}])`);
                 }

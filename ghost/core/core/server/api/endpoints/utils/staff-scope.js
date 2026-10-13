@@ -154,6 +154,88 @@ const whereNewsroomProject = (qb, projectColumn, scope) => {
     });
 };
 
+// Linked rows whose group makes a gallery asset a group asset even when the
+// asset row itself carries no group_id (worker-written rows can keep a null
+// group_id while the producing job belongs to a group). [table, asset column,
+// table has project_id] — a job's project is checked as a second hop.
+const ASSET_GROUP_LINKS = [
+    ['social_ai_chart_jobs', 'chart_job_id', true],
+    ['social_ai_content_bundle_jobs', 'content_bundle_job_id', true],
+    ['social_ai_media_jobs', 'job_id', true],
+    ['social_ai_dzi_jobs', 'job_id', false],
+    ['social_ai_dzi_jobs', 'dzi_job_id', false],
+    ['social_ai_news_jobs', 'news_job_id', true],
+    ['social_ai_projects', 'project_id', false],
+    ['social_charts', 'social_chart_id', false]
+];
+
+// Junction tables that attach an asset to a job without a column on the asset.
+const ASSET_JOB_JUNCTIONS = [
+    ['social_ai_chart_job_media', 'chart_job_id', 'social_ai_chart_jobs'],
+    ['social_ai_news_job_media', 'news_job_id', 'social_ai_news_jobs']
+];
+
+// Gallery (social_media_assets AS sma): a Super Editor (no-group reader) sees
+// every NEWSROOM asset: neither
+// the row nor anything it hangs off — job / project / chart (by column or
+// junction), the job's project, a DZI job's linked projects — belongs to a
+// non-public group (no group, or a public group). `scope` is the Super
+// Editor's staff scope.
+const whereNewsroomAsset = (qb, scope) => {
+    const publicGroupIds = scope.publicGroupIds || [];
+    const inNonPublicGroup = (sub, column) => {
+        sub.whereNotNull(column);
+        if (publicGroupIds.length) {
+            sub.whereNotIn(column, publicGroupIds);
+        }
+    };
+    qb.where(function () {
+        whereNewsroomGroup(this, 'sma.group_id', scope);
+    });
+    ASSET_GROUP_LINKS.forEach(([table, column, hasProject]) => {
+        qb.whereNotExists(function () {
+            this.select(1)
+                .from(`${table} as nga`)
+                .whereRaw(`nga.id = sma.${column}`);
+            inNonPublicGroup(this, 'nga.group_id');
+        });
+        if (hasProject) {
+            qb.whereNotExists(function () {
+                this.select(1)
+                    .from(`${table} as ngj`)
+                    .join('social_ai_projects as ngp', 'ngp.id', 'ngj.project_id')
+                    .whereRaw(`ngj.id = sma.${column}`);
+                inNonPublicGroup(this, 'ngp.group_id');
+            });
+        }
+    });
+    ['job_id', 'dzi_job_id'].forEach((column) => {
+        qb.whereNotExists(function () {
+            this.select(1)
+                .from('social_ai_dzi_job_projects as ngdp')
+                .join('social_ai_projects as ngp', 'ngp.id', 'ngdp.project_id')
+                .whereRaw(`ngdp.dzi_job_id = sma.${column}`);
+            inNonPublicGroup(this, 'ngp.group_id');
+        });
+    });
+    ASSET_JOB_JUNCTIONS.forEach(([junction, jobColumn, jobTable]) => {
+        qb.whereNotExists(function () {
+            this.select(1)
+                .from(`${junction} as ngm`)
+                .join(`${jobTable} as ngj`, 'ngj.id', `ngm.${jobColumn}`)
+                .leftJoin('social_ai_projects as ngp', 'ngp.id', 'ngj.project_id')
+                .whereRaw('ngm.media_id = sma.id')
+                .where(function () {
+                    this.where(function () {
+                        inNonPublicGroup(this, 'ngj.group_id');
+                    }).orWhere(function () {
+                        inNonPublicGroup(this, 'ngp.group_id');
+                    });
+                });
+        });
+    });
+};
+
 // AND a scope clause onto a caller-supplied NQL filter so the clause is always
 // an outer conjunct. The caller filter is parenthesised (NQL binds `+` tighter
 // than `,`, so a bare `a,b+clause` would leave `a` outside the scope) and must
@@ -169,19 +251,21 @@ const andFilter = (filter, clause) => {
     } catch (err) {
         throw new errors.BadRequestError({message: 'Invalid filter.', err});
     }
-    return `(${base})+${clause}`;
+    // The space before `)` keeps a trailing single-letter literal (`x:a`,
+    // `category:B`) a literal: NQL does not read `a)` as one.
+    return `(${base} )+${clause}`;
 };
 
 // Caller-supplied values interpolated into an NQL clause (ids, job types) must
 // be a single plain token, never NQL syntax.
-const OBJECT_ID_REGEX = /^[a-f0-9]{24}$/;
+const OBJECT_ID_REGEX = /^[a-f0-9]{24}$/i;
 const NQL_TOKEN_REGEX = /^[a-z0-9_-]{1,64}$/i;
 const nqlId = (value, name = 'id') => {
     const id = String(value || '').trim();
     if (!OBJECT_ID_REGEX.test(id)) {
         throw new errors.BadRequestError({message: `Invalid ${name}.`});
     }
-    return id;
+    return id.toLowerCase();
 };
 const nqlToken = (value, name = 'value') => {
     const token = String(value || '').trim();
@@ -204,6 +288,7 @@ module.exports = {
     newsroomOrOwnFilter,
     whereNewsroomGroup,
     whereNewsroomProject,
+    whereNewsroomAsset,
     andFilter,
     nqlId,
     nqlToken

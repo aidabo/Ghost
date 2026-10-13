@@ -55,87 +55,6 @@ const getCurrentIntegrationId = frame => frame.options?.context?.integration || 
 // widens the gallery listings below (isNoGroupReader), writes as a normal user.
 const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
 
-// Linked rows whose group makes a gallery asset a group asset even when the
-// asset row itself carries no group_id (worker-written rows can keep a null
-// group_id while the producing job belongs to a group). [table, asset column,
-// table has project_id] — a job's project is checked as a second hop.
-const ASSET_GROUP_LINKS = [
-    ['social_ai_chart_jobs', 'chart_job_id', true],
-    ['social_ai_content_bundle_jobs', 'content_bundle_job_id', true],
-    ['social_ai_media_jobs', 'job_id', true],
-    ['social_ai_dzi_jobs', 'job_id', false],
-    ['social_ai_dzi_jobs', 'dzi_job_id', false],
-    ['social_ai_news_jobs', 'news_job_id', true],
-    ['social_ai_projects', 'project_id', false],
-    ['social_charts', 'social_chart_id', false]
-];
-
-// Junction tables that attach an asset to a job without a column on the asset.
-const ASSET_JOB_JUNCTIONS = [
-    ['social_ai_chart_job_media', 'chart_job_id', 'social_ai_chart_jobs'],
-    ['social_ai_news_job_media', 'news_job_id', 'social_ai_news_jobs']
-];
-
-// Super Editor (no-group reader) sees every NEWSROOM gallery asset: neither
-// the row nor anything it hangs off — job / project / chart (by column or
-// junction), the job's project, a DZI job's linked projects — belongs to a
-// non-public group (no group, or a public group). `scope` is the Super
-// Editor's staff scope.
-const whereNewsroomAsset = (qb, scope) => {
-    const publicGroupIds = scope.publicGroupIds || [];
-    const inNonPublicGroup = (sub, column) => {
-        sub.whereNotNull(column);
-        if (publicGroupIds.length) {
-            sub.whereNotIn(column, publicGroupIds);
-        }
-    };
-    qb.where(function () {
-        staffScope.whereNewsroomGroup(this, 'sma.group_id', scope);
-    });
-    ASSET_GROUP_LINKS.forEach(([table, column, hasProject]) => {
-        qb.whereNotExists(function () {
-            this.select(1)
-                .from(`${table} as nga`)
-                .whereRaw(`nga.id = sma.${column}`);
-            inNonPublicGroup(this, 'nga.group_id');
-        });
-        if (hasProject) {
-            qb.whereNotExists(function () {
-                this.select(1)
-                    .from(`${table} as ngj`)
-                    .join('social_ai_projects as ngp', 'ngp.id', 'ngj.project_id')
-                    .whereRaw(`ngj.id = sma.${column}`);
-                inNonPublicGroup(this, 'ngp.group_id');
-            });
-        }
-    });
-    ['job_id', 'dzi_job_id'].forEach((column) => {
-        qb.whereNotExists(function () {
-            this.select(1)
-                .from('social_ai_dzi_job_projects as ngdp')
-                .join('social_ai_projects as ngp', 'ngp.id', 'ngdp.project_id')
-                .whereRaw(`ngdp.dzi_job_id = sma.${column}`);
-            inNonPublicGroup(this, 'ngp.group_id');
-        });
-    });
-    ASSET_JOB_JUNCTIONS.forEach(([junction, jobColumn, jobTable]) => {
-        qb.whereNotExists(function () {
-            this.select(1)
-                .from(`${junction} as ngm`)
-                .join(`${jobTable} as ngj`, 'ngj.id', `ngm.${jobColumn}`)
-                .leftJoin('social_ai_projects as ngp', 'ngp.id', 'ngj.project_id')
-                .whereRaw('ngm.media_id = sma.id')
-                .where(function () {
-                    this.where(function () {
-                        inNonPublicGroup(this, 'ngj.group_id');
-                    }).orWhere(function () {
-                        inNonPublicGroup(this, 'ngp.group_id');
-                    });
-                });
-        });
-    });
-};
-
 const assertCanReadRow = async ({frame, row}) => {
     const currentUserId = getCurrentUserId(frame);
     if (getCurrentIntegrationId(frame) || await isAdminUser(currentUserId)) {
@@ -900,7 +819,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                 });
                 if (newsroomScope) {
                     this.orWhere(function () {
-                        whereNewsroomAsset(this, newsroomScope);
+                        staffScope.whereNewsroomAsset(this, newsroomScope);
                     });
                 }
             })
@@ -916,7 +835,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
             });
             if (newsroomScope) {
                 this.orWhere(function () {
-                    whereNewsroomAsset(this, newsroomScope);
+                    staffScope.whereNewsroomAsset(this, newsroomScope);
                 });
             }
         }).whereNotExists(function () {
@@ -1011,7 +930,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                 });
                 if (newsroomScope) {
                     this.orWhere(function () {
-                        whereNewsroomAsset(this, newsroomScope);
+                        staffScope.whereNewsroomAsset(this, newsroomScope);
                     });
                 }
             }).whereNotExists(function () {
@@ -1797,7 +1716,7 @@ const controller = {
                         });
                     if (scope.isNoGroupReader) {
                         this.orWhere(function () {
-                            whereNewsroomAsset(this, scope);
+                            staffScope.whereNewsroomAsset(this, scope);
                         });
                     }
                 })
