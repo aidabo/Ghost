@@ -6,8 +6,8 @@ const models = require('../../models');
 const storage = require('../../adapters/storage');
 const ObjectId = require('bson-objectid').default;
 const socialMediaAssets = require('./utils/social-media-assets');
+const staffScope = require('./utils/staff-scope');
 
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 const ALLOWED_INCLUDES = ['user', 'group'];
 
 const messages = {
@@ -107,22 +107,11 @@ const deriveJobStatus = (steps) => {
     return 'queued';
 };
 
+// System admin (Owner / Administrator / Admin). Super Editor is not: it only
+// reads no-group jobs/projects (see browse / assertProjectAccess), writes as a
+// normal user.
 // @ts-ignore
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-
-    // @ts-ignore
-    const user = await models.User.findOne({ id: userId }, { withRelated: ['roles'] });
-    if (!user) {
-        return false;
-    }
-
-    const roles = user.related('roles')?.models || [];
-    // @ts-ignore
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
-};
+const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
 
 // @ts-ignore
 const resolveTargetUserId = async (frame) => {
@@ -220,8 +209,11 @@ const assertCanWriteRow = (args) => assertRowAccess({ ...args, permission: 'writ
 const assertProjectAccess = async ({ frame, project, targetUserId, permission }) => {
     const currentUserId = getCurrentUserId(frame);
     const integrationId = getCurrentIntegrationId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
-    if (integrationId || isAdmin) {
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (integrationId || scope.isSystemAdmin) {
+        return;
+    }
+    if (permission === 'read' && staffScope.canReadRowAsNoGroupReader(scope, project)) {
         return;
     }
 
@@ -378,7 +370,8 @@ const controller = {
             // contains the family names being researched). Integration context
             // (host UI / workers) and admins keep the full listing.
             const integrationId = getCurrentIntegrationId(frame);
-            const isAdmin = targetUserId ? await isAdminUser(targetUserId) : false;
+            const scope = targetUserId ? await staffScope.getStaffScope(targetUserId) : null;
+            const isAdmin = Boolean(scope?.isSystemAdmin);
             let options = { ...frame.options, withRelated: ALLOWED_INCLUDES };
 
             // M8: filtering by project requires access to THAT project — the
@@ -401,10 +394,13 @@ const controller = {
                     filter: baseFilter ? `${baseFilter}+project_id:${projectId}` : `project_id:${projectId}`
                 };
             } else if (!integrationId && !isAdmin && !groupId && targetUserId) {
+                // Super Editor also sees every no-group job.
                 const baseFilter = String(frame.options?.filter || '').trim();
                 options = {
                     ...options,
-                    filter: baseFilter ? `${baseFilter}+user_id:${targetUserId}` : `user_id:${targetUserId}`
+                    filter: scope.isNoGroupReader
+                        ? staffScope.andFilter(baseFilter, staffScope.noGroupOrOwnFilter(targetUserId, 'user_id'))
+                        : (baseFilter ? `${baseFilter}+user_id:${targetUserId}` : `user_id:${targetUserId}`)
                 };
             }
 

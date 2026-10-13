@@ -5,8 +5,8 @@ const models = require('../../models');
 const logging = require('@tryghost/logging');
 const storage = require('../../adapters/storage');
 const socialAiProjectsUtil = require('./utils/social-ai-projects');
+const staffScope = require('./utils/staff-scope');
 
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 const ALLOWED_INCLUDES = ['user', 'group'];
 
 // Review 2026-08-07 #2: families that hang off the generic project path.
@@ -106,20 +106,10 @@ const serializeRow = (row) => ({
     updated_at: row.updated_at
 });
 
+// System admin (Owner / Administrator / Admin). Super Editor is not: it only
+// reads no-group projects (see assertRowAccess / browse), writes as a normal user.
 // @ts-ignore
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-    // @ts-ignore
-    const user = await models.User.findOne({ id: userId }, { withRelated: ['roles'] });
-    if (!user) {
-        return false;
-    }
-    const roles = user.related('roles')?.models || [];
-    // @ts-ignore
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
-};
+const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
 
 // @ts-ignore
 const resolveTargetUserId = async (frame) => {
@@ -181,9 +171,12 @@ const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) =
 const assertRowAccess = async ({ frame, row, permission = 'read' }) => {
     const currentUserId = getCurrentUserId(frame);
     const integrationId = getCurrentIntegrationId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
+    const scope = await staffScope.getStaffScope(currentUserId);
 
-    if (integrationId || isAdmin) {
+    if (integrationId || scope.isSystemAdmin) {
+        return;
+    }
+    if (permission === 'read' && staffScope.canReadRowAsNoGroupReader(scope, row)) {
         return;
     }
 
@@ -332,13 +325,17 @@ const controller = {
             // only sees their own projects. Integration/host + admins keep the
             // full listing.
             const integrationId = getCurrentIntegrationId(frame);
-            const isAdmin = targetUserId ? await isAdminUser(targetUserId) : false;
+            const scope = targetUserId ? await staffScope.getStaffScope(targetUserId) : null;
+            const isAdmin = Boolean(scope?.isSystemAdmin);
             let options = { ...frame.options, withRelated: ALLOWED_INCLUDES };
             if (!integrationId && !isAdmin && !groupId && targetUserId) {
+                // Super Editor also sees every no-group project.
                 const baseFilter = String(frame.options?.filter || '').trim();
                 options = {
                     ...options,
-                    filter: baseFilter ? `${baseFilter}+user_id:${targetUserId}` : `user_id:${targetUserId}`
+                    filter: scope.isNoGroupReader
+                        ? staffScope.andFilter(baseFilter, staffScope.noGroupOrOwnFilter(targetUserId, 'user_id'))
+                        : (baseFilter ? `${baseFilter}+user_id:${targetUserId}` : `user_id:${targetUserId}`)
                 };
             }
 

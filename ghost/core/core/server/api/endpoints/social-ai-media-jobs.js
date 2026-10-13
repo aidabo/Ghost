@@ -4,10 +4,10 @@ const errors = require('@tryghost/errors');
 const models = require('../../models');
 const storage = require('../../adapters/storage');
 const socialMediaAssets = require('./utils/social-media-assets');
+const staffScope = require('./utils/staff-scope');
 // @ts-ignore
 //const logging = require('@tryghost/logging');
 
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 const ALLOWED_INCLUDES = ['user', 'group'];
 
 const messages = {
@@ -43,22 +43,9 @@ const SocialAiMediaJobModel = models.SocialAiMediaJob;
 // @ts-ignore
 const TABLE = SocialAiMediaJobModel?.prototype?.tableName || 'social_ai_media_jobs';
 
+// System admin (Owner / Administrator / Admin). Super Editor is not.
 // @ts-ignore
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-
-    // @ts-ignore
-    const user = await models.User.findOne({ id: userId }, { withRelated: ['roles'] });
-    if (!user) {
-        return false;
-    }
-
-    const roles = user.related('roles')?.models || [];
-    // @ts-ignore
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
-};
+const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
 
 const nowMySql = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 

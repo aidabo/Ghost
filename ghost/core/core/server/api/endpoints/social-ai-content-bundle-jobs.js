@@ -1,12 +1,12 @@
 const errors = require('@tryghost/errors');
 const crypto = require('crypto');
 const models = require('../../models');
+const staffScope = require('./utils/staff-scope');
 const ObjectId = require('bson-objectid').default;
 const storage = require('../../adapters/storage');
 const socialMediaAssets = require('./utils/social-media-assets');
 
 const TABLE = 'social_ai_content_bundle_jobs';
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const parseJson = (value, fallback) => {
     if (value === null || value === undefined || value === '') return fallback;
@@ -63,15 +63,12 @@ const serialize = row => ({
     completed_at: row.completed_at || null
 });
 
-const isAdmin = async userId => {
-    if (!userId) return false;
-    const user = await models.User.findOne({id: userId}, {withRelated: ['roles']});
-    return Boolean(user?.related('roles')?.models?.some(role => ADMIN_ROLES.has(role.get('name'))));
-};
-
 const assertAccess = async (frame, row, write = false) => {
     const actor = currentUser(frame);
-    if (integration(frame) || await isAdmin(actor)) return;
+    const scope = await staffScope.getStaffScope(actor);
+    if (integration(frame) || scope.isSystemAdmin) return;
+    // Super Editor reads every no-group job; writes stay owner-only.
+    if (!write && staffScope.canReadRowAsNoGroupReader(scope, row)) return;
     if (!actor || row.user_id !== actor) throw new errors.NoPermissionError({message: 'You are not allowed to access this content bundle job.'});
     if (write && row.group_id) {
         const group = await models.SocialGroup.findOne({id: row.group_id});
@@ -96,7 +93,13 @@ const controller = {
             const actor = currentUser(frame);
             const options = frame.options || {};
             const query = models.Base.knex(TABLE).select('*').orderBy('updated_at', 'desc');
-            if (!integration(frame) && !(await isAdmin(actor))) query.where('user_id', actor);
+            const scope = await staffScope.getStaffScope(actor);
+            if (scope.isNoGroupReader && !integration(frame)) {
+                // Super Editor: every no-group job + its own.
+                query.where(qb => qb.whereNull('group_id').orWhere('user_id', actor));
+            } else if (!integration(frame) && !scope.isSystemAdmin) {
+                query.where('user_id', actor);
+            }
             if (options.project_id) query.where('project_id', options.project_id);
             if (options.status) query.where('status', options.status);
             const rows = await query.limit(Math.min(200, Number(options.limit || 50)));

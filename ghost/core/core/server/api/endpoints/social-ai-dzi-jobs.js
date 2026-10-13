@@ -3,9 +3,9 @@ const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const logging = require('@tryghost/logging');
 const models = require('../../models');
+const staffScope = require('./utils/staff-scope');
 const storage = require('../../adapters/storage');
 
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin', 'Super Editor']);
 const ALLOWED_INCLUDES = ['user', 'group'];
 
 const messages = {
@@ -72,23 +72,6 @@ const serializeRow = (row) => ({
 });
 
 // @ts-ignore
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-
-    // @ts-ignore
-    const user = await models.User.findOne({ id: userId }, { withRelated: ['roles'] });
-    if (!user) {
-        return false;
-    }
-
-    const roles = user.related('roles')?.models || [];
-    // @ts-ignore
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
-};
-
-// @ts-ignore
 const resolveTargetUserId = async (frame) => {
     const currentUserId = getCurrentUserId(frame);
     const currentIntegrationId = getCurrentIntegrationId(frame);
@@ -108,8 +91,10 @@ const resolveTargetUserId = async (frame) => {
         return currentUserId;
     }
 
-    const isAdmin = await isAdminUser(currentUserId);
-    if (isAdmin) {
+    // Acting as another user is system admin only (Super Editor must not
+    // borrow another user's group membership).
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (scope.isSystemAdmin) {
         return requestedUserId;
     }
 
@@ -125,8 +110,8 @@ const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) =
     }
 
     const currentUserId = getCurrentUserId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
-    if (isAdmin) {
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (scope.isSystemAdmin) {
         return;
     }
 
@@ -151,9 +136,9 @@ const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) =
 const assertCanReadRow = async ({ frame, row }) => {
     const currentUserId = getCurrentUserId(frame);
     const integrationId = getCurrentIntegrationId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
+    const scope = await staffScope.getStaffScope(currentUserId);
 
-    if (integrationId || isAdmin) {
+    if (integrationId || staffScope.bypassesRowCheck(scope, row)) {
         return;
     }
 
@@ -182,6 +167,12 @@ const assertCanWriteRow = async ({ frame, row }) => {
     const currentUserId = getCurrentUserId(frame);
     const integrationId = getCurrentIntegrationId(frame);
     if (integrationId) {
+        return;
+    }
+    // Super Editor may mutate jobs with no group (newsroom jobs); group jobs
+    // go through the author / system admin rule below.
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (scope.isNoGroupReader && staffScope.isNoGroupRow(row)) {
         return;
     }
     const targetUserId = await resolveTargetUserId(frame);
@@ -237,7 +228,7 @@ const loadRowOrThrow = async (knex, id) => {
 
 // Stamp computed `can_edit` on each returned job so the frontend shows/hides
 // mutation controls (backend single source of truth). Mirrors the write gate.
-const attachCanEdit = async (entryOrCollection, userId, isAdmin) => {
+const attachCanEdit = async (entryOrCollection, userId, scope) => {
     let list = [];
     const src = (entryOrCollection && entryOrCollection.data !== undefined) ? entryOrCollection.data : entryOrCollection;
     if (Array.isArray(src)) {
@@ -251,7 +242,7 @@ const attachCanEdit = async (entryOrCollection, userId, isAdmin) => {
         if (!m || typeof m.get !== 'function') {
             continue;
         }
-        const canEdit = isAdmin || await models.SocialGroupMember.canEditGroupContent({
+        const canEdit = staffScope.bypassesRowCheck(scope, m) || await models.SocialGroupMember.canEditGroupContent({
             groupId: m.get('group_id'),
             authorId: m.get('user_id'),
             userId
@@ -301,16 +292,24 @@ const controller = {
                 permission: 'read'
             });
 
-            // Scope non-admins to their own jobs; admin/Super Editor see all.
-            const isAdmin = await isAdminUser(currentUserId);
-            if (!isAdmin && targetUserId) {
+            // Scope non-admins to their own jobs; system admin sees all.
+            const scope = await staffScope.getStaffScope(currentUserId);
+            if (scope.isNoGroupReader) {
+                // Super Editor: the requested (member) group, else every
+                // no-group job + its own. Composed into the NQL filter, which
+                // findPage applies (the bare user_id/group_id options are not
+                // permitted findPage options and never reach the query).
+                const clause = groupId ? `group_id:${groupId}` : staffScope.noGroupOrOwnFilter(currentUserId, 'user_id');
+                // @ts-ignore
+                frame.options.filter = staffScope.andFilter(frame.options.filter, clause);
+            } else if (!scope.isSystemAdmin && targetUserId) {
                 // @ts-ignore
                 frame.options.user_id = targetUserId;
             }
 
             // @ts-ignore
             const result = await models.SocialAiDziJob.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
-            await attachCanEdit(result, targetUserId || currentUserId, isAdmin);
+            await attachCanEdit(result, targetUserId || currentUserId, scope);
             return result;
         }
     },

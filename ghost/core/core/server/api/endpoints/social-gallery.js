@@ -6,6 +6,7 @@ const ObjectId = require('bson-objectid').default;
 const storage = require('../../adapters/storage');
 const models = require('../../models');
 const socialMediaAssets = require('./utils/social-media-assets');
+const staffScope = require('./utils/staff-scope');
 
 const messages = {
     userRequired: 'No login user authentication, can not read gallery in this scope.',
@@ -46,22 +47,40 @@ const TYPE_IMAGE = 'image';
 const TYPE_VIDEO = 'video';
 const TYPE_AUDIO = 'audio';
 const TYPE_FILE = 'file';
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 
 const getCurrentUserId = frame => frame.options?.context?.user || null;
 const getCurrentIntegrationId = frame => frame.options?.context?.integration || null;
 
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-    // @ts-ignore
-    const user = await models.User.findOne({id: userId}, {withRelated: ['roles']});
-    if (!user) {
-        return false;
-    }
-    const roles = user.related('roles')?.models || [];
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
+// System admin (Owner / Administrator / Admin). Super Editor is not: it only
+// widens the gallery listings below (isNoGroupReader), writes as a normal user.
+const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
+
+// Linked rows whose group makes a gallery asset a group asset even when the
+// asset row itself carries no group_id (worker-written rows can keep a null
+// group_id while the producing job belongs to a group).
+const ASSET_GROUP_LINKS = [
+    ['social_ai_chart_jobs', 'chart_job_id'],
+    ['social_ai_content_bundle_jobs', 'content_bundle_job_id'],
+    ['social_ai_media_jobs', 'job_id'],
+    ['social_ai_dzi_jobs', 'job_id'],
+    ['social_ai_dzi_jobs', 'dzi_job_id'],
+    ['social_ai_news_jobs', 'news_job_id'],
+    ['social_ai_projects', 'project_id'],
+    ['social_charts', 'social_chart_id']
+];
+
+// Super Editor (no-group reader) sees every gallery asset that belongs to no
+// group: neither the row nor the job/project/chart it hangs off has a group_id.
+const whereNoGroupAsset = (qb) => {
+    qb.whereNull('sma.group_id');
+    ASSET_GROUP_LINKS.forEach(([table, column]) => {
+        qb.whereNotExists(function () {
+            this.select(1)
+                .from(`${table} as nga`)
+                .whereRaw(`nga.id = sma.${column}`)
+                .whereNotNull('nga.group_id');
+        });
+    });
 };
 
 const assertCanReadRow = async ({frame, row}) => {
@@ -726,7 +745,7 @@ const listByPrefix = async (store, prefix, limit, nextCursor, type) => {
     };
 };
 
-const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, newsJobId, projectId, limit, nextCursor, type, orderBy }) => {
+const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, newsJobId, projectId, limit, nextCursor, type, orderBy, noGroupReader = false }) => {
     const knex = models.Base.knex;
     const cursor = parseDbNextCursor(nextCursor);
     const sortField = orderBy?.field === 'updated_at' ? 'updated_at' : 'created_at';
@@ -826,6 +845,11 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                         .whereRaw('nj.id = sma.news_job_id')
                         .andWhere('nj.user_id', userId);
                 });
+                if (noGroupReader) {
+                    this.orWhere(function () {
+                        whereNoGroupAsset(this);
+                    });
+                }
             })
             .whereNotExists(function () {
                 this.select(1)
@@ -833,7 +857,14 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                     .whereRaw('epm.media_id = sma.id');
             });
     } else {
-        query = query.andWhere('sma.user_id', userId).whereNull('sma.group_id').whereNotExists(function () {
+        query = query.andWhere(function () {
+            this.where('sma.user_id', userId);
+            if (noGroupReader) {
+                this.orWhere(function () {
+                    whereNoGroupAsset(this);
+                });
+            }
+        }).whereNull('sma.group_id').whereNotExists(function () {
             this.select(1)
                 .from('estate_property_media as epm')
                 .whereRaw('epm.media_id = sma.id');
@@ -919,7 +950,14 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                     .whereRaw('epm.media_id = sma.id');
             });
         } else {
-            query = query.andWhere('sma.user_id', userId).whereNull('sma.group_id').whereNotExists(function () {
+            query = query.andWhere(function () {
+                this.where('sma.user_id', userId);
+                if (noGroupReader) {
+                    this.orWhere(function () {
+                        whereNoGroupAsset(this);
+                    });
+                }
+            }).whereNull('sma.group_id').whereNotExists(function () {
                 this.select(1)
                     .from('estate_property_media as epm')
                     .whereRaw('epm.media_id = sma.id');
@@ -1509,6 +1547,7 @@ const controller = {
             const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
 
             const userAlias = await models.User.ensureMediaFolderAlias(userId);
+            const {isNoGroupReader} = await staffScope.getStaffScope(userId);
             const listed = await listByAssetTable({
                 scope: 'user',
                 userId,
@@ -1517,7 +1556,8 @@ const controller = {
                 limit,
                 nextCursor,
                 type,
-                orderBy
+                orderBy,
+                noGroupReader: isNoGroupReader
             });
             listed.meta.scope = 'user';
             listed.meta.alias = userAlias;
@@ -1564,6 +1604,7 @@ const controller = {
             const chartJobId = String(frame.options?.chart_job_id || '').trim() || null;
             const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
 
+            const {isNoGroupReader} = await staffScope.getStaffScope(userId);
             const listed = await listByAssetTable({
                 scope: 'chart_jobs',
                 userId,
@@ -1573,7 +1614,8 @@ const controller = {
                 limit,
                 nextCursor,
                 type,
-                orderBy
+                orderBy,
+                noGroupReader: isNoGroupReader
             });
             listed.meta.scope = 'chart_jobs';
             listed.meta.chart_job_id = chartJobId;
@@ -1617,6 +1659,7 @@ const controller = {
             const newsJobId = String(frame.options?.news_job_id || '').trim() || null;
             const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
 
+            const {isNoGroupReader} = await staffScope.getStaffScope(userId);
             const listed = await listByAssetTable({
                 scope: 'news_jobs',
                 userId,
@@ -1627,7 +1670,8 @@ const controller = {
                 limit,
                 nextCursor,
                 type,
-                orderBy
+                orderBy,
+                noGroupReader: isNoGroupReader
             });
             listed.meta.scope = 'news_jobs';
             listed.meta.news_job_id = newsJobId;
@@ -1666,7 +1710,9 @@ const controller = {
             }
             // Ownership: the uploader's own rows, OR rows of a media/chart job the
             // caller owns (mirror the chart_jobs IDOR guard) — never enumerate
-            // another user's project associations.
+            // another user's project associations. Super Editor also reads
+            // no-group rows.
+            const {isNoGroupReader} = await staffScope.getStaffScope(userId);
             const rows = await models.Base.knex('social_media_assets as sma')
                 .join('social_ai_projects as p', 'p.id', 'sma.project_id')
                 .whereNotNull('sma.project_id')
@@ -1692,6 +1738,11 @@ const controller = {
                                 .whereRaw('caj.id = sma.chart_job_id')
                                 .andWhere('caj.user_id', userId);
                         });
+                    if (isNoGroupReader) {
+                        this.orWhere(function () {
+                            whereNoGroupAsset(this);
+                        });
+                    }
                 })
                 .distinct(
                     'sma.job_id as job_id',
@@ -1758,8 +1809,13 @@ const controller = {
                 });
             }
             // Use the same ownership, admin, integration, and group-membership
-            // policy as the project read endpoint.
-            await assertCanReadRow({frame, row: project});
+            // policy as the project read endpoint (Super Editor: no-group
+            // projects too). assertCanReadRow itself also gates project uploads,
+            // so the Super Editor widening stays here, on the read.
+            const scope = await staffScope.getStaffScope(userId);
+            if (!staffScope.canReadRowAsNoGroupReader(scope, project)) {
+                await assertCanReadRow({frame, row: project});
+            }
             const scopedUserId = userId || null;
 
             const limit = parseLimit(frame.options?.limit);
@@ -1777,7 +1833,8 @@ const controller = {
                 limit,
                 nextCursor,
                 type,
-                orderBy
+                orderBy,
+                noGroupReader: scope.isNoGroupReader
             });
             listed.meta.scope = 'project';
             listed.meta.project_id = projectId;

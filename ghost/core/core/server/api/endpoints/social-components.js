@@ -2,6 +2,7 @@
 const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const models = require('../../models');
+const staffScope = require('./utils/staff-scope');
 // @ts-ignore
 const logging = require('@tryghost/logging');
 
@@ -17,24 +18,7 @@ const messages = {
 };
 
 const TAG_ID_REGEX = /^[a-f0-9]{24}$/;
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin', 'Super Editor']);
-
 const getCurrentUserId = (frame) => frame.options?.context?.user || null;
-
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-
-    // @ts-ignore
-    const user = await models.User.findOne({ id: userId }, { withRelated: ['roles'] });
-    if (!user) {
-        return false;
-    }
-
-    const roles = user.related('roles')?.models || [];
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
-};
 
 const resolveTagId = async (tagValue) => {
     if (typeof tagValue !== 'string') {
@@ -124,8 +108,8 @@ const canReadGroup = async (groupId, userId) => {
     return await models.SocialGroup.canAccessGroup(group, userId, 'read');
 };
 
-const enforceReadAccessForEntry = async (entry, userId, isAdmin) => {
-    if (isAdmin) {
+const enforceReadAccessForEntry = async (entry, userId, scope) => {
+    if (staffScope.bypassesRowCheck(scope, entry)) {
         return;
     }
 
@@ -152,8 +136,10 @@ const enforceReadAccessForEntry = async (entry, userId, isAdmin) => {
     });
 };
 
-const enforceWriteAccessForEntry = async (entry, userId, isAdmin) => {
-    if (isAdmin) {
+const enforceWriteAccessForEntry = async (entry, userId, scope) => {
+    // System admin writes anything; Super Editor only rows with no group (its
+    // newsroom rows). Group rows go through the normal path below.
+    if (staffScope.bypassesRowCheck(scope, entry)) {
         return;
     }
 
@@ -175,8 +161,9 @@ const enforceWriteAccessForEntry = async (entry, userId, isAdmin) => {
 
 // Stamp a computed `can_edit` on each returned model so the frontend shows/hides
 // edit controls without re-implementing the rule (backend single source of
-// truth). Mirrors the write gate: system admin bypass, else canEditGroupContent.
-const attachCanEdit = async (entryOrCollection, userId, isAdmin) => {
+// truth). Mirrors the write gate: system admin / Super Editor-on-no-group bypass,
+// else canEditGroupContent.
+const attachCanEdit = async (entryOrCollection, userId, scope) => {
     let list = [];
     const src = (entryOrCollection && entryOrCollection.data !== undefined) ? entryOrCollection.data : entryOrCollection;
     if (Array.isArray(src)) {
@@ -190,7 +177,7 @@ const attachCanEdit = async (entryOrCollection, userId, isAdmin) => {
         if (!m || typeof m.get !== 'function') {
             continue;
         }
-        const canEdit = isAdmin || await models.SocialGroupMember.canEditGroupContent({
+        const canEdit = staffScope.bypassesRowCheck(scope, m) || await models.SocialGroupMember.canEditGroupContent({
             groupId: m.get('group_id'),
             authorId: m.get('created_by'),
             userId
@@ -229,18 +216,23 @@ const controller = {
         permissions: true,
         async query(frame) {
             const userId = getCurrentUserId(frame);
-            const isAdmin = await isAdminUser(userId);
+            const scope = await staffScope.getStaffScope(userId);
             const requestedGroupId = frame.options?.group_id || null;
 
             await appendTagFilter(frame);
             appendGroupFilter(frame);
 
-            if (!isAdmin) {
+            if (!scope.isSystemAdmin) {
                 if (requestedGroupId) {
                     const groupReadable = await canReadGroup(requestedGroupId, userId);
                     if (!groupReadable) {
                         appendCreatedByFilter(frame, userId);
                     }
+                } else if (scope.isNoGroupReader) {
+                    // Super Editor: every no-group row + its own rows. Always
+                    // AND-ed, so a caller filter cannot widen it.
+                    const clause = staffScope.noGroupOrOwnFilter(userId);
+                    frame.options.filter = staffScope.andFilter(frame.options.filter, clause);
                 } else {
                     appendCreatedByFilter(frame, userId);
                 }
@@ -248,7 +240,7 @@ const controller = {
 
             // @ts-ignore
             const result = await models.SocialComponent.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
-            await attachCanEdit(result, userId, isAdmin);
+            await attachCanEdit(result, userId, scope);
             return result;
         }
     },
@@ -264,7 +256,7 @@ const controller = {
         permissions: true,
         async query(frame) {
             const userId = getCurrentUserId(frame);
-            const isAdmin = await isAdminUser(userId);
+            const scope = await staffScope.getStaffScope(userId);
 
             appendGroupFilter(frame);
             // @ts-ignore
@@ -275,8 +267,8 @@ const controller = {
                 }));
             }
 
-            await enforceReadAccessForEntry(entry, userId, isAdmin);
-            await attachCanEdit(entry, userId, isAdmin);
+            await enforceReadAccessForEntry(entry, userId, scope);
+            await attachCanEdit(entry, userId, scope);
             return entry;
         }
     },
@@ -301,11 +293,12 @@ const controller = {
                 const userId = getCurrentUserId(frame);
                 const groupId = frame.data.socialcomponents[0]?.group_id || null;
                 // Creating inside a group requires being a member of that group
-                // (group access). System admins bypass; personal (no-group)
-                // creation is gated only by the staff role permission above.
+                // (group access). System admins bypass (Super Editor does not);
+                // personal (no-group) creation is gated only by the staff role
+                // permission above.
                 if (groupId && userId) {
-                    const isAdmin = await isAdminUser(userId);
-                    if (!isAdmin) {
+                    const scope = await staffScope.getStaffScope(userId);
+                    if (!scope.isSystemAdmin) {
                         // @ts-ignore
                         const group = await models.SocialGroup.findOne({ id: groupId });
                         if (!group) {
@@ -350,7 +343,7 @@ const controller = {
         async query(frame) {
             try {
                 const userId = getCurrentUserId(frame);
-                const isAdmin = await isAdminUser(userId);
+                const scope = await staffScope.getStaffScope(userId);
 
                 // @ts-ignore
                 const existing = await models.SocialComponent.findOne({ id: frame.options.id }, frame.options);
@@ -360,11 +353,12 @@ const controller = {
                     });
                 }
 
-                await enforceWriteAccessForEntry(existing, userId, isAdmin);
+                await enforceWriteAccessForEntry(existing, userId, scope);
 
                 const payload = frame.data.socialcomponents[0] || {};
 
-                // Reassigning the page owner (created_by) is owner/admin only.
+                // Reassigning the page owner (created_by) is owner/admin only
+                // (Super Editor: no-group rows only, same as its write bypass).
                 // The generic save path reverts created_by (the deprecated x_by
                 // guard in base/plugins/events.js onUpdating), so it must be
                 // applied separately with internal context. Always strip
@@ -372,7 +366,7 @@ const controller = {
                 // off (or steal) a page, and the guard never fights the edit.
                 let reassignTo = null;
                 if (
-                    isAdmin &&
+                    staffScope.bypassesRowCheck(scope, existing) &&
                     payload.created_by &&
                     String(payload.created_by) !== String(existing.get('created_by'))
                 ) {
@@ -407,7 +401,7 @@ const controller = {
         permissions: true,
         async query(frame) {
             const userId = getCurrentUserId(frame);
-            const isAdmin = await isAdminUser(userId);
+            const scope = await staffScope.getStaffScope(userId);
 
             // @ts-ignore
             const existing = await models.SocialComponent.findOne({ id: frame.options.id }, frame.options);
@@ -417,7 +411,7 @@ const controller = {
                 });
             }
 
-            await enforceWriteAccessForEntry(existing, userId, isAdmin);
+            await enforceWriteAccessForEntry(existing, userId, scope);
 
             // @ts-ignore
             return models.SocialComponent.destroy({ ...frame.options, require: true });

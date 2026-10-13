@@ -2,14 +2,13 @@
 const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const models = require('../../models');
+const staffScope = require('./utils/staff-scope');
 const ObjectId = require('bson-objectid').default;
 
 // Project Content Links — Phase 1: browse/add/destroy links attaching
 // posts, StackPages, or gallery entries to a project.
 // project_id lives in the URL for browse/add; link id lives in the URL for destroy.
 
-// Super Editor added to align with bbfcc5ab78 / 79b09f3d0e admin-roles policy.
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin', 'Super Editor']);
 const VALID_LINK_TYPES = new Set(['post', 'stackpage', 'gallery']);
 const TABLE = 'social_ai_project_links';
 const PROJECTS_TABLE = 'social_ai_projects';
@@ -32,21 +31,6 @@ const getCurrentIntegrationId = frame => frame.options?.context?.integration || 
 // @ts-ignore
 const getProjectId = frame => frame.options?.id || null;
 const nowMySql = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
-
-// @ts-ignore
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-    // @ts-ignore
-    const user = await models.User.findOne({id: userId}, {withRelated: ['roles']});
-    if (!user) {
-        return false;
-    }
-    const roles = user.related('roles')?.models || [];
-    // @ts-ignore
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
-};
 
 // Verify caller can access the given project with the requested permission.
 // Returns the project row on success; throws otherwise.
@@ -73,8 +57,10 @@ const assertProjectAccess = async (knex, projectId, frame, permission = 'read') 
         throw new errors.NoPermissionError({message: tpl(messages.userRequired)});
     }
 
-    const isAdmin = await isAdminUser(currentUserId);
-    if (isAdmin) {
+    // System admin: every project. Super Editor: no-group projects only (read
+    // and link writes, as before); group projects need membership below.
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (staffScope.bypassesRowCheck(scope, project)) {
         return project;
     }
 

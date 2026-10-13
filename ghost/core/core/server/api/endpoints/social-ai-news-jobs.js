@@ -6,6 +6,7 @@ const models = require('../../models');
 const ObjectId = require('bson-objectid').default;
 const storage = require('../../adapters/storage');
 const socialMediaAssets = require('./utils/social-media-assets');
+const staffScope = require('./utils/staff-scope');
 
 // News Agent — job endpoint.
 //
@@ -47,8 +48,6 @@ const NewsJobModel = models.SocialAiNewsJob;
 const TABLE = NewsJobModel?.prototype?.tableName || 'social_ai_news_jobs';
 const JUNCTION = 'social_ai_news_job_media';
 const OWNER_SCOPE = 'news_jobs';
-
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 
 const DEFAULT_JOB_TYPE = 'news-read';
 const LIPSYNC_JOB_TYPE = 'news-avatar-lipsync';
@@ -245,17 +244,14 @@ const serialize = row => ({
     completed_at: row.completed_at || null
 });
 
-const isAdmin = async userId => {
-    if (!userId) {
-        return false;
-    }
-    const user = await models.User.findOne({id: userId}, {withRelated: ['roles']});
-    return Boolean(user?.related('roles')?.models?.some(role => ADMIN_ROLES.has(role.get('name'))));
-};
-
 const assertAccess = async (frame, row, write = false) => {
     const actor = currentUser(frame);
-    if (integration(frame) || await isAdmin(actor)) {
+    const scope = await staffScope.getStaffScope(actor);
+    if (integration(frame) || scope.isSystemAdmin) {
+        return;
+    }
+    // Super Editor reads every no-group job; writes stay owner-only.
+    if (!write && staffScope.canReadRowAsNoGroupReader(scope, row)) {
         return;
     }
     if (!actor || row.user_id !== actor) {
@@ -346,7 +342,11 @@ const controller = {
             const options = frame.options || {};
             const limit = Math.min(200, Math.max(1, Number(options.limit || 50) || 50));
             const query = models.Base.knex(TABLE).select('*').orderBy('updated_at', 'desc');
-            if (!integration(frame) && !(await isAdmin(actor))) {
+            const scope = await staffScope.getStaffScope(actor);
+            if (scope.isNoGroupReader && !integration(frame)) {
+                // Super Editor: every no-group job + its own.
+                query.where(qb => qb.whereNull('group_id').orWhere('user_id', actor));
+            } else if (!integration(frame) && !scope.isSystemAdmin) {
                 query.where('user_id', actor);
             }
             if (options.project_id) {
