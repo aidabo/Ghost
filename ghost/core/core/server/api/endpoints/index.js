@@ -330,6 +330,10 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-news-jobs'), localUtils);
     },
 
+    get socialAiNewsBroadcastSelections() {
+        return apiFramework.pipeline(require('./social-ai-news-broadcast-selections'), localUtils);
+    },
+
     get socialAiAvatarProfiles() {
         return apiFramework.pipeline(require('./social-ai-avatar-profiles'), localUtils);
     },
