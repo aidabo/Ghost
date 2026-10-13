@@ -2,14 +2,13 @@
 const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const models = require('../../models');
+const staffScope = require('./utils/staff-scope');
 const ObjectId = require('bson-objectid').default;
 
 // Project Content Links — Phase 1: browse/add/destroy links attaching
 // posts, StackPages, or gallery entries to a project.
 // project_id lives in the URL for browse/add; link id lives in the URL for destroy.
 
-// Super Editor added to align with bbfcc5ab78 / 79b09f3d0e admin-roles policy.
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin', 'Super Editor']);
 const VALID_LINK_TYPES = new Set(['post', 'stackpage', 'gallery']);
 const TABLE = 'social_ai_project_links';
 const PROJECTS_TABLE = 'social_ai_projects';
@@ -32,21 +31,6 @@ const getCurrentIntegrationId = frame => frame.options?.context?.integration || 
 // @ts-ignore
 const getProjectId = frame => frame.options?.id || null;
 const nowMySql = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
-
-// @ts-ignore
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-    // @ts-ignore
-    const user = await models.User.findOne({id: userId}, {withRelated: ['roles']});
-    if (!user) {
-        return false;
-    }
-    const roles = user.related('roles')?.models || [];
-    // @ts-ignore
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
-};
 
 // Verify caller can access the given project with the requested permission.
 // Returns the project row on success; throws otherwise.
@@ -73,8 +57,11 @@ const assertProjectAccess = async (knex, projectId, frame, permission = 'read') 
         throw new errors.NoPermissionError({message: tpl(messages.userRequired)});
     }
 
-    const isAdmin = await isAdminUser(currentUserId);
-    if (isAdmin) {
+    // System admin: every project. Super Editor: newsroom (no-group /
+    // public-group) projects only (read and link writes, as before); other
+    // group projects need membership below.
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (staffScope.bypassesRowCheck(scope, project)) {
         return project;
     }
 
@@ -96,6 +83,78 @@ const assertProjectAccess = async (knex, projectId, frame, permission = 'read') 
     }
 
     return project;
+};
+
+// Link target tables + owner column per link_type, looked up in order. The
+// host stores a Ghost page id (posts, type=page) as a stackpage link_id; a
+// social_components id is accepted too.
+const LINK_TARGETS = {
+    post: [['posts', 'created_by']],
+    stackpage: [['social_components', 'created_by'], ['posts', 'created_by']],
+    gallery: [['social_media_assets', 'user_id']]
+};
+
+// A Super Editor reading another user's newsroom project sees only the links
+// whose target it may read itself (newsroom target, its own, or a group it is
+// a member of): a newsroom project can link family / private content. Gallery
+// targets are judged with the gallery's newsroom-asset rule. A link whose
+// target is not found is kept: its title / URL came from the project writer,
+// not from a protected row.
+// @ts-ignore
+const filterReadableLinks = async (knex, rows, userId, scope) => {
+    const targets = new Map();
+    for (const [type, tables] of Object.entries(LINK_TARGETS)) {
+        let ids = [...new Set(rows.filter(row => row.link_type === type).map(row => String(row.link_id)))];
+        for (const [table, ownerColumn] of tables) {
+            if (!ids.length) {
+                break;
+            }
+            const found = await knex(table).whereIn('id', ids).select('id', 'group_id', `${ownerColumn} as owner_id`);
+            let newsroomAssets = null;
+            if (table === 'social_media_assets' && found.length) {
+                newsroomAssets = new Set((await knex('social_media_assets as sma')
+                    .whereIn('sma.id', found.map(target => target.id))
+                    .where(qb => staffScope.whereNewsroomAsset(qb, scope))
+                    .pluck('sma.id')).map(String));
+            }
+            found.forEach((target) => {
+                const newsroom = newsroomAssets
+                    ? newsroomAssets.has(String(target.id))
+                    : staffScope.isNewsroomRow(target, scope.publicGroupIds);
+                targets.set(`${type}:${target.id}`, {...target, newsroom});
+            });
+            const foundIds = new Set(found.map(target => String(target.id)));
+            ids = ids.filter(id => !foundIds.has(id));
+        }
+    }
+
+    const memberOf = new Map();
+    const canReadGroup = async (groupId) => {
+        if (!groupId) {
+            return false;
+        }
+        if (!memberOf.has(groupId)) {
+            // @ts-ignore
+            const group = await models.SocialGroup.findOne({id: groupId});
+            // @ts-ignore
+            memberOf.set(groupId, Boolean(group && await models.SocialGroup.canAccessGroup(group, userId, 'read')));
+        }
+        return memberOf.get(groupId);
+    };
+
+    const readable = [];
+    for (const row of rows) {
+        const target = targets.get(`${row.link_type}:${row.link_id}`);
+        if (
+            !target ||
+            target.newsroom ||
+            String(target.owner_id || '') === String(userId) ||
+            await canReadGroup(target.group_id)
+        ) {
+            readable.push(row);
+        }
+    }
+    return readable;
 };
 
 // @ts-ignore
@@ -123,11 +182,20 @@ const controller = {
         async query(frame) {
             const knex = models.Base.knex;
             const projectId = getProjectId(frame);
-            await assertProjectAccess(knex, projectId, frame, 'read');
-            const rows = await knex(TABLE)
+            const project = await assertProjectAccess(knex, projectId, frame, 'read');
+            let rows = await knex(TABLE)
                 .where({project_id: projectId})
                 .orderBy('sort_order', 'asc')
                 .orderBy('created_at', 'asc');
+            const currentUserId = getCurrentUserId(frame);
+            const scope = await staffScope.getStaffScope(currentUserId);
+            if (
+                !getCurrentIntegrationId(frame) &&
+                staffScope.canReadRowAsNoGroupReader(scope, project) &&
+                String(project.user_id || '') !== String(currentUserId)
+            ) {
+                rows = await filterReadableLinks(knex, rows, currentUserId, scope);
+            }
             // Return {data, meta} so Ghost's default serializer re-keys it
             // under the docName: {socialaiprojectlinks: [...]} in the response.
             return {data: rows.map(serializeLink), meta: {}};

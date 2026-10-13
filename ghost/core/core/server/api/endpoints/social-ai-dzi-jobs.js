@@ -3,9 +3,9 @@ const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const logging = require('@tryghost/logging');
 const models = require('../../models');
+const staffScope = require('./utils/staff-scope');
 const storage = require('../../adapters/storage');
 
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin', 'Super Editor']);
 const ALLOWED_INCLUDES = ['user', 'group'];
 
 const messages = {
@@ -72,23 +72,6 @@ const serializeRow = (row) => ({
 });
 
 // @ts-ignore
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-
-    // @ts-ignore
-    const user = await models.User.findOne({ id: userId }, { withRelated: ['roles'] });
-    if (!user) {
-        return false;
-    }
-
-    const roles = user.related('roles')?.models || [];
-    // @ts-ignore
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
-};
-
-// @ts-ignore
 const resolveTargetUserId = async (frame) => {
     const currentUserId = getCurrentUserId(frame);
     const currentIntegrationId = getCurrentIntegrationId(frame);
@@ -108,8 +91,10 @@ const resolveTargetUserId = async (frame) => {
         return currentUserId;
     }
 
-    const isAdmin = await isAdminUser(currentUserId);
-    if (isAdmin) {
+    // Acting as another user is system admin only (Super Editor must not
+    // borrow another user's group membership).
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (scope.isSystemAdmin) {
         return requestedUserId;
     }
 
@@ -125,8 +110,9 @@ const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) =
     }
 
     const currentUserId = getCurrentUserId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
-    if (isAdmin) {
+    const scope = await staffScope.getStaffScope(currentUserId);
+    // Super Editor: a public group needs no membership (read or write).
+    if (scope.isSystemAdmin || staffScope.isNewsroomGroup(scope, groupId)) {
         return;
     }
 
@@ -151,9 +137,9 @@ const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) =
 const assertCanReadRow = async ({ frame, row }) => {
     const currentUserId = getCurrentUserId(frame);
     const integrationId = getCurrentIntegrationId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
+    const scope = await staffScope.getStaffScope(currentUserId);
 
-    if (integrationId || isAdmin) {
+    if (integrationId || scope.isSystemAdmin || await canManageDziJobAsNewsroomEditor(scope, row)) {
         return;
     }
 
@@ -184,6 +170,12 @@ const assertCanWriteRow = async ({ frame, row }) => {
     if (integrationId) {
         return;
     }
+    // Super Editor may mutate newsroom jobs (no group or a public group, no
+    // non-newsroom project); others go through the author / system admin rule.
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (await canManageDziJobAsNewsroomEditor(scope, row)) {
+        return;
+    }
     const targetUserId = await resolveTargetUserId(frame);
     // @ts-ignore
     const allowed = await models.SocialGroupMember.canEditGroupContent({
@@ -196,6 +188,88 @@ const assertCanWriteRow = async ({ frame, row }) => {
             message: tpl(messages.noPermission)
         });
     }
+};
+
+// DZI jobs have no project_id; they belong to projects through
+// social_ai_dzi_job_projects. A Super Editor manages a DZI job (read and every
+// user-facing write) when its own group is newsroom and none of its linked
+// projects is in a non-public group.
+const nonNewsroomLinkedJobs = (knex, scope) => {
+    const query = knex('social_ai_dzi_job_projects as djp')
+        .join('social_ai_projects as p', 'p.id', 'djp.project_id')
+        .whereNotNull('p.group_id');
+    if (scope.publicGroupIds?.length) {
+        query.whereNotIn('p.group_id', scope.publicGroupIds);
+    }
+    return query;
+};
+
+const canManageDziJobAsNewsroomEditor = async (scope, job) => {
+    if (!staffScope.canReadRowAsNoGroupReader(scope, job)) {
+        return false;
+    }
+    const jobId = typeof job.get === 'function' ? job.get('id') : job.id;
+    return !(await nonNewsroomLinkedJobs(models.Base.knex, scope).where('djp.dzi_job_id', jobId).first('djp.id'));
+};
+
+// Project side of a job <-> project link. Read: integration, system admin,
+// Super Editor on a newsroom project, the owner, or a member of its group.
+// Write: integration, else the project write rule (author / system admin via
+// canEditGroupContent) — same as social-ai-projects edit.
+const canReadProject = async (frame, project, scope) => {
+    const currentUserId = getCurrentUserId(frame);
+    if (getCurrentIntegrationId(frame) || staffScope.bypassesRowCheck(scope, project)) {
+        return true;
+    }
+    if (!currentUserId) {
+        return false;
+    }
+    if (project.group_id) {
+        // @ts-ignore
+        const group = await models.SocialGroup.findOne({id: project.group_id});
+        // @ts-ignore
+        return Boolean(group && await models.SocialGroup.canAccessGroup(group, currentUserId, 'read'));
+    }
+    return String(project.user_id || '') === String(currentUserId);
+};
+
+const assertCanWriteProject = async (frame, project) => {
+    if (getCurrentIntegrationId(frame)) {
+        return;
+    }
+    // System admin (legacy 'Admin' included, which canEditGroupContent does
+    // not know); Super Editor manages newsroom projects of any owner.
+    const scope = await staffScope.getStaffScope(getCurrentUserId(frame));
+    if (scope.isSystemAdmin || staffScope.canManageAsNewsroomEditor(scope, project)) {
+        return;
+    }
+    // @ts-ignore
+    const allowed = await models.SocialGroupMember.canEditGroupContent({
+        groupId: project.group_id,
+        authorId: project.user_id,
+        userId: getCurrentUserId(frame)
+    });
+    if (!allowed) {
+        throw new errors.NoPermissionError({message: tpl(messages.noPermission)});
+    }
+};
+
+// Linked projects of a job, limited to the ones the caller may read (a job can
+// be linked to projects in groups the caller is not a member of).
+const listReadableLinkedProjects = async (frame, knex, jobId) => {
+    const scope = await staffScope.getStaffScope(getCurrentUserId(frame));
+    const rows = await knex('social_ai_dzi_job_projects as djp')
+        .join('social_ai_projects as p', 'p.id', 'djp.project_id')
+        .where('djp.dzi_job_id', jobId)
+        .select('djp.project_id as id', 'p.name as name', 'djp.created_at as linked_at', 'p.user_id as user_id', 'p.group_id as group_id')
+        .orderBy('djp.created_at', 'asc');
+    const data = [];
+    for (const row of rows) {
+        if (await canReadProject(frame, row, scope)) {
+            data.push({id: row.id, name: row.name, linked_at: row.linked_at});
+        }
+    }
+    return {data, meta: {}};
 };
 
 // @ts-ignore
@@ -237,7 +311,7 @@ const loadRowOrThrow = async (knex, id) => {
 
 // Stamp computed `can_edit` on each returned job so the frontend shows/hides
 // mutation controls (backend single source of truth). Mirrors the write gate.
-const attachCanEdit = async (entryOrCollection, userId, isAdmin) => {
+const attachCanEdit = async (entryOrCollection, userId, scope) => {
     let list = [];
     const src = (entryOrCollection && entryOrCollection.data !== undefined) ? entryOrCollection.data : entryOrCollection;
     if (Array.isArray(src)) {
@@ -251,7 +325,7 @@ const attachCanEdit = async (entryOrCollection, userId, isAdmin) => {
         if (!m || typeof m.get !== 'function') {
             continue;
         }
-        const canEdit = isAdmin || await models.SocialGroupMember.canEditGroupContent({
+        const canEdit = scope.isSystemAdmin || await canManageDziJobAsNewsroomEditor(scope, m) || await models.SocialGroupMember.canEditGroupContent({
             groupId: m.get('group_id'),
             authorId: m.get('user_id'),
             userId
@@ -301,16 +375,40 @@ const controller = {
                 permission: 'read'
             });
 
-            // Scope non-admins to their own jobs; admin/Super Editor see all.
-            const isAdmin = await isAdminUser(currentUserId);
-            if (!isAdmin && targetUserId) {
+            // Scope non-admins to their own jobs; system admin sees all.
+            const scope = await staffScope.getStaffScope(currentUserId);
+            if (scope.isNoGroupReader) {
+                // Super Editor: the requested (member or public) group, else
+                // every newsroom job + its own. Composed into the NQL filter, which
+                // findPage applies (the bare user_id/group_id options are not
+                // permitted findPage options and never reach the query).
+                const excludeIds = (await nonNewsroomLinkedJobs(models.Base.knex, scope).distinct('djp.dzi_job_id as id'))
+                    .map(row => String(row.id));
+                const clause = groupId
+                    ? `group_id:${staffScope.nqlId(groupId, 'group_id')}`
+                    : staffScope.newsroomOrOwnFilter(scope, currentUserId, 'user_id', {excludeIds});
+                // @ts-ignore
+                frame.options.filter = staffScope.andFilter(frame.options.filter, clause);
+                if (groupId && excludeIds.length) {
+                    // @ts-ignore
+                    frame.options.filter = staffScope.andFilter(frame.options.filter, `id:-[${excludeIds.join(',')}]`);
+                }
+            } else if (!scope.isSystemAdmin && targetUserId) {
+                // The checked group must reach the query (the bare group_id
+                // option never does). Without group_id the listing is left as
+                // it is today: the user_id option below is not applied by
+                // findPage either (pre-existing, see report).
+                if (groupId && !getCurrentIntegrationId(frame)) {
+                    // @ts-ignore
+                    frame.options.filter = staffScope.andFilter(frame.options.filter, `group_id:${staffScope.nqlId(groupId, 'group_id')}`);
+                }
                 // @ts-ignore
                 frame.options.user_id = targetUserId;
             }
 
             // @ts-ignore
             const result = await models.SocialAiDziJob.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
-            await attachCanEdit(result, targetUserId || currentUserId, isAdmin);
+            await attachCanEdit(result, targetUserId || currentUserId, scope);
             return result;
         }
     },
@@ -422,9 +520,15 @@ const controller = {
                 const assetUrls = [payloadInput.source_path, payloadInput.preview_url]
                     .map(u => String(u || '').trim())
                     .filter(u => /^https?:\/\//i.test(u));
+                // Only the job owner's own uploads are stamped: a known URL
+                // must never pull someone else's asset into this job (destroy
+                // would then delete it). Null-safe: an owner-less
+                // (integration) job stamps owner-less assets, as before.
+                const ownerId = targetUserId || currentUserId || null;
                 if (jobId && assetUrls.length) {
                     await models.Base.knex('social_media_assets')
                         .whereIn('storage_url', assetUrls)
+                        .where('user_id', ownerId)
                         .update({dzi_job_id: jobId});
                 }
             } catch (err) {
@@ -485,6 +589,12 @@ const controller = {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, getJobId(frame));
             await assertCanWriteRow({ frame, row });
+            // A newsroom-rule Super Editor must not cascade into assets
+            // outside the newsroom.
+            const scope = await staffScope.getStaffScope(getCurrentUserId(frame));
+            if (staffScope.actsAsNewsroomEditor(scope, row.user_id, getCurrentUserId(frame), getCurrentIntegrationId(frame))) {
+                await staffScope.assertAssetsAreNewsroom(knex, scope, qb => qb.where('sma.dzi_job_id', row.id));
+            }
 
             // Best-effort S3 cleanup of the gallery-bucket objects for this job.
             // The DZI TILES live in a different bucket and are removed by the host
@@ -524,9 +634,16 @@ const controller = {
                             cursor = listed?.nextCursor || null;
                         } while (cursor);
                     }
-                    // (b) preview image (outside the job folder)
+                    // (b) preview image (outside the job folder) — only when the
+                    // job owner uploaded it: preview_url is caller-supplied and
+                    // may name someone else's file.
                     if (row.preview_url && typeof mediaStore.urlToPath === 'function') {
-                        await deleteKey(mediaStore.urlToPath(row.preview_url));
+                        const ownPreview = await knex('social_media_assets')
+                            .where({storage_url: row.preview_url, user_id: row.user_id})
+                            .first('id');
+                        if (ownPreview) {
+                            await deleteKey(mediaStore.urlToPath(row.preview_url));
+                        }
                     }
                 }
             } catch (err) {
@@ -538,13 +655,20 @@ const controller = {
             // dzi_job_id link (both PDF + preview, stamped at job creation) AND, as a
             // fallback for rows created before that linking existed, the source PDF by
             // its storage_key path and the preview by its storage_url.
+            // Rows matched by link or preview URL are deleted only when the job
+            // owner uploaded them (null-safe: an owner-less integration job
+            // cleans owner-less rows); rows under the job's own folder always.
             try {
                 const q = knex('social_media_assets')
-                    .where('dzi_job_id', row.id)
-                    .orWhereRaw('storage_key LIKE ?', [`%gallery/deepzoom/${row.id}/%`]);
-                if (row.preview_url) {
-                    q.orWhere('storage_url', row.preview_url);
-                }
+                    .whereRaw('storage_key LIKE ?', [`%gallery/deepzoom/${row.id}/%`])
+                    .orWhere(function () {
+                        this.where('user_id', row.user_id).where(function () {
+                            this.where('dzi_job_id', row.id);
+                            if (row.preview_url) {
+                                this.orWhere('storage_url', row.preview_url);
+                            }
+                        });
+                    });
                 await q.del();
             } catch (err) {
                 logging.warn(`[social-ai-dzi-jobs] asset row cleanup failed for job ${row.id}: ${err?.message || err}`);
@@ -746,12 +870,7 @@ const controller = {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, getJobId(frame));
             await assertCanReadRow({frame, row});
-            const links = await knex('social_ai_dzi_job_projects as djp')
-                .join('social_ai_projects as p', 'p.id', 'djp.project_id')
-                .where('djp.dzi_job_id', row.id)
-                .select('djp.project_id as id', 'p.name as name', 'djp.created_at as linked_at')
-                .orderBy('djp.created_at', 'asc');
-            return {data: links, meta: {}};
+            return await listReadableLinkedProjects(frame, knex, row.id);
         }
     },
 
@@ -774,6 +893,8 @@ const controller = {
             if (!project) {
                 throw new errors.NotFoundError({message: 'Project not found'});
             }
+            // Linking puts this job into the project: needs write on the project.
+            await assertCanWriteProject(frame, project);
 
             const exists = await knex('social_ai_dzi_job_projects')
                 .where({dzi_job_id: row.id, project_id: projectId}).first();
@@ -792,12 +913,7 @@ const controller = {
                 });
             }
 
-            const links = await knex('social_ai_dzi_job_projects as djp')
-                .join('social_ai_projects as p', 'p.id', 'djp.project_id')
-                .where('djp.dzi_job_id', row.id)
-                .select('djp.project_id as id', 'p.name as name', 'djp.created_at as linked_at')
-                .orderBy('djp.created_at', 'asc');
-            return {data: links, meta: {}};
+            return await listReadableLinkedProjects(frame, knex, row.id);
         }
     },
 
@@ -815,17 +931,18 @@ const controller = {
             if (!projectId) {
                 throw new errors.ValidationError({message: 'project_id is required'});
             }
+            // The project side must be readable (a vanished project can
+            // always be unlinked).
+            const project = await knex('social_ai_projects').where({id: projectId}).first();
+            if (project && !(await canReadProject(frame, project, await staffScope.getStaffScope(getCurrentUserId(frame))))) {
+                throw new errors.NoPermissionError({message: tpl(messages.noPermission)});
+            }
 
             await knex('social_ai_dzi_job_projects')
                 .where({dzi_job_id: row.id, project_id: projectId})
                 .del();
 
-            const links = await knex('social_ai_dzi_job_projects as djp')
-                .join('social_ai_projects as p', 'p.id', 'djp.project_id')
-                .where('djp.dzi_job_id', row.id)
-                .select('djp.project_id as id', 'p.name as name', 'djp.created_at as linked_at')
-                .orderBy('djp.created_at', 'asc');
-            return {data: links, meta: {}};
+            return await listReadableLinkedProjects(frame, knex, row.id);
         }
     },
 

@@ -6,8 +6,8 @@ const models = require('../../models');
 const storage = require('../../adapters/storage');
 const ObjectId = require('bson-objectid').default;
 const socialMediaAssets = require('./utils/social-media-assets');
+const staffScope = require('./utils/staff-scope');
 
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 const ALLOWED_INCLUDES = ['user', 'group'];
 
 const messages = {
@@ -107,22 +107,12 @@ const deriveJobStatus = (steps) => {
     return 'queued';
 };
 
+// System admin (Owner / Administrator / Admin). Super Editor is not: it reads
+// and manages jobs of newsroom (no-group / public-group) projects (see browse /
+// assertRowAccess / assertProjectAccess); everything else it does as a
+// normal user.
 // @ts-ignore
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-
-    // @ts-ignore
-    const user = await models.User.findOne({ id: userId }, { withRelated: ['roles'] });
-    if (!user) {
-        return false;
-    }
-
-    const roles = user.related('roles')?.models || [];
-    // @ts-ignore
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
-};
+const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
 
 // @ts-ignore
 const resolveTargetUserId = async (frame) => {
@@ -161,8 +151,12 @@ const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) =
     }
 
     const currentUserId = getCurrentUserId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
-    if (isAdmin) {
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (scope.isSystemAdmin) {
+        return;
+    }
+    // Super Editor reads a public group without membership (writes unchanged).
+    if (permission === 'read' && staffScope.isNewsroomGroup(scope, groupId)) {
         return;
     }
 
@@ -187,9 +181,14 @@ const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) =
 const assertRowAccess = async ({ frame, row, permission = 'read' }) => {
     const currentUserId = getCurrentUserId(frame);
     const integrationId = getCurrentIntegrationId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
+    const scope = await staffScope.getStaffScope(currentUserId);
 
-    if (integrationId || isAdmin) {
+    if (integrationId || scope.isSystemAdmin) {
+        return;
+    }
+    // Super Editor reads and manages (cancel / rerun / destroy) jobs of
+    // newsroom projects, or project-less newsroom jobs.
+    if (await staffScope.canManageJobAsNewsroomEditor(scope, row)) {
         return;
     }
 
@@ -220,8 +219,12 @@ const assertCanWriteRow = (args) => assertRowAccess({ ...args, permission: 'writ
 const assertProjectAccess = async ({ frame, project, targetUserId, permission }) => {
     const currentUserId = getCurrentUserId(frame);
     const integrationId = getCurrentIntegrationId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
-    if (integrationId || isAdmin) {
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (integrationId || scope.isSystemAdmin) {
+        return;
+    }
+    // Super Editor: full access (read, add jobs) to newsroom projects.
+    if (staffScope.canManageAsNewsroomEditor(scope, project)) {
         return;
     }
 
@@ -378,8 +381,12 @@ const controller = {
             // contains the family names being researched). Integration context
             // (host UI / workers) and admins keep the full listing.
             const integrationId = getCurrentIntegrationId(frame);
-            const isAdmin = targetUserId ? await isAdminUser(targetUserId) : false;
+            const scope = targetUserId ? await staffScope.getStaffScope(targetUserId) : null;
+            const isAdmin = Boolean(scope?.isSystemAdmin);
             let options = { ...frame.options, withRelated: ALLOWED_INCLUDES };
+            // Every scope clause is AND-ed through staffScope.andFilter, so the
+            // caller filter can never escape it.
+            let filter = String(frame.options?.filter || '').trim();
 
             // M8: filtering by project requires access to THAT project — the
             // project's ownership governs its jobs' visibility.
@@ -395,31 +402,46 @@ const controller = {
                         permission: 'read'
                     });
                 }
-                const baseFilter = String(frame.options?.filter || '').trim();
-                options = {
-                    ...options,
-                    filter: baseFilter ? `${baseFilter}+project_id:${projectId}` : `project_id:${projectId}`
-                };
+                filter = staffScope.andFilter(filter, `project_id:${staffScope.nqlId(projectId, 'project_id')}`);
+                // A newsroom project can hold jobs of non-public groups. A
+                // Super Editor that reached the project through the newsroom
+                // read (not as its owner) only sees its newsroom jobs + own.
+                if (
+                    !integrationId && !isAdmin &&
+                    staffScope.canReadRowAsNoGroupReader(scope, project) &&
+                    String(project.get('user_id') || '') !== String(targetUserId)
+                ) {
+                    filter = staffScope.andFilter(filter, staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id'));
+                }
             } else if (!integrationId && !isAdmin && !groupId && targetUserId) {
-                const baseFilter = String(frame.options?.filter || '').trim();
-                options = {
-                    ...options,
-                    filter: baseFilter ? `${baseFilter}+user_id:${targetUserId}` : `user_id:${targetUserId}`
-                };
+                // Super Editor also sees every newsroom (no-group / public-group)
+                // job outside non-newsroom projects.
+                filter = staffScope.andFilter(filter, scope.isNoGroupReader
+                    ? staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id', {
+                        excludeProjectIds: await staffScope.loadNonNewsroomProjectIds(scope)
+                    })
+                    : `user_id:${targetUserId}`);
+            } else if (!integrationId && !isAdmin && groupId) {
+                // The checked group must reach the query: the bare group_id
+                // option is not a permitted findPage option, so without this a
+                // member of one group listed every job.
+                filter = staffScope.andFilter(filter, `group_id:${staffScope.nqlId(groupId, 'group_id')}`);
+                const excluded = scope?.isNoGroupReader ? await staffScope.loadNonNewsroomProjectIds(scope) : [];
+                if (excluded.length) {
+                    filter = staffScope.andFilter(filter, `(project_id:null,project_id:-[${excluded.join(',')}])`);
+                }
             }
 
             // Type filter (review 2026-08-08): the `type` option was declared
             // and sent by the host but never composed into the NQL filter —
             // dead contract end-to-end. Compose it after the project/user scope
-            // so the two combine (`project_id:xxx+type:csv-create`).
+            // so the two combine (`project_id:xxx+type:csv-create`). `type` is
+            // a single token, never NQL.
             const jobType = String(frame.options?.type || '').trim();
             if (jobType) {
-                const baseFilter = String(options.filter || '').trim();
-                options = {
-                    ...options,
-                    filter: baseFilter ? `${baseFilter}+type:${jobType}` : `type:${jobType}`
-                };
+                filter = staffScope.andFilter(filter, `type:${staffScope.nqlToken(jobType, 'type')}`);
             }
+            options = {...options, filter: filter || undefined};
 
             // @ts-ignore
             return await models.SocialAiChartJob.findPage(options);
@@ -662,6 +684,12 @@ const controller = {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, getJobId(frame));
             await assertCanWriteRow({ frame, row });
+            // A newsroom-rule Super Editor must not cascade into assets
+            // outside the newsroom.
+            const scope = await staffScope.getStaffScope(getCurrentUserId(frame));
+            if (staffScope.actsAsNewsroomEditor(scope, row.user_id, getCurrentUserId(frame), getCurrentIntegrationId(frame))) {
+                await staffScope.assertAssetsAreNewsroom(knex, scope, qb => qb.where('sma.chart_job_id', row.id));
+            }
 
             // Review MAJOR 4 (2026-08-08): reject deleting a queued/running
             // job — it would strand the worker mid-run and race its lease

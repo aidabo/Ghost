@@ -6,6 +6,7 @@ const ObjectId = require('bson-objectid').default;
 const storage = require('../../adapters/storage');
 const models = require('../../models');
 const socialMediaAssets = require('./utils/social-media-assets');
+const staffScope = require('./utils/staff-scope');
 
 const messages = {
     userRequired: 'No login user authentication, can not read gallery in this scope.',
@@ -46,23 +47,13 @@ const TYPE_IMAGE = 'image';
 const TYPE_VIDEO = 'video';
 const TYPE_AUDIO = 'audio';
 const TYPE_FILE = 'file';
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 
 const getCurrentUserId = frame => frame.options?.context?.user || null;
 const getCurrentIntegrationId = frame => frame.options?.context?.integration || null;
 
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-    // @ts-ignore
-    const user = await models.User.findOne({id: userId}, {withRelated: ['roles']});
-    if (!user) {
-        return false;
-    }
-    const roles = user.related('roles')?.models || [];
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
-};
+// System admin (Owner / Administrator / Admin). Super Editor is not: it only
+// widens the gallery listings below (isNoGroupReader), writes as a normal user.
+const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
 
 const assertCanReadRow = async ({frame, row}) => {
     const currentUserId = getCurrentUserId(frame);
@@ -726,7 +717,7 @@ const listByPrefix = async (store, prefix, limit, nextCursor, type) => {
     };
 };
 
-const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, newsJobId, projectId, limit, nextCursor, type, orderBy }) => {
+const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, newsJobId, projectId, limit, nextCursor, type, orderBy, newsroomScope = null }) => {
     const knex = models.Base.knex;
     const cursor = parseDbNextCursor(nextCursor);
     const sortField = orderBy?.field === 'updated_at' ? 'updated_at' : 'created_at';
@@ -826,6 +817,11 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                         .whereRaw('nj.id = sma.news_job_id')
                         .andWhere('nj.user_id', userId);
                 });
+                if (newsroomScope) {
+                    this.orWhere(function () {
+                        staffScope.whereNewsroomAsset(this, newsroomScope);
+                    });
+                }
             })
             .whereNotExists(function () {
                 this.select(1)
@@ -833,7 +829,16 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                     .whereRaw('epm.media_id = sma.id');
             });
     } else {
-        query = query.andWhere('sma.user_id', userId).whereNull('sma.group_id').whereNotExists(function () {
+        query = query.andWhere(function () {
+            this.where(function () {
+                this.where('sma.user_id', userId).whereNull('sma.group_id');
+            });
+            if (newsroomScope) {
+                this.orWhere(function () {
+                    staffScope.whereNewsroomAsset(this, newsroomScope);
+                });
+            }
+        }).whereNotExists(function () {
             this.select(1)
                 .from('estate_property_media as epm')
                 .whereRaw('epm.media_id = sma.id');
@@ -919,7 +924,16 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                     .whereRaw('epm.media_id = sma.id');
             });
         } else {
-            query = query.andWhere('sma.user_id', userId).whereNull('sma.group_id').whereNotExists(function () {
+            query = query.andWhere(function () {
+                this.where(function () {
+                    this.where('sma.user_id', userId).whereNull('sma.group_id');
+                });
+                if (newsroomScope) {
+                    this.orWhere(function () {
+                        staffScope.whereNewsroomAsset(this, newsroomScope);
+                    });
+                }
+            }).whereNotExists(function () {
                 this.select(1)
                     .from('estate_property_media as epm')
                     .whereRaw('epm.media_id = sma.id');
@@ -1509,6 +1523,7 @@ const controller = {
             const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
 
             const userAlias = await models.User.ensureMediaFolderAlias(userId);
+            const scope = await staffScope.getStaffScope(userId);
             const listed = await listByAssetTable({
                 scope: 'user',
                 userId,
@@ -1517,7 +1532,8 @@ const controller = {
                 limit,
                 nextCursor,
                 type,
-                orderBy
+                orderBy,
+                newsroomScope: scope.isNoGroupReader ? scope : null
             });
             listed.meta.scope = 'user';
             listed.meta.alias = userAlias;
@@ -1564,6 +1580,7 @@ const controller = {
             const chartJobId = String(frame.options?.chart_job_id || '').trim() || null;
             const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
 
+            const scope = await staffScope.getStaffScope(userId);
             const listed = await listByAssetTable({
                 scope: 'chart_jobs',
                 userId,
@@ -1573,7 +1590,8 @@ const controller = {
                 limit,
                 nextCursor,
                 type,
-                orderBy
+                orderBy,
+                newsroomScope: scope.isNoGroupReader ? scope : null
             });
             listed.meta.scope = 'chart_jobs';
             listed.meta.chart_job_id = chartJobId;
@@ -1617,6 +1635,7 @@ const controller = {
             const newsJobId = String(frame.options?.news_job_id || '').trim() || null;
             const orderBy = parseOrderBy(frame.options?.orderby || frame.options?.order);
 
+            const scope = await staffScope.getStaffScope(userId);
             const listed = await listByAssetTable({
                 scope: 'news_jobs',
                 userId,
@@ -1627,7 +1646,8 @@ const controller = {
                 limit,
                 nextCursor,
                 type,
-                orderBy
+                orderBy,
+                newsroomScope: scope.isNoGroupReader ? scope : null
             });
             listed.meta.scope = 'news_jobs';
             listed.meta.news_job_id = newsJobId;
@@ -1666,7 +1686,9 @@ const controller = {
             }
             // Ownership: the uploader's own rows, OR rows of a media/chart job the
             // caller owns (mirror the chart_jobs IDOR guard) — never enumerate
-            // another user's project associations.
+            // another user's project associations. Super Editor also reads
+            // newsroom (no-group / public-group) rows.
+            const scope = await staffScope.getStaffScope(userId);
             const rows = await models.Base.knex('social_media_assets as sma')
                 .join('social_ai_projects as p', 'p.id', 'sma.project_id')
                 .whereNotNull('sma.project_id')
@@ -1692,6 +1714,11 @@ const controller = {
                                 .whereRaw('caj.id = sma.chart_job_id')
                                 .andWhere('caj.user_id', userId);
                         });
+                    if (scope.isNoGroupReader) {
+                        this.orWhere(function () {
+                            staffScope.whereNewsroomAsset(this, scope);
+                        });
+                    }
                 })
                 .distinct(
                     'sma.job_id as job_id',
@@ -1758,8 +1785,13 @@ const controller = {
                 });
             }
             // Use the same ownership, admin, integration, and group-membership
-            // policy as the project read endpoint.
-            await assertCanReadRow({frame, row: project});
+            // policy as the project read endpoint (Super Editor: newsroom
+            // projects too). assertCanReadRow itself also gates project uploads,
+            // so the Super Editor widening stays here, on the read.
+            const scope = await staffScope.getStaffScope(userId);
+            if (!staffScope.canReadRowAsNoGroupReader(scope, project)) {
+                await assertCanReadRow({frame, row: project});
+            }
             const scopedUserId = userId || null;
 
             const limit = parseLimit(frame.options?.limit);
@@ -1777,7 +1809,8 @@ const controller = {
                 limit,
                 nextCursor,
                 type,
-                orderBy
+                orderBy,
+                newsroomScope: scope.isNoGroupReader ? scope : null
             });
             listed.meta.scope = 'project';
             listed.meta.project_id = projectId;

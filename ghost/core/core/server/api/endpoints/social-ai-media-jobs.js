@@ -4,10 +4,10 @@ const errors = require('@tryghost/errors');
 const models = require('../../models');
 const storage = require('../../adapters/storage');
 const socialMediaAssets = require('./utils/social-media-assets');
+const staffScope = require('./utils/staff-scope');
 // @ts-ignore
 //const logging = require('@tryghost/logging');
 
-const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 const ALLOWED_INCLUDES = ['user', 'group'];
 
 const messages = {
@@ -43,22 +43,10 @@ const SocialAiMediaJobModel = models.SocialAiMediaJob;
 // @ts-ignore
 const TABLE = SocialAiMediaJobModel?.prototype?.tableName || 'social_ai_media_jobs';
 
+// System admin (Owner / Administrator / Admin). Super Editor is not (it manages
+// newsroom jobs through assertCanReadRow).
 // @ts-ignore
-const isAdminUser = async (userId) => {
-    if (!userId) {
-        return false;
-    }
-
-    // @ts-ignore
-    const user = await models.User.findOne({ id: userId }, { withRelated: ['roles'] });
-    if (!user) {
-        return false;
-    }
-
-    const roles = user.related('roles')?.models || [];
-    // @ts-ignore
-    return roles.some(role => ADMIN_ROLES.has(role.get('name')));
-};
+const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
 
 const nowMySql = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
@@ -312,13 +300,15 @@ const serializeRow = (row) => {
     };
 };
 
+// Gate for edit / cancel / retry (despite the name). Super Editor manages jobs
+// of newsroom projects, or project-less newsroom jobs.
 // @ts-ignore
 const assertCanReadRow = async ({ frame, row }) => {
     const currentUserId = getCurrentUserId(frame);
     const integrationId = getCurrentIntegrationId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
+    const scope = await staffScope.getStaffScope(currentUserId);
 
-    if (integrationId || isAdmin) {
+    if (integrationId || scope.isSystemAdmin || await staffScope.canManageJobAsNewsroomEditor(scope, row)) {
         return;
     }
 
@@ -429,6 +419,14 @@ const controller = {
                 targetUserId,
                 permission: 'read'
             });
+            // The checked group must reach the query (the bare group_id option
+            // is not a permitted findPage option). Without group_id the listing
+            // stays as it is today (unscoped, pre-existing).
+            const currentUserId = getCurrentUserId(frame);
+            if (groupId && !getCurrentIntegrationId(frame) && !(currentUserId && await isAdminUser(currentUserId))) {
+                // @ts-ignore
+                frame.options.filter = staffScope.andFilter(frame.options.filter, `group_id:${staffScope.nqlId(groupId, 'group_id')}`);
+            }
             // @ts-ignore
             return await models.SocialAiMediaJob.findPage({ ...frame.options, withRelated: ALLOWED_INCLUDES });
         }
@@ -525,11 +523,15 @@ const controller = {
                     });
                 }
 
-                await assertCanWriteGroup({
-                    frame,
-                    groupId: row.group_id,
-                    targetUserId: targetUserId || row.user_id
-                });
+                // A public job group needs no membership for a Super Editor
+                // managing the newsroom job.
+                if (!(await staffScope.canManageJobAsNewsroomEditor(await staffScope.getStaffScope(currentUserId), row))) {
+                    await assertCanWriteGroup({
+                        frame,
+                        groupId: row.group_id,
+                        targetUserId: targetUserId || row.user_id
+                    });
+                }
                 payload.settings_json = JSON.stringify({
                     ...formatJsonField(row.settings_json, {}),
                     corrected_transcript_json: correctedTranscriptJson,
