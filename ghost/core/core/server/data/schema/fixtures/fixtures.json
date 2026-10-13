@@ -1224,8 +1224,23 @@
                     "object_type": "socialaiavatarbroadcastselection"
                 },
                 {
+                    "name": "Read Avatar Broadcast Selections",
+                    "action_type": "read",
+                    "object_type": "socialaiavatarbroadcastselection"
+                },
+                {
+                    "name": "Add Avatar Broadcast Selections",
+                    "action_type": "add",
+                    "object_type": "socialaiavatarbroadcastselection"
+                },
+                {
                     "name": "Edit Avatar Broadcast Selections",
                     "action_type": "edit",
+                    "object_type": "socialaiavatarbroadcastselection"
+                },
+                {
+                    "name": "Delete Avatar Broadcast Selections",
+                    "action_type": "destroy",
                     "object_type": "socialaiavatarbroadcastselection"
                 },
                 {
@@ -1780,7 +1795,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
-                    "socialaiavatarbroadcastselection": ["browse", "edit"],
+                    "socialaiavatarbroadcastselection": ["browse", "read", "add", "edit", "destroy"],
                     "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",
@@ -1869,7 +1884,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
-                    "socialaiavatarbroadcastselection": ["browse"],
+                    "socialaiavatarbroadcastselection": ["browse", "read"],
                     "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",
@@ -1930,6 +1945,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
+                    "socialaiavatarbroadcastselection": ["browse", "read", "add", "edit", "destroy"],
                     "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",
@@ -1990,6 +2006,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
+                    "socialaiavatarbroadcastselection": ["browse", "read", "add", "edit", "destroy"],
                     "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",
@@ -2046,6 +2063,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
+                    "socialaiavatarbroadcastselection": ["browse", "read", "add", "edit", "destroy"],
                     "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",
@@ -2097,6 +2115,7 @@
                     "personstoryseries": ["browse", "read"],
                     "publishcontent": ["browse", "read"],
                     "socialaichat": "all",
+                    "socialaiavatarbroadcastselection": ["browse", "read"],
                     "socialchart": ["browse", "read"],
                     "socialcomponent": ["browse", "read"],
                     "socialpostcomment": "all",
@@ -2116,6 +2135,7 @@
                     "recommendation": ["browse", "read"]
                 },
                 "Owner": {
+                    "socialaiavatarbroadcastselection": ["browse", "read", "add", "edit", "destroy"],
                     "tag": "count"
                 }
             }

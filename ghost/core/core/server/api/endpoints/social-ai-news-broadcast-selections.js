@@ -1,5 +1,6 @@
 const errors = require('@tryghost/errors');
 const models = require('../../models');
+const permissionsService = require('../../services/permissions');
 
 const TABLE = 'social_ai_avatar_broadcast_selections';
 const JOBS = 'social_ai_news_jobs';
@@ -78,6 +79,13 @@ const selectionQuery = (knex) => knex(`${TABLE} as s`)
         's.updated_by', 'jm.item_key', 'jm.news_job_id', 'a.id as media_id', 'a.storage_url', 'a.storage_key', 'a.original_filename'
     );
 
+// Unauthenticated broadcast lookups must reveal only renditions attached to
+// posts that the public Content API would expose.
+const publicSelectionQuery = (knex) => selectionQuery(knex)
+    .join('posts as p', 'p.id', 's.post_id')
+    .whereIn('p.status', ['published', 'sent'])
+    .andWhere('p.visibility', 'public');
+
 const serializeSelection = row => ({
     post_id: row.post_id,
     project_id: row.project_id || null,
@@ -96,17 +104,8 @@ const controller = {
 
     browse: {
         options: ['post_ids'],
-        permissions: {
-            object: 'socialaiavatarbroadcastselection',
-            action: 'browse'
-        },
+        permissions: false,
         async query(frame) {
-            const actor = currentUser(frame);
-            const trustedIntegration = integration(frame);
-            const admin = await isAdmin(actor);
-            if (!trustedIntegration && !admin && !actor) {
-                throw new errors.NoPermissionError({message: 'An authenticated user is required to browse news broadcast selections.'});
-            }
             const raw = String(frame.options?.post_ids || '').trim();
             const postIds = [...new Set(raw.split(',').map(value => value.trim()).filter(Boolean))];
             if (postIds.length > 200 || postIds.some(id => !/^[a-f0-9]{24}$/i.test(id))) {
@@ -115,36 +114,35 @@ const controller = {
             if (!postIds.length) {
                 return {data: [], meta: {pagination: {page: 1, limit: 0, pages: 0, total: 0, next: null, prev: null}}};
             }
-            const rows = await selectionQuery(models.Base.knex).whereIn('s.post_id', postIds);
-            const visibleRows = [];
-            for (const row of rows) {
-                if (trustedIntegration || admin || row.updated_by === actor) {
-                    visibleRows.push(row);
-                    continue;
-                }
-                if (!row.news_job_id) {
-                    continue;
-                }
-                const job = await models.Base.knex(JOBS).where({id: row.news_job_id}).first();
-                if (!job) continue;
-                try {
-                    await assertJobAccess(frame, job, false);
-                    visibleRows.push(row);
-                } catch (err) {
-                    // Do not reveal another owner's selected media URL.
-                }
-            }
+            const rows = await publicSelectionQuery(models.Base.knex).whereIn('s.post_id', postIds);
             return {
-                data: visibleRows.map(serializeSelection),
-                meta: {pagination: {page: 1, limit: postIds.length, pages: 1, total: visibleRows.length, next: null, prev: null}}
+                data: rows.map(serializeSelection),
+                meta: {pagination: {page: 1, limit: postIds.length, pages: 1, total: rows.length, next: null, prev: null}}
             };
         }
     },
 
+    read: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const postId = String(frame.options?.id || '').trim();
+            if (!/^[a-f0-9]{24}$/i.test(postId)) {
+                throw new errors.ValidationError({message: 'A valid post id is required.'});
+            }
+            const row = await publicSelectionQuery(models.Base.knex).where('s.post_id', postId).first();
+            if (!row) {
+                throw new errors.NotFoundError({message: 'Broadcast selection not found.'});
+            }
+            return {data: [serializeSelection(row)], meta: {}};
+        }
+    },
+
     select: {
-        permissions: {
-            object: 'socialaiavatarbroadcastselection',
-            action: 'edit'
+        permissions(frame) {
+            const input = payloadOf(frame);
+            const action = Number(input.expected_revision) === 0 ? 'add' : 'edit';
+            return permissionsService.canThis(frame.options.context)[action].socialaiavatarbroadcastselection(input.post_id);
         },
         async query(frame) {
             if (integration(frame)) {
