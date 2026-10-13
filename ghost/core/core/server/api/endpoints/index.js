@@ -57,6 +57,10 @@ module.exports = {
         return apiFramework.pipeline(require('./posts'), localUtils);
     },
 
+    get postMediaAdmin() {
+        return apiFramework.pipeline(require('./post-media-admin'), localUtils);
+    },
+
     get mentions() {
         return apiFramework.pipeline(require('./mentions'), localUtils);
     },
