@@ -181,9 +181,13 @@ const assertGroupAccess = async ({ frame, groupId, targetUserId, permission }) =
 const assertRowAccess = async ({ frame, row, permission = 'read' }) => {
     const currentUserId = getCurrentUserId(frame);
     const integrationId = getCurrentIntegrationId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
+    const scope = await staffScope.getStaffScope(currentUserId);
 
-    if (integrationId || isAdmin) {
+    if (integrationId || scope.isSystemAdmin) {
+        return;
+    }
+    // Super Editor reads newsroom jobs, consistent with browse; writes unchanged.
+    if (permission === 'read' && staffScope.canReadRowAsNoGroupReader(scope, row)) {
         return;
     }
 
@@ -378,6 +382,9 @@ const controller = {
             const scope = targetUserId ? await staffScope.getStaffScope(targetUserId) : null;
             const isAdmin = Boolean(scope?.isSystemAdmin);
             let options = { ...frame.options, withRelated: ALLOWED_INCLUDES };
+            // Every scope clause is AND-ed through staffScope.andFilter, so the
+            // caller filter can never escape it.
+            let filter = String(frame.options?.filter || '').trim();
 
             // M8: filtering by project requires access to THAT project — the
             // project's ownership governs its jobs' visibility.
@@ -393,42 +400,39 @@ const controller = {
                         permission: 'read'
                     });
                 }
-                const baseFilter = String(frame.options?.filter || '').trim();
-                options = {
-                    ...options,
-                    filter: baseFilter ? `${baseFilter}+project_id:${projectId}` : `project_id:${projectId}`
-                };
+                filter = staffScope.andFilter(filter, `project_id:${staffScope.nqlId(projectId, 'project_id')}`);
+                // A newsroom project can hold jobs of non-public groups. A
+                // Super Editor that reached the project through the newsroom
+                // read (not as its owner) only sees its newsroom jobs + own.
+                if (
+                    !integrationId && !isAdmin &&
+                    staffScope.canReadRowAsNoGroupReader(scope, project) &&
+                    String(project.get('user_id') || '') !== String(targetUserId)
+                ) {
+                    filter = staffScope.andFilter(filter, staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id'));
+                }
             } else if (!integrationId && !isAdmin && !groupId && targetUserId) {
                 // Super Editor also sees every newsroom (no-group / public-group) job.
-                const baseFilter = String(frame.options?.filter || '').trim();
-                options = {
-                    ...options,
-                    filter: scope.isNoGroupReader
-                        ? staffScope.andFilter(baseFilter, staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id'))
-                        : (baseFilter ? `${baseFilter}+user_id:${targetUserId}` : `user_id:${targetUserId}`)
-                };
+                filter = staffScope.andFilter(filter, scope.isNoGroupReader
+                    ? staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id')
+                    : `user_id:${targetUserId}`);
             } else if (!integrationId && !isAdmin && groupId && scope?.isNoGroupReader) {
                 // Super Editor may pass a public group it is not a member of, so
                 // the group must reach the query (the bare group_id option is
                 // not a permitted findPage option).
-                options = {
-                    ...options,
-                    filter: staffScope.andFilter(String(frame.options?.filter || '').trim(), `group_id:${groupId}`)
-                };
+                filter = staffScope.andFilter(filter, `group_id:${staffScope.nqlId(groupId, 'group_id')}`);
             }
 
             // Type filter (review 2026-08-08): the `type` option was declared
             // and sent by the host but never composed into the NQL filter —
             // dead contract end-to-end. Compose it after the project/user scope
-            // so the two combine (`project_id:xxx+type:csv-create`).
+            // so the two combine (`project_id:xxx+type:csv-create`). `type` is
+            // a single token, never NQL.
             const jobType = String(frame.options?.type || '').trim();
             if (jobType) {
-                const baseFilter = String(options.filter || '').trim();
-                options = {
-                    ...options,
-                    filter: baseFilter ? `${baseFilter}+type:${jobType}` : `type:${jobType}`
-                };
+                filter = staffScope.andFilter(filter, `type:${staffScope.nqlToken(jobType, 'type')}`);
             }
+            options = {...options, filter: filter || undefined};
 
             // @ts-ignore
             return await models.SocialAiChartJob.findPage(options);

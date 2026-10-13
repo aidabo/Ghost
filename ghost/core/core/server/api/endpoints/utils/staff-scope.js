@@ -11,6 +11,8 @@
 //       secret / company) only through group membership, exactly like other
 //       staff. Never bypasses membership of a non-public group.
 //   everyone else — own rows + member groups (decided by each endpoint).
+const errors = require('@tryghost/errors');
+const nql = require('@tryghost/nql');
 const models = require('../../../models');
 
 const SYSTEM_ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
@@ -20,9 +22,12 @@ const PUBLIC_GROUP_TYPE = 'public';
 const NO_SCOPE = Object.freeze({isSystemAdmin: false, isNoGroupReader: false, publicGroupIds: Object.freeze([])});
 
 // Loaded once per scope (i.e. once per request path), and only for a
-// no-group reader; list checks reuse the same array.
+// no-group reader; list checks reuse the same array. Only active groups count:
+// a public group awaiting approval or archived is not newsroom content.
 const loadPublicGroupIds = async () => {
-    const ids = await models.Base.knex('social_groups').where('type', PUBLIC_GROUP_TYPE).pluck('id');
+    const ids = await models.Base.knex('social_groups')
+        .where({type: PUBLIC_GROUP_TYPE, status: 'active'})
+        .pluck('id');
     return Object.freeze(ids.map(String));
 };
 
@@ -90,10 +95,42 @@ const whereNewsroomGroup = (qb, column, scope) => {
     }
 };
 
-// AND a scope clause onto a caller-supplied NQL filter. The caller filter is
-// parenthesised: NQL binds `+` tighter than `,`, so a bare `a,b+clause` would
-// leave `a` outside the scope.
-const andFilter = (filter, clause) => (filter ? `(${filter})+${clause}` : clause);
+// AND a scope clause onto a caller-supplied NQL filter so the clause is always
+// an outer conjunct. The caller filter is parenthesised (NQL binds `+` tighter
+// than `,`, so a bare `a,b+clause` would leave `a` outside the scope) and must
+// parse on its own first: an unbalanced filter such as `x:1),(group_id:g`
+// would otherwise close the wrapper parenthesis and escape the clause.
+const andFilter = (filter, clause) => {
+    const base = String(filter || '').trim();
+    if (!base) {
+        return clause;
+    }
+    try {
+        nql(base).parse();
+    } catch (err) {
+        throw new errors.BadRequestError({message: 'Invalid filter.', err});
+    }
+    return `(${base})+${clause}`;
+};
+
+// Caller-supplied values interpolated into an NQL clause (ids, job types) must
+// be a single plain token, never NQL syntax.
+const OBJECT_ID_REGEX = /^[a-f0-9]{24}$/;
+const NQL_TOKEN_REGEX = /^[a-z0-9_-]{1,64}$/i;
+const nqlId = (value, name = 'id') => {
+    const id = String(value || '').trim();
+    if (!OBJECT_ID_REGEX.test(id)) {
+        throw new errors.BadRequestError({message: `Invalid ${name}.`});
+    }
+    return id;
+};
+const nqlToken = (value, name = 'value') => {
+    const token = String(value || '').trim();
+    if (!NQL_TOKEN_REGEX.test(token)) {
+        throw new errors.BadRequestError({message: `Invalid ${name}.`});
+    }
+    return token;
+};
 
 module.exports = {
     getStaffScope,
@@ -103,5 +140,7 @@ module.exports = {
     bypassesRowCheck,
     newsroomOrOwnFilter,
     whereNewsroomGroup,
-    andFilter
+    andFilter,
+    nqlId,
+    nqlToken
 };

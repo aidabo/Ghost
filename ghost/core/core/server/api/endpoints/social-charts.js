@@ -18,26 +18,43 @@ const messages = {
 
 const getCurrentUserId = (frame) => frame.options?.context?.user || null;
 
+// The requested group is always AND-ed onto the query: readability is decided
+// from this group, so a caller filter naming another group must not replace it.
 const appendGroupFilter = (frame) => {
     const groupId = frame.options?.group_id;
     if (!groupId) {
         return;
     }
 
-    if (!/\bgroup_id:/.test(frame.options.filter || '')) {
-        frame.options.filter = frame.options.filter ? `${frame.options.filter}+group_id:${groupId}` : `group_id:${groupId}`;
-    }
-
+    frame.options.filter = staffScope.andFilter(frame.options.filter, `group_id:${staffScope.nqlId(groupId, 'group_id')}`);
     delete frame.options.group_id;
 };
 
+// Always AND-ed (a caller filter naming created_by must not replace it).
 const appendCreatedByFilter = (frame, userId) => {
     if (!userId) {
         return;
     }
 
-    if (!/\bcreated_by:/.test(frame.options.filter || '')) {
-        frame.options.filter = frame.options.filter ? `${frame.options.filter}+created_by:${userId}` : `created_by:${userId}`;
+    frame.options.filter = staffScope.andFilter(frame.options.filter, `created_by:${userId}`);
+};
+
+// Creating in, or moving a row into, a group requires write access to that
+// group: system admin, Super Editor for a newsroom (public) group, else an
+// active membership (SocialGroup.canAccessGroup 'write').
+const assertCanWriteIntoGroup = async (groupId, userId, scope) => {
+    if (!groupId || scope.isSystemAdmin || staffScope.isNewsroomGroup(scope, groupId)) {
+        return;
+    }
+    // @ts-ignore
+    const group = await models.SocialGroup.findOne({ id: groupId });
+    if (!group) {
+        throw new errors.NotFoundError({ message: tpl(messages.notFound) });
+    }
+    // @ts-ignore
+    const allowed = await models.SocialGroup.canAccessGroup(group, userId, 'write');
+    if (!allowed) {
+        throw new errors.NoPermissionError({ message: tpl(messages.noPermission) });
     }
 };
 
@@ -243,19 +260,7 @@ const controller = {
                 // public group. Personal (no-group) creation is gated only by
                 // the staff role permission above.
                 if (groupId && userId) {
-                    const scope = await staffScope.getStaffScope(userId);
-                    if (!scope.isSystemAdmin && !staffScope.isNewsroomGroup(scope, groupId)) {
-                        // @ts-ignore
-                        const group = await models.SocialGroup.findOne({ id: groupId });
-                        if (!group) {
-                            throw new errors.NotFoundError({ message: tpl(messages.notFound) });
-                        }
-                        // @ts-ignore
-                        const allowed = await models.SocialGroup.canAccessGroup(group, userId, 'write');
-                        if (!allowed) {
-                            throw new errors.NoPermissionError({ message: tpl(messages.noPermission) });
-                        }
-                    }
+                    await assertCanWriteIntoGroup(groupId, userId, await staffScope.getStaffScope(userId));
                 }
                 // @ts-ignore
                 return await models.SocialChart.add(frame.data.socialcharts[0], frame.options);
@@ -300,6 +305,14 @@ const controller = {
                 await enforceWriteAccessForEntry(existing, userId, scope);
 
                 const payload = frame.data.socialcharts[0] || {};
+
+                // Moving the row into another group is gated like creating in it.
+                if (
+                    payload.group_id !== undefined &&
+                    String(payload.group_id || '') !== String(existing.get('group_id') || '')
+                ) {
+                    await assertCanWriteIntoGroup(payload.group_id || null, userId, scope);
+                }
 
                 // Reassigning the chart owner (created_by) is owner/admin only
                 // (Super Editor: newsroom rows only, same as its write bypass).

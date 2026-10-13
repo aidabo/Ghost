@@ -85,6 +85,58 @@ const assertProjectAccess = async (knex, projectId, frame, permission = 'read') 
     return project;
 };
 
+// Link target table + owner column per link_type.
+const LINK_TARGETS = {
+    post: ['posts', 'created_by'],
+    stackpage: ['social_components', 'created_by'],
+    gallery: ['social_media_assets', 'user_id']
+};
+
+// A Super Editor reading another user's newsroom project sees only the links
+// whose target it may read itself (newsroom target, its own, or a group it is
+// a member of): a newsroom project can link family / private content, and the
+// link row carries that content's title and URL. Links whose target is gone
+// are dropped too.
+// @ts-ignore
+const filterReadableLinks = async (knex, rows, userId, scope) => {
+    const targets = new Map();
+    for (const [type, [table, ownerColumn]] of Object.entries(LINK_TARGETS)) {
+        const ids = rows.filter(row => row.link_type === type).map(row => row.link_id);
+        if (!ids.length) {
+            continue;
+        }
+        const found = await knex(table).whereIn('id', ids).select('id', 'group_id', `${ownerColumn} as owner_id`);
+        found.forEach(target => targets.set(`${type}:${target.id}`, target));
+    }
+
+    const memberOf = new Map();
+    const canReadGroup = async (groupId) => {
+        if (!memberOf.has(groupId)) {
+            // @ts-ignore
+            const group = await models.SocialGroup.findOne({id: groupId});
+            // @ts-ignore
+            memberOf.set(groupId, Boolean(group && await models.SocialGroup.canAccessGroup(group, userId, 'read')));
+        }
+        return memberOf.get(groupId);
+    };
+
+    const readable = [];
+    for (const row of rows) {
+        const target = targets.get(`${row.link_type}:${row.link_id}`);
+        if (!target) {
+            continue;
+        }
+        if (
+            staffScope.isNewsroomRow(target, scope.publicGroupIds) ||
+            String(target.owner_id || '') === String(userId) ||
+            await canReadGroup(target.group_id)
+        ) {
+            readable.push(row);
+        }
+    }
+    return readable;
+};
+
 // @ts-ignore
 const serializeLink = row => ({
     id: row.id,
@@ -110,11 +162,20 @@ const controller = {
         async query(frame) {
             const knex = models.Base.knex;
             const projectId = getProjectId(frame);
-            await assertProjectAccess(knex, projectId, frame, 'read');
-            const rows = await knex(TABLE)
+            const project = await assertProjectAccess(knex, projectId, frame, 'read');
+            let rows = await knex(TABLE)
                 .where({project_id: projectId})
                 .orderBy('sort_order', 'asc')
                 .orderBy('created_at', 'asc');
+            const currentUserId = getCurrentUserId(frame);
+            const scope = await staffScope.getStaffScope(currentUserId);
+            if (
+                !getCurrentIntegrationId(frame) &&
+                staffScope.canReadRowAsNoGroupReader(scope, project) &&
+                String(project.user_id || '') !== String(currentUserId)
+            ) {
+                rows = await filterReadableLinks(knex, rows, currentUserId, scope);
+            }
             // Return {data, meta} so Ghost's default serializer re-keys it
             // under the docName: {socialaiprojectlinks: [...]} in the response.
             return {data: rows.map(serializeLink), meta: {}};

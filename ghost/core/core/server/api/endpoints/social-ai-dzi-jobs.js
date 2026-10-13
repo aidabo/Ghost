@@ -190,6 +190,60 @@ const assertCanWriteRow = async ({ frame, row }) => {
     }
 };
 
+// Project side of a job <-> project link. Read: integration, system admin,
+// Super Editor on a newsroom project, the owner, or a member of its group.
+// Write: integration, else the project write rule (author / system admin via
+// canEditGroupContent) — same as social-ai-projects edit.
+const canReadProject = async (frame, project, scope) => {
+    const currentUserId = getCurrentUserId(frame);
+    if (getCurrentIntegrationId(frame) || staffScope.bypassesRowCheck(scope, project)) {
+        return true;
+    }
+    if (!currentUserId) {
+        return false;
+    }
+    if (project.group_id) {
+        // @ts-ignore
+        const group = await models.SocialGroup.findOne({id: project.group_id});
+        // @ts-ignore
+        return Boolean(group && await models.SocialGroup.canAccessGroup(group, currentUserId, 'read'));
+    }
+    return String(project.user_id || '') === String(currentUserId);
+};
+
+const assertCanWriteProject = async (frame, project) => {
+    if (getCurrentIntegrationId(frame)) {
+        return;
+    }
+    // @ts-ignore
+    const allowed = await models.SocialGroupMember.canEditGroupContent({
+        groupId: project.group_id,
+        authorId: project.user_id,
+        userId: getCurrentUserId(frame)
+    });
+    if (!allowed) {
+        throw new errors.NoPermissionError({message: tpl(messages.noPermission)});
+    }
+};
+
+// Linked projects of a job, limited to the ones the caller may read (a job can
+// be linked to projects in groups the caller is not a member of).
+const listReadableLinkedProjects = async (frame, knex, jobId) => {
+    const scope = await staffScope.getStaffScope(getCurrentUserId(frame));
+    const rows = await knex('social_ai_dzi_job_projects as djp')
+        .join('social_ai_projects as p', 'p.id', 'djp.project_id')
+        .where('djp.dzi_job_id', jobId)
+        .select('djp.project_id as id', 'p.name as name', 'djp.created_at as linked_at', 'p.user_id as user_id', 'p.group_id as group_id')
+        .orderBy('djp.created_at', 'asc');
+    const data = [];
+    for (const row of rows) {
+        if (await canReadProject(frame, row, scope)) {
+            data.push({id: row.id, name: row.name, linked_at: row.linked_at});
+        }
+    }
+    return {data, meta: {}};
+};
+
 // @ts-ignore
 const loadModelOrThrow = async (id) => {
     if (!id) {
@@ -300,7 +354,7 @@ const controller = {
                 // every newsroom job + its own. Composed into the NQL filter, which
                 // findPage applies (the bare user_id/group_id options are not
                 // permitted findPage options and never reach the query).
-                const clause = groupId ? `group_id:${groupId}` : staffScope.newsroomOrOwnFilter(scope, currentUserId, 'user_id');
+                const clause = groupId ? `group_id:${staffScope.nqlId(groupId, 'group_id')}` : staffScope.newsroomOrOwnFilter(scope, currentUserId, 'user_id');
                 // @ts-ignore
                 frame.options.filter = staffScope.andFilter(frame.options.filter, clause);
             } else if (!scope.isSystemAdmin && targetUserId) {
@@ -423,8 +477,18 @@ const controller = {
                     .map(u => String(u || '').trim())
                     .filter(u => /^https?:\/\//i.test(u));
                 if (jobId && assetUrls.length) {
+                    // Only stamp assets not linked to another job yet, or
+                    // uploaded by this job's owner: a known URL must not
+                    // re-point someone else's asset at this job.
+                    const ownerId = targetUserId || currentUserId || null;
                     await models.Base.knex('social_media_assets')
                         .whereIn('storage_url', assetUrls)
+                        .where((qb) => {
+                            qb.whereNull('dzi_job_id');
+                            if (ownerId) {
+                                qb.orWhere('user_id', ownerId);
+                            }
+                        })
                         .update({dzi_job_id: jobId});
                 }
             } catch (err) {
@@ -746,12 +810,7 @@ const controller = {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, getJobId(frame));
             await assertCanReadRow({frame, row});
-            const links = await knex('social_ai_dzi_job_projects as djp')
-                .join('social_ai_projects as p', 'p.id', 'djp.project_id')
-                .where('djp.dzi_job_id', row.id)
-                .select('djp.project_id as id', 'p.name as name', 'djp.created_at as linked_at')
-                .orderBy('djp.created_at', 'asc');
-            return {data: links, meta: {}};
+            return await listReadableLinkedProjects(frame, knex, row.id);
         }
     },
 
@@ -774,6 +833,8 @@ const controller = {
             if (!project) {
                 throw new errors.NotFoundError({message: 'Project not found'});
             }
+            // Linking puts this job into the project: needs write on the project.
+            await assertCanWriteProject(frame, project);
 
             const exists = await knex('social_ai_dzi_job_projects')
                 .where({dzi_job_id: row.id, project_id: projectId}).first();
@@ -792,12 +853,7 @@ const controller = {
                 });
             }
 
-            const links = await knex('social_ai_dzi_job_projects as djp')
-                .join('social_ai_projects as p', 'p.id', 'djp.project_id')
-                .where('djp.dzi_job_id', row.id)
-                .select('djp.project_id as id', 'p.name as name', 'djp.created_at as linked_at')
-                .orderBy('djp.created_at', 'asc');
-            return {data: links, meta: {}};
+            return await listReadableLinkedProjects(frame, knex, row.id);
         }
     },
 
@@ -820,12 +876,7 @@ const controller = {
                 .where({dzi_job_id: row.id, project_id: projectId})
                 .del();
 
-            const links = await knex('social_ai_dzi_job_projects as djp')
-                .join('social_ai_projects as p', 'p.id', 'djp.project_id')
-                .where('djp.dzi_job_id', row.id)
-                .select('djp.project_id as id', 'p.name as name', 'djp.created_at as linked_at')
-                .orderBy('djp.created_at', 'asc');
-            return {data: links, meta: {}};
+            return await listReadableLinkedProjects(frame, knex, row.id);
         }
     },
 

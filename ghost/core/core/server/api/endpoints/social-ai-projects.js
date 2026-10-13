@@ -333,14 +333,15 @@ const controller = {
             const scope = targetUserId ? await staffScope.getStaffScope(targetUserId) : null;
             const isAdmin = Boolean(scope?.isSystemAdmin);
             let options = { ...frame.options, withRelated: ALLOWED_INCLUDES };
+            // Scope clauses are AND-ed through staffScope.andFilter, so the
+            // caller filter can never escape them.
             if (!integrationId && !isAdmin && !groupId && targetUserId) {
                 // Super Editor also sees every newsroom (no-group / public-group) project.
-                const baseFilter = String(frame.options?.filter || '').trim();
                 options = {
                     ...options,
-                    filter: scope.isNoGroupReader
-                        ? staffScope.andFilter(baseFilter, staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id'))
-                        : (baseFilter ? `${baseFilter}+user_id:${targetUserId}` : `user_id:${targetUserId}`)
+                    filter: staffScope.andFilter(frame.options?.filter, scope.isNoGroupReader
+                        ? staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id')
+                        : `user_id:${targetUserId}`)
                 };
             } else if (!integrationId && !isAdmin && groupId && scope?.isNoGroupReader) {
                 // Super Editor may pass a public group it is not a member of, so
@@ -348,7 +349,7 @@ const controller = {
                 // not a permitted findPage option).
                 options = {
                     ...options,
-                    filter: staffScope.andFilter(String(frame.options?.filter || '').trim(), `group_id:${groupId}`)
+                    filter: staffScope.andFilter(frame.options?.filter, `group_id:${staffScope.nqlId(groupId, 'group_id')}`)
                 };
             }
 
