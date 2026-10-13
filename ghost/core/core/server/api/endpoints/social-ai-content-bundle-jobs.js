@@ -67,9 +67,9 @@ const assertAccess = async (frame, row, write = false) => {
     const actor = currentUser(frame);
     const scope = await staffScope.getStaffScope(actor);
     if (integration(frame) || scope.isSystemAdmin) return;
-    // Super Editor reads every newsroom (no-group / public-group) job; writes
-    // stay owner-only.
-    if (!write && staffScope.canReadRowAsNoGroupReader(scope, row)) return;
+    // Super Editor reads and manages (cancel) jobs of newsroom projects, or
+    // project-less newsroom jobs.
+    if (await staffScope.canManageJobAsNewsroomEditor(scope, row)) return;
     if (!actor || row.user_id !== actor) throw new errors.NoPermissionError({message: 'You are not allowed to access this content bundle job.'});
     if (write && row.group_id) {
         const group = await models.SocialGroup.findOne({id: row.group_id});
@@ -96,10 +96,13 @@ const controller = {
             const query = models.Base.knex(TABLE).select('*').orderBy('updated_at', 'desc');
             const scope = await staffScope.getStaffScope(actor);
             if (scope.isNoGroupReader && !integration(frame)) {
-                // Super Editor: every newsroom job + its own.
+                // Super Editor: every newsroom job outside non-newsroom
+                // projects + its own.
                 query.where((qb) => {
-                    staffScope.whereNewsroomGroup(qb, 'group_id', scope);
-                    qb.orWhere('user_id', actor);
+                    qb.where((newsroom) => {
+                        newsroom.where(group => staffScope.whereNewsroomGroup(group, 'group_id', scope));
+                        staffScope.whereNewsroomProject(newsroom, `${TABLE}.project_id`, scope);
+                    }).orWhere('user_id', actor);
                 });
             } else if (!integration(frame) && !scope.isSystemAdmin) {
                 query.where('user_id', actor);

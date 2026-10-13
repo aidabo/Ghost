@@ -107,9 +107,9 @@ const deriveJobStatus = (steps) => {
     return 'queued';
 };
 
-// System admin (Owner / Administrator / Admin). Super Editor is not: it only
-// reads newsroom (no-group / public-group) jobs/projects (see browse /
-// assertProjectAccess), writes as a
+// System admin (Owner / Administrator / Admin). Super Editor is not: it reads
+// and manages jobs of newsroom (no-group / public-group) projects (see browse /
+// assertRowAccess / assertProjectAccess); everything else it does as a
 // normal user.
 // @ts-ignore
 const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
@@ -186,8 +186,9 @@ const assertRowAccess = async ({ frame, row, permission = 'read' }) => {
     if (integrationId || scope.isSystemAdmin) {
         return;
     }
-    // Super Editor reads newsroom jobs, consistent with browse; writes unchanged.
-    if (permission === 'read' && staffScope.canReadRowAsNoGroupReader(scope, row)) {
+    // Super Editor reads and manages (cancel / rerun / destroy) jobs of
+    // newsroom projects, or project-less newsroom jobs.
+    if (await staffScope.canManageJobAsNewsroomEditor(scope, row)) {
         return;
     }
 
@@ -222,7 +223,8 @@ const assertProjectAccess = async ({ frame, project, targetUserId, permission })
     if (integrationId || scope.isSystemAdmin) {
         return;
     }
-    if (permission === 'read' && staffScope.canReadRowAsNoGroupReader(scope, project)) {
+    // Super Editor: full access (read, add jobs) to newsroom projects.
+    if (staffScope.canManageAsNewsroomEditor(scope, project)) {
         return;
     }
 
@@ -412,15 +414,22 @@ const controller = {
                     filter = staffScope.andFilter(filter, staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id'));
                 }
             } else if (!integrationId && !isAdmin && !groupId && targetUserId) {
-                // Super Editor also sees every newsroom (no-group / public-group) job.
+                // Super Editor also sees every newsroom (no-group / public-group)
+                // job outside non-newsroom projects.
                 filter = staffScope.andFilter(filter, scope.isNoGroupReader
-                    ? staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id')
+                    ? staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id', {
+                        excludeProjectIds: await staffScope.loadNonNewsroomProjectIds(scope)
+                    })
                     : `user_id:${targetUserId}`);
             } else if (!integrationId && !isAdmin && groupId && scope?.isNoGroupReader) {
                 // Super Editor may pass a public group it is not a member of, so
                 // the group must reach the query (the bare group_id option is
                 // not a permitted findPage option).
                 filter = staffScope.andFilter(filter, `group_id:${staffScope.nqlId(groupId, 'group_id')}`);
+                const excluded = await staffScope.loadNonNewsroomProjectIds(scope);
+                if (excluded.length) {
+                    filter = staffScope.andFilter(filter, `(project_id:null,project_id:-[${excluded.join(',')}])`);
+                }
             }
 
             // Type filter (review 2026-08-08): the `type` option was declared

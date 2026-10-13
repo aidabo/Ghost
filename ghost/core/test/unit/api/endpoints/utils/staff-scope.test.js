@@ -11,6 +11,7 @@ const chartsPath = require.resolve('../../../../../core/server/api/endpoints/soc
 const chartJobsPath = require.resolve('../../../../../core/server/api/endpoints/social-ai-chart-jobs');
 const dziPath = require.resolve('../../../../../core/server/api/endpoints/social-ai-dzi-jobs');
 const projectLinksPath = require.resolve('../../../../../core/server/api/endpoints/social-ai-project-links');
+const projectsPath = require.resolve('../../../../../core/server/api/endpoints/social-ai-projects');
 
 // Group ids must be ObjectId-shaped: endpoints reject anything else before it
 // reaches NQL.
@@ -41,12 +42,20 @@ const User = {
 
 // knex stand-in answering only the public-group lookup.
 const publicGroupWheres = [];
-const publicGroupsKnex = () => ({
-    where: (where) => {
-        publicGroupWheres.push(where);
-        return {pluck: async () => [PUB]};
-    }
-});
+const publicGroupsKnex = (table) => {
+    const chain = {
+        where: (where) => {
+            publicGroupWheres.push(where);
+            return chain;
+        },
+        whereNotNull: () => chain,
+        whereNotIn: () => chain,
+        // social_groups -> the public group; social_ai_projects (non-newsroom
+        // project lookup) -> none.
+        pluck: async () => (table === 'social_groups' ? [PUB] : [])
+    };
+    return chain;
+};
 // Does an NQL filter match a row? (Evaluates the filter the endpoint built.)
 const matches = (filter, row) => nql(filter).queryJSON(row);
 
@@ -172,7 +181,14 @@ describe('Super Editor scope on knex-backed listings', function () {
         },
         SocialGroupMember: {
             canEditGroupContent: async ({authorId, userId}) => authorId === userId || ['owner', 'admin'].includes(userId)
-        }
+        },
+        SocialAiProject: {
+            findOne: async ({id}) => {
+                const row = await database('social_ai_projects').where({id}).first();
+                return row ? {...row, get: key => row[key], toJSON: () => row} : null;
+            }
+        },
+        SocialAiChartJob: {findPage: async options => ({data: [], options})}
     };
 
     before(async function () {
@@ -219,8 +235,8 @@ describe('Super Editor scope on knex-backed listings', function () {
                 table.string('id').primary();
                 table.string('user_id');
                 table.string('group_id');
-                table.string('project_id');
-                table.string('name');
+                ['project_id', 'name', 'status', 'description', 'tags', 'updated_at', 'updated_by']
+                    .forEach(column => table.string(column));
             });
         }
         await database.schema.createTable('social_ai_dzi_job_projects', (table) => {
@@ -251,10 +267,11 @@ describe('Super Editor scope on knex-backed listings', function () {
         // Worker-written chart artifacts (null user_id): one from a no-group
         // job, one from a family-group job whose asset row kept a null group_id.
         await database('social_ai_chart_jobs').insert([
-            {id: 'cj-open', user_id: 'editor', group_id: null},
-            {id: 'cj-family', user_id: 'editor', group_id: FAM},
+            {id: 'cj-open', user_id: 'editor', group_id: null, status: 'queued'},
+            {id: 'cj-family', user_id: 'editor', group_id: FAM, status: 'queued'},
             {id: 'cj-pub', user_id: 'editor', group_id: PUB},
-            {id: 'cj-in-family-project', user_id: 'editor', group_id: null, project_id: 'p-family'},
+            {id: 'cj-in-family-project', user_id: 'editor', group_id: null, project_id: 'p-family', status: 'queued'},
+            {id: 'cj-in-open-project', user_id: 'editor', group_id: null, project_id: 'p-open', status: 'queued'},
             {id: 'cj-archived-pub', user_id: 'editor', group_id: ARCHIVED_PUB}
         ]);
         await database('social_ai_projects').insert([
@@ -269,7 +286,10 @@ describe('Super Editor scope on knex-backed listings', function () {
             {id: 'l-family', project_id: 'p-open', link_type: 'stackpage', link_id: 'page-family', link_title: 'family page', sort_order: 1},
             {id: 'l-open', project_id: 'p-open', link_type: 'stackpage', link_id: 'page-open', link_title: 'open page', sort_order: 2}
         ]);
-        await database('social_ai_dzi_jobs').insert([{id: 'dz-open', user_id: 'editor', group_id: null}]);
+        await database('social_ai_dzi_jobs').insert([
+            {id: 'dz-open', user_id: 'editor', group_id: null},
+            {id: 'dz-free', user_id: 'editor', group_id: null}
+        ]);
         await database('social_ai_dzi_job_projects').insert([{id: 'l1', dzi_job_id: 'dz-open', project_id: 'p-family'}]);
         await database('social_ai_chart_job_media').insert([{chart_job_id: 'cj-family', media_id: 'a-junction-family'}]);
         await database('social_media_assets').insert([
@@ -295,7 +315,8 @@ describe('Super Editor scope on knex-backed listings', function () {
             {id: 'n-open', user_id: 'editor', group_id: null, status: 'queued', updated_at: '2000-01-01 00:00:01'},
             {id: 'n-family', user_id: 'editor', group_id: FAM, status: 'queued', updated_at: '2000-01-01 00:00:02'},
             {id: 'n-own-family', user_id: 'se', group_id: FAM, status: 'queued', updated_at: '2000-01-01 00:00:03'},
-            {id: 'n-pub', user_id: 'editor', group_id: PUB, status: 'queued', updated_at: '2000-01-01 00:00:04'}
+            {id: 'n-pub', user_id: 'editor', group_id: PUB, status: 'queued', updated_at: '2000-01-01 00:00:04'},
+            {id: 'n-family-project', user_id: 'editor', group_id: null, project_id: 'p-family', status: 'queued', updated_at: '2000-01-01 00:00:05'}
         ]);
     });
 
@@ -347,15 +368,64 @@ describe('Super Editor scope on knex-backed listings', function () {
             });
         });
 
-        it('linkProject needs write on the project; listProjects hides unreadable projects', async function () {
-            const link = user => dzi.linkProject.query({options: {id: 'dz-open', context: {user}}, data: {project_id: 'p-family'}});
-            // Super Editor may write the newsroom job but not the family project.
-            await assert.rejects(link('se'), {errorType: 'NoPermissionError'});
-            const seList = await dzi.listProjects.query({options: {id: 'dz-open', context: {user: 'se'}}, data: {}});
-            assert.deepEqual(seList.data, []);
+        it('linkProject needs write on the project; a job in a family project is not a newsroom job', async function () {
+            const link = (user, id, projectId) => dzi.linkProject.query({options: {id, context: {user}}, data: {project_id: projectId}});
+            const list = (user, id) => dzi.listProjects.query({options: {id, context: {user}}, data: {}});
+            // dz-open belongs to the family project: hidden and unwritable for Super Editor.
+            await assert.rejects(link('se', 'dz-open', 'p-family'), {errorType: 'NoPermissionError'});
+            await assert.rejects(list('se', 'dz-open'), {errorType: 'NoPermissionError'});
+            // Step 4: a newsroom job can be linked by Super Editor to a newsroom project, not to a family one.
+            assert.deepEqual((await link('se', 'dz-free', 'p-open')).data.map(p => p.id), ['p-open']);
+            await assert.rejects(link('se', 'dz-free', 'p-family'), {errorType: 'NoPermissionError'});
+            // Editor (not the owner) still cannot touch either job.
+            await assert.rejects(link('editor-2', 'dz-free', 'p-open'), {errorType: 'NoPermissionError'});
             // The owner of both still links and lists it.
-            const ownerList = await link('editor');
+            const ownerList = await link('editor', 'dz-open', 'p-family');
             assert.deepEqual(ownerList.data.map(p => p.id), ['p-family']);
+        });
+    });
+
+    describe('projects and chart jobs (step 4: full access to newsroom projects)', function () {
+        let projects;
+        let chartJobs;
+
+        before(function () {
+            projects = loadWith(projectsPath, models, {'../../adapters/storage': {}, '@tryghost/logging': {}});
+            chartJobs = loadWith(chartJobsPath, models, {
+                '../../adapters/storage': {},
+                './utils/social-media-assets': {},
+                '@tryghost/logging': {}
+            });
+        });
+
+        const edit = (user, id) => projects.edit.query({
+            options: {id, context: {user}},
+            data: {socialaiprojects: [{name: `renamed by ${user}`}]}
+        });
+
+        it('projects edit: Super Editor yes on a newsroom project of another owner, no on a family one; Editor unchanged', async function () {
+            await edit('se', 'p-open');
+            assert.equal((await database('social_ai_projects').where({id: 'p-open'}).first()).name, 'renamed by se');
+            await assert.rejects(edit('se', 'p-family'), {errorType: 'NoPermissionError'});
+            await assert.rejects(edit('editor-2', 'p-open'), {errorType: 'NoPermissionError'});
+        });
+
+        it('chart-job cancel: newsroom-project / project-less newsroom jobs yes, family job or family project no', async function () {
+            const cancel = (user, id) => chartJobs.cancel.query({options: {id, context: {user}}, data: {}});
+            await assert.rejects(cancel('editor-2', 'cj-open'), {errorType: 'NoPermissionError'});
+            await assert.rejects(cancel('se', 'cj-family'), {errorType: 'NoPermissionError'});
+            await assert.rejects(cancel('se', 'cj-in-family-project'), {errorType: 'NoPermissionError'});
+            await cancel('se', 'cj-open');
+            await cancel('se', 'cj-in-open-project');
+            assert.equal((await database('social_ai_chart_jobs').where({id: 'cj-open'}).first()).status, 'canceled');
+        });
+
+        it('chart-job browse: Super Editor\'s listing leaves out jobs of family projects', async function () {
+            const {options} = await chartJobs.browse.query({options: {context: {user: 'se'}}, data: {}});
+            assert.equal(matches(options.filter, {user_id: 'editor', group_id: null, project_id: 'p-family'}), false);
+            assert.equal(matches(options.filter, {user_id: 'editor', group_id: null, project_id: 'p-open'}), true);
+            assert.equal(matches(options.filter, {user_id: 'editor', group_id: null, project_id: null}), true);
+            assert.equal(matches(options.filter, {user_id: 'se', group_id: null, project_id: 'p-family'}), true);
         });
     });
 
@@ -387,20 +457,25 @@ describe('Super Editor scope on knex-backed listings', function () {
 
         it('browse: Super Editor sees no-group / public-group jobs + its own, Editor only its own', async function () {
             assert.deepEqual(ids(await news.browse.query(userFrame('se'))), ['n-open', 'n-own-family', 'n-pub']);
-            assert.deepEqual(ids(await news.browse.query(userFrame('editor'))), ['n-family', 'n-open', 'n-pub']);
-            assert.deepEqual(ids(await news.browse.query(userFrame('owner'))), ['n-family', 'n-open', 'n-own-family', 'n-pub']);
+            // n-family-project (no own group, but in a family project) stays out for Super Editor.
+            assert.deepEqual(ids(await news.browse.query(userFrame('editor'))), ['n-family', 'n-family-project', 'n-open', 'n-pub']);
+            assert.deepEqual(ids(await news.browse.query(userFrame('owner'))), ['n-family', 'n-family-project', 'n-open', 'n-own-family', 'n-pub']);
         });
 
         it('read: Super Editor reads a no-group job, not a family one', async function () {
             assert.equal((await news.read.query(userFrame('se', {id: 'n-open'}))).id, 'n-open');
             assert.equal((await news.read.query(userFrame('se', {id: 'n-pub'}))).id, 'n-pub');
             await assert.rejects(news.read.query(userFrame('se', {id: 'n-family'})), {errorType: 'NoPermissionError'});
+            await assert.rejects(news.read.query(userFrame('se', {id: 'n-family-project'})), {errorType: 'NoPermissionError'});
             await assert.rejects(news.read.query(userFrame('legacy-none', {id: 'n-open'})), {errorType: 'NoPermissionError'});
         });
 
-        it('cancel: Super Editor gets no write on another user\'s no-group job', async function () {
-            await assert.rejects(news.cancel.query(userFrame('se', {id: 'n-open'})), {errorType: 'NoPermissionError'});
-            await assert.rejects(news.cancel.query(userFrame('se', {id: 'n-pub'})), {errorType: 'NoPermissionError'});
+        it('cancel (step 4): Super Editor manages newsroom jobs of any owner, never family ones; Editor unchanged', async function () {
+            await assert.rejects(news.cancel.query(userFrame('editor-2', {id: 'n-open'})), {errorType: 'NoPermissionError'});
+            await assert.rejects(news.cancel.query(userFrame('se', {id: 'n-family'})), {errorType: 'NoPermissionError'});
+            await assert.rejects(news.cancel.query(userFrame('se', {id: 'n-family-project'})), {errorType: 'NoPermissionError'});
+            assert.equal((await news.cancel.query(userFrame('se', {id: 'n-open'}))).status, 'canceled');
+            assert.equal((await news.cancel.query(userFrame('se', {id: 'n-pub'}))).status, 'canceled');
         });
     });
 });

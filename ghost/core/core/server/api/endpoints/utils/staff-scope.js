@@ -53,12 +53,13 @@ const getStaffScope = async (userId) => {
 };
 
 // Accepts a bookshelf model or a plain knex row.
-const getGroupId = (row) => {
+const getField = (row, field) => {
     if (!row) {
         return null;
     }
-    return (typeof row.get === 'function' ? row.get('group_id') : row.group_id) || null;
+    return (typeof row.get === 'function' ? row.get(field) : row[field]) || null;
 };
+const getGroupId = row => getField(row, 'group_id');
 
 // No group, or a public group.
 const isNewsroomRow = (row, publicGroupIds = []) => {
@@ -78,12 +79,55 @@ const canReadRowAsNoGroupReader = (scope, row) => Boolean(scope?.isNoGroupReader
 // no-group reader only on newsroom rows.
 const bypassesRowCheck = (scope, row) => Boolean(scope?.isSystemAdmin) || canReadRowAsNoGroupReader(scope, row);
 
+// Super Editor manages newsroom projects and their jobs in full (read and
+// every user-facing write). A job counts when its own group is newsroom (a
+// safety net: jobs follow their project) and its project, if any, is a
+// newsroom project. `project` is the job's project row (null = no project).
+const canManageAsNewsroomEditor = (scope, row, project = null) => canReadRowAsNoGroupReader(scope, row) &&
+    (!project || isNewsroomRow(project, scope.publicGroupIds));
+
+const loadProject = async (projectId) => {
+    if (!projectId) {
+        return null;
+    }
+    return await models.Base.knex('social_ai_projects').where({id: projectId}).first('id', 'user_id', 'group_id') || null;
+};
+
+// canManageAsNewsroomEditor for a job row/model carrying `project_id`.
+const canManageJobAsNewsroomEditor = async (scope, job) => {
+    if (!canReadRowAsNoGroupReader(scope, job)) {
+        return false;
+    }
+    return canManageAsNewsroomEditor(scope, job, await loadProject(getField(job, 'project_id')));
+};
+
+// Projects whose jobs a Super Editor must not list (non-public groups).
+const loadNonNewsroomProjectIds = async (scope) => {
+    const query = models.Base.knex('social_ai_projects').whereNotNull('group_id');
+    if (scope?.publicGroupIds?.length) {
+        query.whereNotIn('group_id', scope.publicGroupIds);
+    }
+    return (await query.pluck('id')).map(String);
+};
+
 // NQL clause for a no-group reader's unscoped listing: every newsroom row plus
-// its own rows (own rows inside groups stay visible as for other staff).
-const newsroomOrOwnFilter = (scope, userId, ownerField = 'created_by') => {
+// its own rows (own rows inside groups stay visible as for other staff). With
+// `excludeProjectIds` (rows of those non-newsroom projects) or `excludeIds`
+// (those rows), the matching newsroom rows drop out; own rows stay.
+const newsroomOrOwnFilter = (scope, userId, ownerField = 'created_by', {excludeProjectIds = [], excludeIds = []} = {}) => {
     const ids = scope?.publicGroupIds || [];
     const publicClause = ids.length ? `,group_id:[${ids.join(',')}]` : '';
-    return `(group_id:null${publicClause},${ownerField}:${userId})`;
+    const newsroom = [`(group_id:null${publicClause})`];
+    if (excludeProjectIds.length) {
+        newsroom.push(`(project_id:null,project_id:-[${excludeProjectIds.join(',')}])`);
+    }
+    if (excludeIds.length) {
+        newsroom.push(`id:-[${excludeIds.join(',')}]`);
+    }
+    if (newsroom.length === 1) {
+        return `(group_id:null${publicClause},${ownerField}:${userId})`;
+    }
+    return `(${ownerField}:${userId},(${newsroom.join('+')}))`;
 };
 
 // knex: `column` is NULL or a public group id.
@@ -93,6 +137,21 @@ const whereNewsroomGroup = (qb, column, scope) => {
     if (ids.length) {
         qb.orWhereIn(column, ids);
     }
+};
+
+// knex: the row's project (`projectColumn`, e.g. 'social_ai_news_jobs.project_id')
+// is absent or a newsroom project.
+const whereNewsroomProject = (qb, projectColumn, scope) => {
+    const ids = scope?.publicGroupIds || [];
+    qb.whereNotExists(function () {
+        this.select(1)
+            .from('social_ai_projects as nrp')
+            .whereRaw(`nrp.id = ${projectColumn}`)
+            .whereNotNull('nrp.group_id');
+        if (ids.length) {
+            this.whereNotIn('nrp.group_id', ids);
+        }
+    });
 };
 
 // AND a scope clause onto a caller-supplied NQL filter so the clause is always
@@ -138,8 +197,13 @@ module.exports = {
     isNewsroomGroup,
     canReadRowAsNoGroupReader,
     bypassesRowCheck,
+    canManageAsNewsroomEditor,
+    canManageJobAsNewsroomEditor,
+    loadProject,
+    loadNonNewsroomProjectIds,
     newsroomOrOwnFilter,
     whereNewsroomGroup,
+    whereNewsroomProject,
     andFilter,
     nqlId,
     nqlToken

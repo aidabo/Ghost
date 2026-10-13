@@ -106,9 +106,9 @@ const serializeRow = (row) => ({
     updated_at: row.updated_at
 });
 
-// System admin (Owner / Administrator / Admin). Super Editor is not: it only
-// reads newsroom (no-group / public-group) projects (see assertRowAccess /
-// browse), writes as a normal user.
+// System admin (Owner / Administrator / Admin). Super Editor is not: it reads
+// and manages newsroom (no-group / public-group) projects only (assertRowAccess
+// / assertCanWriteRow / browse).
 // @ts-ignore
 const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
 
@@ -208,7 +208,8 @@ const assertCanReadRow = (args) => assertRowAccess({ ...args, permission: 'read'
 // member — even an active one — cannot mutate a project they did not create
 // (canAccessGroup('write') would allow any active member, which is too broad).
 // Integration/host context (workers, server-to-server) bypasses. Single source
-// of truth: SocialGroupMember.canEditGroupContent.
+// of truth: SocialGroupMember.canEditGroupContent. Super Editor manages
+// newsroom projects (no group / public group) of any owner.
 // @ts-ignore
 const assertCanWriteRow = async ({ frame, row }) => {
     const integrationId = getCurrentIntegrationId(frame);
@@ -216,6 +217,9 @@ const assertCanWriteRow = async ({ frame, row }) => {
         return;
     }
     const currentUserId = getCurrentUserId(frame);
+    if (staffScope.canManageAsNewsroomEditor(await staffScope.getStaffScope(currentUserId), row)) {
+        return;
+    }
     const targetUserId = await resolveTargetUserId(frame);
     // @ts-ignore
     const allowed = await models.SocialGroupMember.canEditGroupContent({
@@ -263,7 +267,7 @@ const loadRowOrThrow = async (knex, id) => {
 
 // Stamp computed `can_edit` on each returned project so the frontend shows/hides
 // edit controls (backend single source of truth). Mirrors the write gate.
-const attachCanEdit = async (entryOrCollection, userId, isAdmin) => {
+const attachCanEdit = async (entryOrCollection, userId, isAdmin, scope = null) => {
     let list = [];
     const src = (entryOrCollection && entryOrCollection.data !== undefined) ? entryOrCollection.data : entryOrCollection;
     if (Array.isArray(src)) {
@@ -277,7 +281,7 @@ const attachCanEdit = async (entryOrCollection, userId, isAdmin) => {
         if (!m || typeof m.get !== 'function') {
             continue;
         }
-        const canEdit = isAdmin || await models.SocialGroupMember.canEditGroupContent({
+        const canEdit = isAdmin || staffScope.canManageAsNewsroomEditor(scope, m) || await models.SocialGroupMember.canEditGroupContent({
             groupId: m.get('group_id'),
             authorId: m.get('user_id'),
             userId
@@ -355,7 +359,7 @@ const controller = {
 
             // @ts-ignore
             const result = await SocialAiProjectModel.findPage(options);
-            await attachCanEdit(result, targetUserId || getCurrentUserId(frame), isAdmin);
+            await attachCanEdit(result, targetUserId || getCurrentUserId(frame), isAdmin, scope);
             return result;
         }
     },

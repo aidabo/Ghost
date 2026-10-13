@@ -43,7 +43,8 @@ const SocialAiMediaJobModel = models.SocialAiMediaJob;
 // @ts-ignore
 const TABLE = SocialAiMediaJobModel?.prototype?.tableName || 'social_ai_media_jobs';
 
-// System admin (Owner / Administrator / Admin). Super Editor is not.
+// System admin (Owner / Administrator / Admin). Super Editor is not (it manages
+// newsroom jobs through assertCanReadRow).
 // @ts-ignore
 const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
 
@@ -299,13 +300,15 @@ const serializeRow = (row) => {
     };
 };
 
+// Gate for edit / cancel / retry (despite the name). Super Editor manages jobs
+// of newsroom projects, or project-less newsroom jobs.
 // @ts-ignore
 const assertCanReadRow = async ({ frame, row }) => {
     const currentUserId = getCurrentUserId(frame);
     const integrationId = getCurrentIntegrationId(frame);
-    const isAdmin = currentUserId ? await isAdminUser(currentUserId) : false;
+    const scope = await staffScope.getStaffScope(currentUserId);
 
-    if (integrationId || isAdmin) {
+    if (integrationId || scope.isSystemAdmin || await staffScope.canManageJobAsNewsroomEditor(scope, row)) {
         return;
     }
 
@@ -512,11 +515,15 @@ const controller = {
                     });
                 }
 
-                await assertCanWriteGroup({
-                    frame,
-                    groupId: row.group_id,
-                    targetUserId: targetUserId || row.user_id
-                });
+                // A public job group needs no membership for a Super Editor
+                // managing the newsroom job.
+                if (!(await staffScope.canManageJobAsNewsroomEditor(await staffScope.getStaffScope(currentUserId), row))) {
+                    await assertCanWriteGroup({
+                        frame,
+                        groupId: row.group_id,
+                        targetUserId: targetUserId || row.user_id
+                    });
+                }
                 payload.settings_json = JSON.stringify({
                     ...formatJsonField(row.settings_json, {}),
                     corrected_transcript_json: correctedTranscriptJson,

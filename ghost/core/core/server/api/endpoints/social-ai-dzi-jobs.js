@@ -139,7 +139,7 @@ const assertCanReadRow = async ({ frame, row }) => {
     const integrationId = getCurrentIntegrationId(frame);
     const scope = await staffScope.getStaffScope(currentUserId);
 
-    if (integrationId || staffScope.bypassesRowCheck(scope, row)) {
+    if (integrationId || scope.isSystemAdmin || await canManageDziJobAsNewsroomEditor(scope, row)) {
         return;
     }
 
@@ -170,10 +170,10 @@ const assertCanWriteRow = async ({ frame, row }) => {
     if (integrationId) {
         return;
     }
-    // Super Editor may mutate newsroom jobs (no group or a public group);
-    // other group jobs go through the author / system admin rule below.
+    // Super Editor may mutate newsroom jobs (no group or a public group, no
+    // non-newsroom project); others go through the author / system admin rule.
     const scope = await staffScope.getStaffScope(currentUserId);
-    if (staffScope.canReadRowAsNoGroupReader(scope, row)) {
+    if (await canManageDziJobAsNewsroomEditor(scope, row)) {
         return;
     }
     const targetUserId = await resolveTargetUserId(frame);
@@ -188,6 +188,28 @@ const assertCanWriteRow = async ({ frame, row }) => {
             message: tpl(messages.noPermission)
         });
     }
+};
+
+// DZI jobs have no project_id; they belong to projects through
+// social_ai_dzi_job_projects. A Super Editor manages a DZI job (read and every
+// user-facing write) when its own group is newsroom and none of its linked
+// projects is in a non-public group.
+const nonNewsroomLinkedJobs = (knex, scope) => {
+    const query = knex('social_ai_dzi_job_projects as djp')
+        .join('social_ai_projects as p', 'p.id', 'djp.project_id')
+        .whereNotNull('p.group_id');
+    if (scope.publicGroupIds?.length) {
+        query.whereNotIn('p.group_id', scope.publicGroupIds);
+    }
+    return query;
+};
+
+const canManageDziJobAsNewsroomEditor = async (scope, job) => {
+    if (!staffScope.canReadRowAsNoGroupReader(scope, job)) {
+        return false;
+    }
+    const jobId = typeof job.get === 'function' ? job.get('id') : job.id;
+    return !(await nonNewsroomLinkedJobs(models.Base.knex, scope).where('djp.dzi_job_id', jobId).first('djp.id'));
 };
 
 // Project side of a job <-> project link. Read: integration, system admin,
@@ -213,6 +235,10 @@ const canReadProject = async (frame, project, scope) => {
 
 const assertCanWriteProject = async (frame, project) => {
     if (getCurrentIntegrationId(frame)) {
+        return;
+    }
+    // Super Editor manages newsroom projects of any owner.
+    if (staffScope.canManageAsNewsroomEditor(await staffScope.getStaffScope(getCurrentUserId(frame)), project)) {
         return;
     }
     // @ts-ignore
@@ -297,7 +323,7 @@ const attachCanEdit = async (entryOrCollection, userId, scope) => {
         if (!m || typeof m.get !== 'function') {
             continue;
         }
-        const canEdit = staffScope.bypassesRowCheck(scope, m) || await models.SocialGroupMember.canEditGroupContent({
+        const canEdit = scope.isSystemAdmin || await canManageDziJobAsNewsroomEditor(scope, m) || await models.SocialGroupMember.canEditGroupContent({
             groupId: m.get('group_id'),
             authorId: m.get('user_id'),
             userId
@@ -354,9 +380,17 @@ const controller = {
                 // every newsroom job + its own. Composed into the NQL filter, which
                 // findPage applies (the bare user_id/group_id options are not
                 // permitted findPage options and never reach the query).
-                const clause = groupId ? `group_id:${staffScope.nqlId(groupId, 'group_id')}` : staffScope.newsroomOrOwnFilter(scope, currentUserId, 'user_id');
+                const excludeIds = (await nonNewsroomLinkedJobs(models.Base.knex, scope).distinct('djp.dzi_job_id as id'))
+                    .map(row => String(row.id));
+                const clause = groupId
+                    ? `group_id:${staffScope.nqlId(groupId, 'group_id')}`
+                    : staffScope.newsroomOrOwnFilter(scope, currentUserId, 'user_id', {excludeIds});
                 // @ts-ignore
                 frame.options.filter = staffScope.andFilter(frame.options.filter, clause);
+                if (groupId && excludeIds.length) {
+                    // @ts-ignore
+                    frame.options.filter = staffScope.andFilter(frame.options.filter, `id:-[${excludeIds.join(',')}]`);
+                }
             } else if (!scope.isSystemAdmin && targetUserId) {
                 // @ts-ignore
                 frame.options.user_id = targetUserId;
