@@ -10,8 +10,13 @@ const OWN_POSTS_ONLY_ROLES = new Set(['Author', 'Contributor']);
  *  - includes drafts and scheduled posts (the desk works on unpublished articles),
  *  - can be scoped to one article with `post_id`.
  *
- * Authors and Contributors only see media of posts they author — the same
- * boundary the posts model enforces for them. Session/admin-key auth only.
+ * Scope = the newsroom only: `public_post = true`, the same line Post.defaultFilters
+ * draws for an admin posts browse without `group_id`. Family/group posts
+ * (public_post = false) are personal content and must never mix in here — they are
+ * served by the group-scoped, membership-checked paths instead.
+ *
+ * Authors and Contributors only see media of posts they author.
+ * Session/admin-key auth only.
  */
 async function ownPostsOnlyUserId(frame) {
     const userId = frame.options?.context?.user;
@@ -40,7 +45,7 @@ module.exports = {
             const requestedTypes = String(frame.options.media_types || '').split(',').map(value => value.trim()).filter(value => allowedTypes.has(value));
             const types = requestedTypes.length ? requestedTypes : [...allowedTypes];
 
-            const base = db.knex('post_media as pm').join('posts as p', 'p.id', 'pm.post_id').where('p.type', 'post').whereIn('pm.media_type', types);
+            const base = db.knex('post_media as pm').join('posts as p', 'p.id', 'pm.post_id').where('p.type', 'post').where('p.public_post', true).whereIn('pm.media_type', types);
             if (postId) {
                 base.andWhere('pm.post_id', postId);
             }
