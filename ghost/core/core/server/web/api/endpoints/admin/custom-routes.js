@@ -302,7 +302,8 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/news/jobs/:id/link-assets', mw.authAdminApi, http(api.socialAiNewsJobs.linkAssets));
     router.post('/social/ai/news/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiNewsJobs.cancel));
     router.del('/social/ai/news/jobs/:id', mw.authAdminApi, http(api.socialAiNewsJobs.destroy));
-    router.get('/social/ai/news/broadcast-selections', mw.authAdminApi, http(api.socialAiNewsBroadcastSelections.browse));
+    router.get('/social/ai/news/broadcast-selections', mw.publicAdminApi, http(api.socialAiNewsBroadcastSelections.browse));
+    router.get('/social/ai/news/broadcast-selections/:id', mw.publicAdminApi, http(api.socialAiNewsBroadcastSelections.read));
     router.post('/social/ai/news/broadcast-selections', mw.authAdminApi, http(api.socialAiNewsBroadcastSelections.select));
     // ## social ai news avatar profiles
     router.get('/social/ai/news/avatar-profiles', mw.authAdminApi, http(api.socialAiAvatarProfiles.browse));
