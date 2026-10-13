@@ -938,6 +938,12 @@ const controller = {
             const knex = models.Base.knex;
             const row = await loadRow(jobId(frame));
             await assertAccess(frame, row, true);
+            // A newsroom-rule Super Editor must not cascade into assets
+            // outside the newsroom.
+            const scope = await staffScope.getStaffScope(currentUser(frame));
+            if (staffScope.actsAsNewsroomEditor(scope, row.user_id, currentUser(frame), integration(frame))) {
+                await staffScope.assertAssetsAreNewsroom(models.Base.knex, scope, qb => qb.where('sma.news_job_id', row.id));
+            }
 
             // A running job must not be deleted out from under its worker.
             if (['queued', 'running'].includes(row.status)) {

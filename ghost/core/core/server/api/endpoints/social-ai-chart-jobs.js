@@ -684,6 +684,12 @@ const controller = {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, getJobId(frame));
             await assertCanWriteRow({ frame, row });
+            // A newsroom-rule Super Editor must not cascade into assets
+            // outside the newsroom.
+            const scope = await staffScope.getStaffScope(getCurrentUserId(frame));
+            if (staffScope.actsAsNewsroomEditor(scope, row.user_id, getCurrentUserId(frame), getCurrentIntegrationId(frame))) {
+                await staffScope.assertAssetsAreNewsroom(knex, scope, qb => qb.where('sma.chart_job_id', row.id));
+            }
 
             // Review MAJOR 4 (2026-08-08): reject deleting a queued/running
             // job — it would strand the worker mid-run and race its lease

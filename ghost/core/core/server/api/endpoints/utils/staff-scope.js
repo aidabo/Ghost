@@ -236,6 +236,25 @@ const whereNewsroomAsset = (qb, scope) => {
     });
 };
 
+// Is the write a Super Editor acting only through the newsroom rule (not as
+// owner, system admin or integration)? Its cascades must stay inside newsroom
+// content.
+const actsAsNewsroomEditor = (scope, ownerId, userId, integrationId = null) => Boolean(scope?.isNoGroupReader) &&
+    !integrationId && String(ownerId || '') !== String(userId || '');
+
+// Refuse (403) when any asset selected by `where(qb)` (on social_media_assets
+// AS sma) is not newsroom: a newsroom-rule write must not cascade into
+// family / private / secret / company content.
+const assertAssetsAreNewsroom = async (knex, scope, where) => {
+    const hidden = await knex('social_media_assets as sma')
+        .where(where)
+        .whereNot(qb => whereNewsroomAsset(qb, scope))
+        .first('sma.id');
+    if (hidden) {
+        throw new errors.NoPermissionError({message: 'This content holds items outside the newsroom.'});
+    }
+};
+
 // AND a scope clause onto a caller-supplied NQL filter so the clause is always
 // an outer conjunct. The caller filter is parenthesised (NQL binds `+` tighter
 // than `,`, so a bare `a,b+clause` would leave `a` outside the scope) and must
@@ -289,6 +308,8 @@ module.exports = {
     whereNewsroomGroup,
     whereNewsroomProject,
     whereNewsroomAsset,
+    actsAsNewsroomEditor,
+    assertAssetsAreNewsroom,
     andFilter,
     nqlId,
     nqlToken

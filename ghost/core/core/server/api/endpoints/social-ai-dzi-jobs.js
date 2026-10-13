@@ -522,9 +522,10 @@ const controller = {
                     .filter(u => /^https?:\/\//i.test(u));
                 // Only the job owner's own uploads are stamped: a known URL
                 // must never pull someone else's asset into this job (destroy
-                // would then delete it).
+                // would then delete it). Null-safe: an owner-less
+                // (integration) job stamps owner-less assets, as before.
                 const ownerId = targetUserId || currentUserId || null;
-                if (jobId && ownerId && assetUrls.length) {
+                if (jobId && assetUrls.length) {
                     await models.Base.knex('social_media_assets')
                         .whereIn('storage_url', assetUrls)
                         .where('user_id', ownerId)
@@ -588,6 +589,12 @@ const controller = {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, getJobId(frame));
             await assertCanWriteRow({ frame, row });
+            // A newsroom-rule Super Editor must not cascade into assets
+            // outside the newsroom.
+            const scope = await staffScope.getStaffScope(getCurrentUserId(frame));
+            if (staffScope.actsAsNewsroomEditor(scope, row.user_id, getCurrentUserId(frame), getCurrentIntegrationId(frame))) {
+                await staffScope.assertAssetsAreNewsroom(knex, scope, qb => qb.where('sma.dzi_job_id', row.id));
+            }
 
             // Best-effort S3 cleanup of the gallery-bucket objects for this job.
             // The DZI TILES live in a different bucket and are removed by the host
@@ -649,7 +656,8 @@ const controller = {
             // fallback for rows created before that linking existed, the source PDF by
             // its storage_key path and the preview by its storage_url.
             // Rows matched by link or preview URL are deleted only when the job
-            // owner uploaded them; rows under the job's own folder always.
+            // owner uploaded them (null-safe: an owner-less integration job
+            // cleans owner-less rows); rows under the job's own folder always.
             try {
                 const q = knex('social_media_assets')
                     .whereRaw('storage_key LIKE ?', [`%gallery/deepzoom/${row.id}/%`])

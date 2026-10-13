@@ -217,8 +217,11 @@ const assertCanWriteRow = async ({ frame, row }) => {
         return;
     }
     const currentUserId = getCurrentUserId(frame);
-    if (staffScope.canManageAsNewsroomEditor(await staffScope.getStaffScope(currentUserId), row)) {
-        return;
+    const scope = await staffScope.getStaffScope(currentUserId);
+    if (staffScope.canManageAsNewsroomEditor(scope, row)) {
+        // Returned so cascading writes can keep a newsroom-rule Super Editor
+        // inside newsroom content (assertCascadeIsNewsroom).
+        return staffScope.actsAsNewsroomEditor(scope, row.user_id, currentUserId) ? scope : null;
     }
     const targetUserId = await resolveTargetUserId(frame);
     // @ts-ignore
@@ -230,6 +233,43 @@ const assertCanWriteRow = async ({ frame, row }) => {
     if (!allowed) {
         throw new errors.NoPermissionError({message: tpl(messages.noPermission)});
     }
+};
+
+// A Super Editor that may write a newsroom project only through the newsroom
+// rule must not destroy / clear what is not newsroom inside it: a newsroom
+// project can hold jobs of non-public groups (and their assets). Refuse when
+// the project holds any such job (job families, or DZI jobs linked through
+// social_ai_dzi_job_projects) or any asset the gallery would hide from it.
+const assertCascadeIsNewsroom = async (knex, project, scope) => {
+    const nonNewsroom = (query, column) => {
+        query.whereNotNull(column);
+        if (scope.publicGroupIds.length) {
+            query.whereNotIn(column, scope.publicGroupIds);
+        }
+        return query;
+    };
+    const refuse = () => {
+        throw new errors.NoPermissionError({message: tpl(messages.noPermission)});
+    };
+    for (const family of JOB_FAMILIES) {
+        if (await nonNewsroom(knex(family.jobsTable).where({project_id: project.id}), 'group_id').first('id')) {
+            refuse();
+        }
+    }
+    const dzi = knex('social_ai_dzi_job_projects as djp')
+        .join('social_ai_dzi_jobs as j', 'j.id', 'djp.dzi_job_id')
+        .where('djp.project_id', project.id);
+    if (await nonNewsroom(dzi, 'j.group_id').first('j.id')) {
+        refuse();
+    }
+    await staffScope.assertAssetsAreNewsroom(knex, scope, (qb) => {
+        qb.where('sma.project_id', project.id);
+        for (const family of JOB_FAMILIES) {
+            if (family.assetLinkColumn) {
+                qb.orWhereIn(`sma.${family.assetLinkColumn}`, knex(family.jobsTable).where({project_id: project.id}).select('id'));
+            }
+        }
+    });
 };
 
 // @ts-ignore
@@ -511,7 +551,12 @@ const controller = {
         async query(frame) {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, frame.options?.id);
-            await assertCanWriteRow({ frame, row });
+            const newsroomScope = await assertCanWriteRow({ frame, row });
+            // Checked before the cascade (and before its S3 cleanup, which
+            // runs in `finally` even when the transaction fails).
+            if (newsroomScope) {
+                await assertCascadeIsNewsroom(knex, row, newsroomScope);
+            }
 
             // Review 2026-08-07 #2: the project is generic — the active-jobs
             // check and the cascade iterate the registered job families
@@ -681,7 +726,10 @@ const controller = {
         async query(frame) {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, frame.options?.id);
-            await assertCanWriteRow({ frame, row });
+            const newsroomScope = await assertCanWriteRow({ frame, row });
+            if (newsroomScope) {
+                await assertCascadeIsNewsroom(knex, row, newsroomScope);
+            }
 
             // Refuse while any job is queued/running — an in-flight run writes
             // into jobs/{jobId}/, so emptying it mid-run would corrupt output.

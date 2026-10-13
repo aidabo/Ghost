@@ -529,6 +529,96 @@ describe('Super Editor scope on knex-backed listings', function () {
         });
     });
 
+    describe('review 3: newsroom-rule cascades (S1) and owner-less DZI assets (S5)', function () {
+        let projects;
+        let chartJobs;
+        let news;
+        let dzi;
+        const stubs = {
+            '../../adapters/storage': {getStorage: () => ({})},
+            './utils/social-media-assets': {},
+            '@tryghost/logging': {warn: () => {}, error: () => {}}
+        };
+        const integrationContext = {integration: {id: 'integration-1'}};
+
+        before(async function () {
+            projects = loadWith(projectsPath, models, stubs);
+            chartJobs = loadWith(chartJobsPath, models, stubs);
+            news = loadWith(newsPath, models, stubs);
+            dzi = loadWith(dziPath, models, stubs);
+            await database('social_ai_projects').insert([
+                {id: 'p-holds-family-job', user_id: 'editor', group_id: null},
+                {id: 'p-holds-family-asset', user_id: 'editor', group_id: null},
+                {id: 'p-clean', user_id: 'editor', group_id: null}
+            ]);
+            await database('social_ai_chart_jobs').insert([
+                {id: 'cj-family-in-newsroom-project', user_id: 'editor', group_id: FAM, project_id: 'p-holds-family-job', status: 'completed'},
+                {id: 'cj-done-family-asset', user_id: 'editor', group_id: null, status: 'completed'}
+            ]);
+            await database('social_ai_news_jobs').insert([
+                {id: 'n-done-family-asset', user_id: 'editor', group_id: null, status: 'completed'}
+            ]);
+            await database('social_ai_dzi_jobs').insert([
+                {id: 'dz-done-family-asset', user_id: 'editor', group_id: null},
+                {id: 'dz-int', user_id: null, group_id: null, preview_url: 'https://cdn/nl2.jpg'}
+            ]);
+            await database('social_media_assets').insert([
+                {id: 's1-family-asset', storage_key: 's1', owner_scope: 'user', user_id: 'editor', group_id: FAM, project_id: 'p-holds-family-asset'},
+                {id: 's1-clean-asset', storage_key: 's2', owner_scope: 'user', user_id: 'editor', project_id: 'p-clean'},
+                {id: 's1-chart-family', storage_key: 's3', owner_scope: 'chart_jobs', group_id: FAM, chart_job_id: 'cj-done-family-asset'},
+                {id: 's1-news-family', storage_key: 's4', owner_scope: 'news_jobs', group_id: FAM, news_job_id: 'n-done-family-asset'},
+                {id: 's1-dzi-family', storage_key: 's5', owner_scope: 'deepzoom', group_id: FAM, dzi_job_id: 'dz-done-family-asset'},
+                {id: 'nl-asset', storage_key: 'n1', storage_url: 'https://cdn/nl.pdf', owner_scope: 'deepzoom'},
+                {id: 'nl-stamped', storage_key: 'n2', storage_url: 'https://cdn/nl2.jpg', owner_scope: 'deepzoom', dzi_job_id: 'dz-int'},
+                {id: 'v-stamped-int', storage_key: 'n3', storage_url: 'https://cdn/v3.jpg', user_id: 'victim', owner_scope: 'user', dzi_job_id: 'dz-int'}
+            ]);
+        });
+
+        after(async function () {
+            // Keep the shared news fixture as the news-browse tests expect it.
+            await database('social_ai_news_jobs').where({id: 'n-done-family-asset'}).del();
+        });
+
+        const call = (endpoint, action, user, id) => endpoint[action].query({options: {id, context: {user}}, data: {}});
+
+        it('S1: Super Editor cannot destroy / clear a newsroom project holding a family job or family asset', async function () {
+            await assert.rejects(call(projects, 'destroy', 'se', 'p-holds-family-job'), {errorType: 'NoPermissionError'});
+            await assert.rejects(call(projects, 'clearArtifacts', 'se', 'p-holds-family-job'), {errorType: 'NoPermissionError'});
+            await assert.rejects(call(projects, 'destroy', 'se', 'p-holds-family-asset'), {errorType: 'NoPermissionError'});
+            assert.ok(await database('social_ai_chart_jobs').where({id: 'cj-family-in-newsroom-project'}).first());
+            assert.ok(await database('social_media_assets').where({id: 's1-family-asset'}).first());
+            // A project with newsroom content only is still destroyed by Super Editor.
+            await call(projects, 'destroy', 'se', 'p-clean');
+            assert.equal(await database('social_ai_projects').where({id: 'p-clean'}).first(), undefined);
+            // The owner keeps full control of its own project.
+            await call(projects, 'clearArtifacts', 'editor', 'p-holds-family-job');
+        });
+
+        it('S1: Super Editor cannot destroy a newsroom job whose assets reach a family group', async function () {
+            await assert.rejects(call(chartJobs, 'destroy', 'se', 'cj-done-family-asset'), {errorType: 'NoPermissionError'});
+            await assert.rejects(call(news, 'destroy', 'se', 'n-done-family-asset'), {errorType: 'NoPermissionError'});
+            await assert.rejects(call(dzi, 'destroy', 'se', 'dz-done-family-asset'), {errorType: 'NoPermissionError'});
+            for (const id of ['s1-chart-family', 's1-news-family', 's1-dzi-family']) {
+                assert.ok(await database('social_media_assets').where({id}).first(), id);
+            }
+        });
+
+        it('S5: an owner-less (integration) DZI job stamps and cleans owner-less assets; a user job does not', async function () {
+            const add = context => dzi.add.query({
+                options: {context},
+                data: {socialaidzijobs: [{source_path: 'https://cdn/nl.pdf', publication_name: 'p', edition: 'e'}]}
+            });
+            await add({user: 'editor'});
+            assert.equal((await database('social_media_assets').where({id: 'nl-asset'}).first()).dzi_job_id, null);
+            await add(integrationContext);
+            assert.equal((await database('social_media_assets').where({id: 'nl-asset'}).first()).dzi_job_id, 'dz-new');
+
+            await dzi.destroy.query({options: {id: 'dz-int', context: integrationContext}, data: {}});
+            const left = (await database('social_media_assets').whereIn('id', ['nl-stamped', 'v-stamped-int'])).map(r => r.id);
+            assert.deepEqual(left, ['v-stamped-int']);
+        });
+    });
+
     describe('project links (F3)', function () {
         let links;
 
