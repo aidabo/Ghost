@@ -1219,6 +1219,16 @@
                     "object_type": "socialaimediajob"
                 },
                 {
+                    "name": "Browse Avatar Broadcast Selections",
+                    "action_type": "browse",
+                    "object_type": "socialaiavatarbroadcastselection"
+                },
+                {
+                    "name": "Edit Avatar Broadcast Selections",
+                    "action_type": "edit",
+                    "object_type": "socialaiavatarbroadcastselection"
+                },
+                {
                     "name": "Add Social AI Content Bundle Jobs",
                     "action_type": "add",
                     "object_type": "socialaicontentbundlejob"
@@ -1770,6 +1780,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
+                    "socialaiavatarbroadcastselection": ["browse", "edit"],
                     "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",
@@ -1858,6 +1869,7 @@
                     "socialaichat": "all",
                     "socialaidevice": "all",
                     "socialaimediajob": "all",
+                    "socialaiavatarbroadcastselection": ["browse"],
                     "socialaicontentbundlejob": "all",
                     "socialaismslog": "all",
                     "socialaiuserphone": "all",

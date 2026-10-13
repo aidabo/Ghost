@@ -96,7 +96,10 @@ const controller = {
 
     browse: {
         options: ['post_ids'],
-        permissions: false,
+        permissions: {
+            object: 'socialaiavatarbroadcastselection',
+            action: 'browse'
+        },
         async query(frame) {
             const actor = currentUser(frame);
             const trustedIntegration = integration(frame);
@@ -139,7 +142,10 @@ const controller = {
     },
 
     select: {
-        permissions: false,
+        permissions: {
+            object: 'socialaiavatarbroadcastselection',
+            action: 'edit'
+        },
         async query(frame) {
             if (integration(frame)) {
                 throw new errors.NoPermissionError({message: 'A user session is required to select a public news broadcast.'});

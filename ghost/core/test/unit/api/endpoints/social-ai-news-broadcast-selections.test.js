@@ -2,6 +2,7 @@ const assert = require('assert/strict');
 const Module = require('module');
 const sinon = require('sinon');
 const knexFactory = require('knex');
+const fixtures = require('../../../../core/server/data/schema/fixtures/fixtures.json');
 
 const endpointPath = require.resolve('../../../../core/server/api/endpoints/social-ai-news-broadcast-selections');
 const endpointFrame = (data, user = 'admin-user') => ({
@@ -161,5 +162,20 @@ describe('News broadcast selections', function () {
         assert.equal(restored.revision, 2);
         assert.equal(restored.media_id, null);
         assert.equal((await database('social_ai_avatar_broadcast_selections').where({post_id: 'aaaaaaaaaaaaaaaaaaaaaaaa'}).first()).revision, 2);
+    });
+
+    it('seeds permissions for fresh databases with admin-only adoption and integration read', function () {
+        assert.deepEqual(endpoint.browse.permissions, {object: 'socialaiavatarbroadcastselection', action: 'browse'});
+        assert.deepEqual(endpoint.select.permissions, {object: 'socialaiavatarbroadcastselection', action: 'edit'});
+        const permissionEntries = fixtures.models.find(model => model.name === 'Permission').entries;
+        assert.ok(permissionEntries.some(permission => permission.action_type === 'browse' && permission.object_type === 'socialaiavatarbroadcastselection'));
+        assert.ok(permissionEntries.some(permission => permission.action_type === 'edit' && permission.object_type === 'socialaiavatarbroadcastselection'));
+
+        const rolePermissions = fixtures.relations.find(relation => relation.from.model === 'Role' && relation.to.model === 'Permission').entries;
+        assert.deepEqual(rolePermissions.Administrator.socialaiavatarbroadcastselection, ['browse', 'edit']);
+        assert.deepEqual(rolePermissions['Admin Integration'].socialaiavatarbroadcastselection, ['browse']);
+        assert.equal(rolePermissions.Editor.socialaiavatarbroadcastselection, undefined);
+        assert.equal(rolePermissions.Author.socialaiavatarbroadcastselection, undefined);
+        assert.equal(rolePermissions['Super Editor'].socialaiavatarbroadcastselection, undefined);
     });
 });
