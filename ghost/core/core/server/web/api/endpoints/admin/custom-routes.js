@@ -315,10 +315,10 @@ module.exports = function customApiRoutes(router) {
     // ## social ai chart projects (generic work container, P1 — chart-scoped jobs hang off the general project path)
     router.get('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.browse));
     router.post('/social/ai/projects', mw.authAdminApi, http(api.socialAiProjects.add));
-    router.get('/social/ai/projects/:id/members/staff', mw.authAdminApi, http(api.socialAiProjects.members.staff));
-    router.get('/social/ai/projects/:id/members', mw.authAdminApi, http(api.socialAiProjects.members.browse));
-    router.post('/social/ai/projects/:id/members', mw.authAdminApi, http(api.socialAiProjects.members.add));
-    router.del('/social/ai/project-members/:id', mw.authAdminApi, http(api.socialAiProjects.members.destroy));
+    router.get('/social/ai/projects/:id/members/staff', mw.authAdminApi, http(api.socialAiProjectMembers.staff));
+    router.get('/social/ai/projects/:id/members', mw.authAdminApi, http(api.socialAiProjectMembers.browse));
+    router.post('/social/ai/projects/:id/members', mw.authAdminApi, http(api.socialAiProjectMembers.add));
+    router.del('/social/ai/project-members/:id', mw.authAdminApi, http(api.socialAiProjectMembers.destroy));
     router.get('/social/ai/projects/:id/dzi-jobs', mw.authAdminApi, http(api.socialAiDziJobs.listByProject));
     router.get('/social/ai/projects/:id/links', mw.authAdminApi, http(api.socialAiProjectLinks.browse));
     router.post('/social/ai/projects/:id/links', mw.authAdminApi, http(api.socialAiProjectLinks.add));
