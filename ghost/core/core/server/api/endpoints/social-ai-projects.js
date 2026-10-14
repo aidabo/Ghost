@@ -1,6 +1,7 @@
 // @ts-ignore
 const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
+const ObjectId = require('bson-objectid').default;
 const models = require('../../models');
 const logging = require('@tryghost/logging');
 const storage = require('../../adapters/storage');
@@ -8,6 +9,8 @@ const socialAiProjectsUtil = require('./utils/social-ai-projects');
 const staffScope = require('./utils/staff-scope');
 
 const ALLOWED_INCLUDES = ['user', 'group'];
+const PROJECT_MEMBERS = 'social_ai_project_members';
+const STAFF_ROLES = ['Owner', 'Administrator', 'Super Editor', 'Editor', 'Author', 'Contributor'];
 
 // Review 2026-08-07 #2: families that hang off the generic project path.
 // destroy iterates this list for its active-jobs check and cascade — add an
@@ -332,9 +335,130 @@ const attachCanEdit = async (entryOrCollection, userId, isAdmin, scope = null) =
     return entryOrCollection;
 };
 
+const serializeProjectMember = row => ({
+    id: row.id,
+    project_id: row.project_id,
+    user_id: row.user_id,
+    role: row.role,
+    email: row.email || null,
+    name: row.name || null,
+    created_at: row.created_at,
+    updated_at: row.updated_at
+});
+
+const loadProjectMember = async (knex, id) => knex(`${PROJECT_MEMBERS} as pm`)
+    .join('users as u', 'u.id', 'pm.user_id')
+    .where('pm.id', id)
+    .select('pm.*', 'u.email', 'u.name')
+    .first();
+
+const assertProjectMemberWrite = async (frame, projectId) => {
+    const row = await loadRowOrThrow(models.Base.knex, projectId);
+    await assertCanWriteRow({frame, row});
+    return row;
+};
+
+const projectMembersController = {
+    browse: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const project = await loadRowOrThrow(models.Base.knex, frame.options?.id);
+            await assertCanReadRow({frame, row: project});
+            const rows = await models.Base.knex(`${PROJECT_MEMBERS} as pm`)
+                .join('users as u', 'u.id', 'pm.user_id')
+                .where('pm.project_id', project.id)
+                .select('pm.*', 'u.email', 'u.name')
+                .orderBy('u.name', 'asc')
+                .orderBy('u.email', 'asc');
+            return {data: rows.map(serializeProjectMember)};
+        }
+    },
+    staff: {
+        options: ['id', 'q', 'limit'],
+        permissions: false,
+        async query(frame) {
+            const project = await loadRowOrThrow(models.Base.knex, frame.options?.id);
+            await assertCanReadRow({frame, row: project});
+            const limit = Math.min(100, Math.max(1, Number(frame.options?.limit || 50) || 50));
+            const q = String(frame.options?.q || '').trim();
+            const query = models.Base.knex('users as u')
+                .join('roles_users as ru', 'ru.user_id', 'u.id')
+                .join('roles as r', 'r.id', 'ru.role_id')
+                .whereIn('r.name', STAFF_ROLES)
+                .select('u.id as user_id', 'u.email', 'u.name')
+                .distinct()
+                .orderBy('u.name', 'asc')
+                .orderBy('u.email', 'asc')
+                .limit(limit);
+            if (q) {
+                query.andWhere(function () {
+                    this.where('u.email', 'like', `%${q}%`).orWhere('u.name', 'like', `%${q}%`);
+                });
+            }
+            return {data: await query};
+        }
+    },
+    add: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const project = await assertProjectMemberWrite(frame, frame.options?.id);
+            const actor = getCurrentUserId(frame);
+            if (!actor) {
+                throw new errors.NoPermissionError({message: tpl(messages.userRequired)});
+            }
+            const input = frame.data?.socialaiprojectmembers?.[0] || frame.data || {};
+            const userId = String(input.user_id || '').trim();
+            const role = String(input.role || 'viewer').trim();
+            if (!userId || !STAFF_ROLES.length || !['viewer', 'editor'].includes(role)) {
+                throw new errors.ValidationError({message: '`user_id` and a valid `role` are required.'});
+            }
+            const staff = await models.Base.knex('users as u')
+                .join('roles_users as ru', 'ru.user_id', 'u.id')
+                .join('roles as r', 'r.id', 'ru.role_id')
+                .where('u.id', userId)
+                .whereIn('r.name', STAFF_ROLES)
+                .first('u.id');
+            if (!staff) {
+                throw new errors.ValidationError({message: 'The selected user is not an active staff user.'});
+            }
+            const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            const existing = await models.Base.knex(PROJECT_MEMBERS).where({project_id: project.id, user_id: userId}).first();
+            if (existing) {
+                await models.Base.knex(PROJECT_MEMBERS).where({id: existing.id}).update({role, updated_by: actor || null, updated_at: now});
+            } else {
+                await models.Base.knex(PROJECT_MEMBERS).insert({
+                    id: ObjectId().toHexString(),
+                    project_id: project.id,
+                    user_id: userId,
+                    role,
+                    created_by: actor,
+                    created_at: now,
+                    updated_at: now,
+                    updated_by: actor || null
+                });
+            }
+            return serializeProjectMember(await loadProjectMember(models.Base.knex, existing?.id || (await models.Base.knex(PROJECT_MEMBERS).where({project_id: project.id, user_id: userId}).first('id')).id));
+        }
+    },
+    destroy: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const member = await loadProjectMember(models.Base.knex, frame.options?.id);
+            if (!member) throw new errors.NotFoundError({message: 'Project member not found.'});
+            await assertProjectMemberWrite(frame, member.project_id);
+            await models.Base.knex(PROJECT_MEMBERS).where({id: member.id}).del();
+            return {id: member.id, deleted: true};
+        }
+    }
+};
+
 /** @type {import('@tryghost/api-framework').Controller} */
 const controller = {
     docName: 'socialaiprojects',
+    members: projectMembersController,
 
     browse: {
         headers: {

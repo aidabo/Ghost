@@ -2400,6 +2400,24 @@ module.exports = {
         ]
     },
 
+    social_ai_project_members: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        project_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_ai_projects.id', cascadeDelete: true},
+        user_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true},
+        role: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'viewer', validations: {isIn: [['viewer', 'editor']]}},
+        created_by: {type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true},
+        created_at: {type: 'dateTime', nullable: false},
+        updated_at: {type: 'dateTime', nullable: false},
+        updated_by: {type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true},
+        '@@UNIQUE_CONSTRAINTS@@': [
+            ['project_id', 'user_id']
+        ],
+        '@@INDEXES@@': [
+            ['project_id', 'role'],
+            ['user_id', 'role']
+        ]
+    },
+
     // News avatar identity/profile. The image itself stays in
     // social_media_assets so the shared Gallery/Project search remains the
     // source of truth. This table only maps a stable presenter persona to a
