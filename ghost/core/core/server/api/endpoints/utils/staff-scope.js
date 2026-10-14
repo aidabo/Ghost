@@ -101,6 +101,30 @@ const canManageJobAsNewsroomEditor = async (scope, job) => {
     return canManageAsNewsroomEditor(scope, job, await loadProject(getField(job, 'project_id')));
 };
 
+// Newsroom READ for every staff role (news jobs, like posts / post media): the
+// staff scope with the active public group ids loaded whatever the role, or
+// null when there is no such staff user (nothing to widen).
+const getNewsroomReadScope = async (userId) => {
+    const scope = await getStaffScope(userId);
+    if (scope === NO_SCOPE) {
+        return null;
+    }
+    if (scope.isNoGroupReader) {
+        return scope;
+    }
+    return {...scope, publicGroupIds: await loadPublicGroupIds()};
+};
+
+// A job is newsroom when its own group is newsroom and its project, if any,
+// is a newsroom project (a vanished project counts as no project).
+const isNewsroomJob = async (job, publicGroupIds = []) => {
+    if (!isNewsroomRow(job, publicGroupIds)) {
+        return false;
+    }
+    const project = await loadProject(getField(job, 'project_id'));
+    return !project || isNewsroomRow(project, publicGroupIds);
+};
+
 // Projects whose jobs a Super Editor must not list (non-public groups).
 const loadNonNewsroomProjectIds = async (scope) => {
     const query = models.Base.knex('social_ai_projects').whereNotNull('group_id');
@@ -302,6 +326,8 @@ module.exports = {
     bypassesRowCheck,
     canManageAsNewsroomEditor,
     canManageJobAsNewsroomEditor,
+    getNewsroomReadScope,
+    isNewsroomJob,
     loadProject,
     loadNonNewsroomProjectIds,
     newsroomOrOwnFilter,
