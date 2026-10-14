@@ -21,8 +21,13 @@ function hashUrl(value) {
     return crypto.createHash('sha256').update(normalizeUrl(value)).digest('hex');
 }
 
+// Every newsroom post (public_post = true), whatever its status or visibility: the
+// staff desk (/dashboard/news 素材) lists the media of drafts and members-only posts too.
+// A media row's "published" state is its post's state. The public read
+// (post-media-public.js) still narrows to status = published + visibility = public itself.
+// Family / private-group posts (public_post = false) are never indexed.
 function isIndexablePost(post) {
-    return Boolean(post && post.type === 'post' && post.status === 'published' && post.visibility === 'public' && post.public_post);
+    return Boolean(post && post.type === 'post' && post.public_post);
 }
 
 function mediaTypeFromNode(node, sourceUrl, fallback = 'image') {
@@ -182,6 +187,11 @@ async function syncPostMediaIndex(postId) {
 
     const post = await loadLatestPost(knex, postId);
     if (!isIndexablePost(post)) {
+        // No longer a newsroom post (moved into a family / private group, or not a
+        // post): drop rows left from when it was, so they never outlive it.
+        if (post) {
+            await knex(TABLE).where({post_id: post.id}).del();
+        }
         return false;
     }
 
@@ -252,8 +262,6 @@ async function backfillPostMediaIndex({batchSize = BACKFILL_BATCH_SIZE} = {}) {
         const posts = await knex('posts')
             .select('id')
             .where('type', 'post')
-            .where('status', 'published')
-            .where('visibility', 'public')
             .where('public_post', true)
             .modify((query) => {
                 if (cursor) {
@@ -357,6 +365,35 @@ function onPostDeleted(model) {
     });
 }
 
+// Drafts (and every other non-published newsroom Post) are indexed too, but never once per
+// autosave: an edit only (re)arms a per-Post timer, and the sync runs once the editor has
+// been quiet for DRAFT_SYNC_DELAY_MS. Measured 2026-10-14 on the dev DB: extracting the
+// largest Post (5.9 MB lexical) takes ~7 ms, all 447 newsroom Posts ~67 ms — so one sync
+// per quiet period is negligible next to the autosave itself.
+const DRAFT_SYNC_DELAY_MS = Math.max(1000, Number(process.env.POST_MEDIA_DRAFT_SYNC_DELAY_MS) || 30000);
+const draftTimers = new Map();
+
+function postStatusOf(model) {
+    return typeof model?.get === 'function' ? model.get('status') : model?.status;
+}
+
+function onDraftChanged(model) {
+    const postId = model?.id || (typeof model?.get === 'function' ? model.get('id') : null);
+    // Published Posts are synced by post.published / post.published.edited right away.
+    if (!postId || postStatusOf(model) === 'published') {
+        return;
+    }
+    clearTimeout(draftTimers.get(postId));
+    const timer = setTimeout(() => {
+        draftTimers.delete(postId);
+        onPostChanged({id: postId});
+    }, DRAFT_SYNC_DELAY_MS);
+    if (typeof timer.unref === 'function') {
+        timer.unref();
+    }
+    draftTimers.set(postId, timer);
+}
+
 let listening = false;
 function listen() {
     if (listening) {
@@ -366,8 +403,12 @@ function listen() {
 
     events.on('post.published', onPostChanged);
     events.on('post.published.edited', onPostChanged);
+    // Drafts / scheduled / unpublished: debounced, see onDraftChanged.
+    events.on('post.added', onDraftChanged);
+    events.on('post.edited', onDraftChanged);
     // Keep derived rows on unpublish. The public query joins the current Post
-    // status/visibility, so the item disappears without touching this index.
+    // status/visibility, so the item disappears without touching this index; the
+    // post.edited that comes with it re-syncs the rows (debounced) for the staff desk.
     events.on('post.unpublished', () => {});
     events.on('post.deleted', onPostDeleted);
 
@@ -387,5 +428,7 @@ module.exports = {
     deletePostMediaIndex,
     backfillPostMediaIndex,
     isIndexablePost,
-    extractMediaFromPost
+    extractMediaFromPost,
+    onDraftChanged,
+    DRAFT_SYNC_DELAY_MS
 };
