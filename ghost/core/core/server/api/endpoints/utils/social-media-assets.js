@@ -118,6 +118,16 @@ const findAssetRowByStorageKey = async (knex, storageKey, columns = ['id']) => {
     return knex('social_media_assets').where({storage_key: normalizedKey}).first(...columns);
 };
 
+const findBroadcastSelectionForMedia = async (knex, mediaId) => {
+    const id = String(mediaId || '').trim();
+    if (!id) {
+        return null;
+    }
+    return knex('social_ai_avatar_broadcast_selections')
+        .where({media_id: id})
+        .first('post_id', 'revision');
+};
+
 const resolveStorageKey = (store, keyOrUrl) => {
     const normalized = String(keyOrUrl || '').trim();
     if (!normalized) {
@@ -304,6 +314,7 @@ const upsertAsset = async ({
 module.exports = {
     buildStorageKeyHash,
     findAssetRowByStorageKey,
+    findBroadcastSelectionForMedia,
     isMissingStorageKeyHashColumnError,
     resolveTag,
     upsertAsset

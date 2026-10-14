@@ -34,6 +34,7 @@ const messages = {
     assetIdRequired: '`id` is required.',
     assetRowNotFound: 'Gallery asset not found: {id}.',
     noAssetPermission: 'You are not allowed to delete this gallery asset.',
+    selectedBroadcastAsset: 'This gallery asset is selected for a virtual broadcast. Clear the broadcast selection before deleting it.',
     projectRequired: '`project_id` is required.',
     projectNotFound: 'Project not found: {projectId}.',
     noProjectPermission: 'You are not allowed to access this project gallery.',
@@ -2347,6 +2348,13 @@ const controller = {
             if (!owned) {
                 throw new errors.NoPermissionError({
                     message: tpl(messages.noAssetPermission)
+                });
+            }
+
+            const selectedBroadcast = await socialMediaAssets.findBroadcastSelectionForMedia(knex, id);
+            if (selectedBroadcast) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.selectedBroadcastAsset)
                 });
             }
 

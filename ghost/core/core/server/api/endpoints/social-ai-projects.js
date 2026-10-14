@@ -63,7 +63,8 @@ const messages = {
     groupNotFound: 'Group not found.',
     invalidProjectId: '`id` is required.',
     nameRequired: 'Project name is required.',
-    activeJobs: 'Cannot delete a project while it has queued or running jobs.'
+    activeJobs: 'Cannot delete a project while it has queued or running jobs.',
+    selectedBroadcastAssets: 'Cannot delete a project while one of its assets is selected for a virtual broadcast. Clear the broadcast selection first.'
 };
 
 // @ts-ignore
@@ -607,6 +608,14 @@ const controller = {
 
             try {
                 await knex.transaction(async (trx) => {
+                    const selectedBroadcast = await trx('social_ai_avatar_broadcast_selections as s')
+                        .join('social_media_assets as sma', 'sma.id', 's.media_id')
+                        .where('sma.project_id', row.id)
+                        .first('s.post_id');
+                    if (selectedBroadcast) {
+                        throw new errors.ValidationError({message: tpl(messages.selectedBroadcastAssets)});
+                    }
+
                     for (const family of JOB_FAMILIES) {
                         // M7: reject while any child job is queued/running —
                         // deleting an active project is irreversible and would

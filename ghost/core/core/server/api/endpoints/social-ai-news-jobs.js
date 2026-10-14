@@ -30,6 +30,7 @@ const messages = {
     userRequired: 'A user is required.',
     workerRequired: 'Worker integration is required.',
     activeJob: 'A queued or running news job cannot be deleted.',
+    selectedBroadcastAsset: 'A news job contains an asset selected for a virtual broadcast. Clear the broadcast selection before deleting the job.',
     // Same refusal, same spelling as chart (messages.invalidTransition). This is
     // NOT cosmetic: the worker's cancel guard matches the string VERBATIM —
     // tools/chart-worker/src/runner.js: `message.includes('job transition is not
@@ -879,6 +880,16 @@ const controller = {
                     if (stillRegistered) {
                         continue;
                     }
+                    const selectedBroadcast = await knex('social_ai_avatar_broadcast_selections as s')
+                        .join('social_media_assets as sma', 'sma.id', 's.media_id')
+                        .where({
+                            'sma.storage_key': key,
+                            'sma.owner_scope': OWNER_SCOPE
+                        })
+                        .first('s.post_id');
+                    if (selectedBroadcast) {
+                        throw new errors.ValidationError({message: 'A published broadcast asset cannot be replaced while it is selected for a virtual broadcast.'});
+                    }
                     await knex('social_media_assets')
                         .where({storage_key: key, owner_scope: OWNER_SCOPE})
                         .del();
@@ -948,6 +959,19 @@ const controller = {
             // A running job must not be deleted out from under its worker.
             if (['queued', 'running'].includes(row.status)) {
                 throw new errors.ValidationError({message: tpl(messages.activeJob)});
+            }
+
+            const selectedBroadcast = await knex('social_ai_avatar_broadcast_selections as s')
+                .join('social_media_assets as sma', 'sma.id', 's.media_id')
+                .where('sma.news_job_id', row.id)
+                .modify(query => {
+                    if (row.project_id) {
+                        query.where('sma.storage_key', 'like', `%/jobs/${row.id}/%`);
+                    }
+                })
+                .first('s.post_id');
+            if (selectedBroadcast) {
+                throw new errors.ValidationError({message: tpl(messages.selectedBroadcastAsset)});
             }
 
             // Best-effort S3 cleanup of this job's gallery work area
