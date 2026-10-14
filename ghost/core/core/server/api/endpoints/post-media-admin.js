@@ -1,7 +1,6 @@
 /* eslint-disable ghost/ghost-custom/max-api-complexity */
 const db = require('../../data/db');
 const allowedTypes = new Set(['image', 'video', 'audio']);
-const OWN_POSTS_ONLY_ROLES = new Set(['Author', 'Contributor']);
 
 /**
  * Staff read of post_media (the news desk "素材" tab).
@@ -15,20 +14,10 @@ const OWN_POSTS_ONLY_ROLES = new Set(['Author', 'Contributor']);
  * (public_post = false) are personal content and must never mix in here — they are
  * served by the group-scoped, membership-checked paths instead.
  *
- * Authors and Contributors only see media of posts they author.
- * Session/admin-key auth only.
+ * Every staff role sees the same set, matching the admin posts browse (which returns
+ * all newsroom posts to Authors and Contributors as well — the desk article list
+ * shows them). Session/admin-key auth only.
  */
-async function ownPostsOnlyUserId(frame) {
-    const userId = frame.options?.context?.user;
-    if (!userId) {
-        return null;
-    }
-    const roles = await db.knex('roles_users as ru').join('roles as r', 'r.id', 'ru.role_id').where('ru.user_id', userId).pluck('r.name');
-    if (roles.length && roles.every(name => OWN_POSTS_ONLY_ROLES.has(name))) {
-        return userId;
-    }
-    return null;
-}
 
 /** @type {import('@tryghost/api-framework').Controller} */
 module.exports = {
@@ -48,10 +37,6 @@ module.exports = {
             const base = db.knex('post_media as pm').join('posts as p', 'p.id', 'pm.post_id').where('p.type', 'post').where('p.public_post', true).whereIn('pm.media_type', types);
             if (postId) {
                 base.andWhere('pm.post_id', postId);
-            }
-            const ownUserId = await ownPostsOnlyUserId(frame);
-            if (ownUserId) {
-                base.whereIn('pm.post_id', db.knex('posts_authors').select('post_id').where('author_id', ownUserId));
             }
             if (keyword) {
                 base.andWhere(query => query.where('p.title', 'like', `%${keyword}%`).orWhere('pm.caption', 'like', `%${keyword}%`).orWhere('pm.alt', 'like', `%${keyword}%`));
