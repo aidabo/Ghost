@@ -193,6 +193,30 @@ describe('News broadcast selections', function () {
         await assert.rejects(endpoint.read.query({options: {id: '999999999999999999999999'}}), /not found/i);
     });
 
+    it('does not expose a non-video asset through the public broadcast lookup', async function () {
+        await database('social_media_assets').insert({
+            id: '111111111111111111111111',
+            asset_type: 'image',
+            owner_scope: 'news_jobs',
+            project_id: 'dddddddddddddddddddddddd',
+            news_job_id: 'bbbbbbbbbbbbbbbbbbbbbbbb',
+            storage_url: 'https://cdn.example/story-one.png',
+            storage_key: 'projects/p/images/story-one.png',
+            original_filename: 'story-one.png'
+        });
+        await database('social_ai_avatar_broadcast_selections').insert({
+            post_id: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+            media_id: '111111111111111111111111',
+            rendition: 'photo-slideshow-static',
+            revision: 1
+        });
+
+        const result = await endpoint.browse.query({
+            options: {post_ids: 'aaaaaaaaaaaaaaaaaaaaaaaa'}
+        });
+        assert.deepEqual(result.data, []);
+    });
+
     it('uses add permission for first adoption and edit permission for subsequent changes', async function () {
         permissionCalls.length = 0;
         await endpoint.select.permissions(endpointFrame({post_id: 'aaaaaaaaaaaaaaaaaaaaaaaa', expected_revision: 0}));

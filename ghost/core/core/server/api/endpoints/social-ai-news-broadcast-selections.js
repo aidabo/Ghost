@@ -84,7 +84,16 @@ const selectionQuery = (knex) => knex(`${TABLE} as s`)
 const publicSelectionQuery = (knex) => selectionQuery(knex)
     .join('posts as p', 'p.id', 's.post_id')
     .whereIn('p.status', ['published', 'sent'])
-    .andWhere('p.visibility', 'public');
+    .andWhere('p.visibility', 'public')
+    .andWhere(function () {
+        // A legacy-default tombstone intentionally has no media. An active
+        // selection must point to a playable video asset; otherwise a stale
+        // or corrupted generic selection must not become a reader-side video
+        // URL.
+        this.whereNull('s.media_id').orWhere(function () {
+            this.where('a.asset_type', 'video').whereNotNull('a.storage_url');
+        });
+    });
 
 const serializeSelection = row => ({
     post_id: row.post_id,
