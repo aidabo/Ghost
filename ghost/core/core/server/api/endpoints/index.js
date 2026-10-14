@@ -346,6 +346,12 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-projects'), localUtils);
     },
 
+    // Membership actions share Project authorization but need their own
+    // api-framework pipeline before being passed to the custom router.
+    get socialAiProjectMembers() {
+        return apiFramework.pipeline(require('./social-ai-projects').members, localUtils);
+    },
+
     get socialAiProjectLinks() {
         return apiFramework.pipeline(require('./social-ai-project-links'), localUtils);
     },

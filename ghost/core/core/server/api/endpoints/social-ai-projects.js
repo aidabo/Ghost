@@ -360,6 +360,7 @@ const assertProjectMemberWrite = async (frame, projectId) => {
 };
 
 const projectMembersController = {
+    docName: 'socialaiprojectmembers',
     browse: {
         options: ['id'],
         permissions: false,
