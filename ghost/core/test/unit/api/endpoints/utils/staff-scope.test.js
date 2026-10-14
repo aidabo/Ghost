@@ -26,6 +26,9 @@ const ROLES = {
     legacy: ['Admin'],
     se: ['Super Editor'],
     editor: ['Editor'],
+    'editor-b': ['Editor'],
+    author: ['Author'],
+    contrib: ['Contributor'],
     'se-admin': ['Super Editor', 'Administrator']
 };
 
@@ -267,6 +270,9 @@ describe('Super Editor scope on knex-backed listings', function () {
         await database.schema.createTable('social_ai_project_links', (table) => {
             ['id', 'project_id', 'link_type', 'link_id', 'link_title', 'link_url', 'created_at', 'created_by'].forEach(column => table.string(column));
             table.integer('sort_order');
+        });
+        await database.schema.createTable('social_ai_avatar_broadcast_selections', (table) => {
+            ['post_id', 'media_id'].forEach(column => table.string(column));
         });
         await database.schema.createTable('social_ai_chart_job_media', (table) => {
             ['chart_job_id', 'media_id'].forEach(column => table.string(column));
@@ -654,6 +660,31 @@ describe('Super Editor scope on knex-backed listings', function () {
             // n-family-project (no own group, but in a family project) stays out for Super Editor.
             assert.deepEqual(ids(await news.browse.query(userFrame('editor'))), ['n-family', 'n-family-project', 'n-open', 'n-pub']);
             assert.deepEqual(ids(await news.browse.query(userFrame('owner'))), ['n-family', 'n-family-project', 'n-open', 'n-own-family', 'n-pub']);
+        });
+
+        it('browse (newsroom read): Editor / Author / Contributor see newsroom jobs of other users, never family ones', async function () {
+            for (const user of ['editor-b', 'author', 'contrib']) {
+                assert.deepEqual(ids(await news.browse.query(userFrame(user))), ['n-open', 'n-pub'], user);
+            }
+            // Integration (worker / host) still lists everything.
+            const all = ids(await news.browse.query({options: {context: {integration: {id: 'i1'}}}, data: {}}));
+            assert.deepEqual(all, ['n-family', 'n-family-project', 'n-open', 'n-own-family', 'n-pub']);
+        });
+
+        it('read (newsroom read): Editor / Author read newsroom jobs of other users, not family / family-project ones', async function () {
+            for (const user of ['editor-b', 'author']) {
+                assert.equal((await news.read.query(userFrame(user, {id: 'n-open'}))).id, 'n-open');
+                assert.equal((await news.read.query(userFrame(user, {id: 'n-pub'}))).id, 'n-pub');
+                await assert.rejects(news.read.query(userFrame(user, {id: 'n-family'})), {errorType: 'NoPermissionError'});
+                await assert.rejects(news.read.query(userFrame(user, {id: 'n-family-project'})), {errorType: 'NoPermissionError'});
+            }
+        });
+
+        it('writes unchanged: Editor / Author still cannot cancel or destroy another user\'s newsroom job', async function () {
+            for (const user of ['editor-b', 'author']) {
+                await assert.rejects(news.cancel.query(userFrame(user, {id: 'n-open'})), {errorType: 'NoPermissionError'});
+                await assert.rejects(news.destroy.query(userFrame(user, {id: 'n-open'})), {errorType: 'NoPermissionError'});
+            }
         });
 
         it('read: Super Editor reads a no-group job, not a family one', async function () {

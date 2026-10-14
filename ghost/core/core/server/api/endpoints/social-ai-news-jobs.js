@@ -251,10 +251,20 @@ const assertAccess = async (frame, row, write = false) => {
     if (integration(frame) || scope.isSystemAdmin) {
         return;
     }
-    // Super Editor reads and manages (cancel / destroy) jobs of newsroom
-    // projects, or project-less newsroom jobs.
-    if (await staffScope.canManageJobAsNewsroomEditor(scope, row)) {
-        return;
+    if (write) {
+        // Super Editor manages (cancel / destroy) jobs of newsroom projects, or
+        // project-less newsroom jobs. Other roles write their own jobs only.
+        if (await staffScope.canManageJobAsNewsroomEditor(scope, row)) {
+            return;
+        }
+    } else if (actor) {
+        // Every staff role reads newsroom jobs (own group newsroom, project
+        // newsroom), like posts and post media; the desk shows their audio /
+        // broadcast artifacts.
+        const readScope = await staffScope.getNewsroomReadScope(actor);
+        if (readScope && await staffScope.isNewsroomJob(row, readScope.publicGroupIds)) {
+            return;
+        }
     }
     if (!actor || row.user_id !== actor) {
         throw new errors.NoPermissionError({message: 'You are not allowed to access this news job.'});
@@ -344,9 +354,9 @@ const controller = {
             const options = frame.options || {};
             const limit = Math.min(200, Math.max(1, Number(options.limit || 50) || 50));
             const query = models.Base.knex(TABLE).select('*').orderBy('updated_at', 'desc');
-            const scope = await staffScope.getStaffScope(actor);
-            if (scope.isNoGroupReader && !integration(frame)) {
-                // Super Editor: every newsroom job outside non-newsroom
+            const scope = await staffScope.getNewsroomReadScope(actor);
+            if (scope && !integration(frame) && !scope.isSystemAdmin) {
+                // Every staff role: every newsroom job outside non-newsroom
                 // projects + its own.
                 query.where((qb) => {
                     qb.where((newsroom) => {
@@ -354,7 +364,7 @@ const controller = {
                         staffScope.whereNewsroomProject(newsroom, `${TABLE}.project_id`, scope);
                     }).orWhere('user_id', actor);
                 });
-            } else if (!integration(frame) && !scope.isSystemAdmin) {
+            } else if (!integration(frame) && !scope?.isSystemAdmin) {
                 query.where('user_id', actor);
             }
             if (options.project_id) {
