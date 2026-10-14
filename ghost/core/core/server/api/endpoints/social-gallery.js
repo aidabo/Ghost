@@ -1779,7 +1779,7 @@ const controller = {
             const knex = models.Base.knex;
             const project = await knex('social_ai_projects')
                 .where({id: projectId})
-                .first('id', 'user_id', 'group_id');
+                .first('id', 'user_id', 'group_id', 'status');
             if (!project) {
                 throw new errors.NotFoundError({
                     message: tpl(messages.projectNotFound, {projectId})
@@ -1790,7 +1790,9 @@ const controller = {
             // projects too). assertCanReadRow itself also gates project uploads,
             // so the Super Editor widening stays here, on the read.
             const scope = await staffScope.getStaffScope(userId);
-            if (!staffScope.canReadRowAsNoGroupReader(scope, project)) {
+            const newsroomReadScope = await staffScope.getNewsroomReadScope(userId);
+            const sharedPublishedProject = staffScope.canReadPublishedProject(newsroomReadScope, project);
+            if (!sharedPublishedProject && !staffScope.canReadRowAsNoGroupReader(scope, project)) {
                 await assertCanReadRow({frame, row: project});
             }
             const scopedUserId = userId || null;
@@ -1811,7 +1813,7 @@ const controller = {
                 nextCursor,
                 type,
                 orderBy,
-                newsroomScope: scope.isNoGroupReader ? scope : null
+                newsroomScope: sharedPublishedProject ? newsroomReadScope : (scope.isNoGroupReader ? scope : null)
             });
             listed.meta.scope = 'project';
             listed.meta.project_id = projectId;

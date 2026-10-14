@@ -185,7 +185,8 @@ const assertRowAccess = async ({ frame, row, permission = 'read' }) => {
     if (integrationId || scope.isSystemAdmin) {
         return;
     }
-    if (permission === 'read' && staffScope.canReadRowAsNoGroupReader(scope, row)) {
+    const newsroomReadScope = permission === 'read' ? await staffScope.getNewsroomReadScope(currentUserId) : null;
+    if (permission === 'read' && (staffScope.canReadRowAsNoGroupReader(scope, row) || staffScope.canReadPublishedProject(newsroomReadScope, row))) {
         return;
     }
 
@@ -505,12 +506,12 @@ const controller = {
             // Scope clauses are AND-ed through staffScope.andFilter, so the
             // caller filter can never escape them.
             if (!integrationId && !isAdmin && !groupId && targetUserId) {
-                // Super Editor also sees every newsroom (no-group / public-group) project.
+                // Published no-group/public-group Projects are shared staff
+                // containers. The owner remains visible for draft/private rows.
+                const readScope = await staffScope.getNewsroomReadScope(targetUserId);
                 options = {
                     ...options,
-                    filter: staffScope.andFilter(frame.options?.filter, scope.isNoGroupReader
-                        ? staffScope.newsroomOrOwnFilter(scope, targetUserId, 'user_id')
-                        : `user_id:${targetUserId}`)
+                    filter: staffScope.andFilter(frame.options?.filter, staffScope.publishedProjectOrOwnFilter(readScope, targetUserId, 'user_id'))
                 };
             } else if (!integrationId && !isAdmin && groupId) {
                 // The checked group must reach the query: the bare group_id

@@ -139,6 +139,15 @@ describe('staff-scope', function () {
         assert.equal(staffScope.isNewsroomGroup(editor, PUB), false);
     });
 
+    it('allows every staff scope to read published newsroom Projects, but not drafts or private groups', function () {
+        const editorRead = {isSystemAdmin: false, isNoGroupReader: false, publicGroupIds: [PUB]};
+        assert.equal(staffScope.canReadPublishedProject(editorRead, {status: 'published', group_id: null}), true);
+        assert.equal(staffScope.canReadPublishedProject(editorRead, {status: 'published', group_id: PUB}), true);
+        assert.equal(staffScope.canReadPublishedProject(editorRead, {status: 'draft', group_id: null}), false);
+        assert.equal(staffScope.canReadPublishedProject(editorRead, {status: 'published', group_id: FAM}), false);
+        assert.equal(staffScope.publishedProjectOrOwnFilter(editorRead, 'u1'), '(user_id:u1,(status:published+(group_id:null,group_id:[0000000000000000000000a1])))');
+    });
+
     it('builds an NQL scope a caller filter cannot widen', function () {
         const db = knex({client: 'mysql2'});
         const sql = filter => nql(filter).querySQL(db('t')).toString();

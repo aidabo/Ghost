@@ -75,6 +75,17 @@ const isNewsroomGroup = (scope, groupId) => Boolean(scope?.isNoGroupReader) && (
 
 const canReadRowAsNoGroupReader = (scope, row) => Boolean(scope?.isNoGroupReader) && isNewsroomRow(row, scope.publicGroupIds);
 
+// Published no-group/public-group Projects are collaborative staff containers.
+// This is intentionally separate from project_purposes and from the member-facing
+// Public API: purposes are discovery hints, while status/group define visibility.
+const canReadPublishedProject = (scope, row) => Boolean(scope && String(getField(row, 'status') || '').toLowerCase() === 'published' && isNewsroomRow(row, scope.publicGroupIds));
+
+const publishedProjectOrOwnFilter = (scope, userId, ownerField = 'user_id') => {
+    const ids = scope?.publicGroupIds || [];
+    const publicGroups = ids.length ? `,group_id:[${ids.join(',')}]` : '';
+    return `(${ownerField}:${userId},(status:published+(group_id:null${publicGroups})))`;
+};
+
 // Row-level bypass of the ownership / membership check: system admin always,
 // no-group reader only on newsroom rows.
 const bypassesRowCheck = (scope, row) => Boolean(scope?.isSystemAdmin) || canReadRowAsNoGroupReader(scope, row);
@@ -323,6 +334,8 @@ module.exports = {
     isNewsroomRow,
     isNewsroomGroup,
     canReadRowAsNoGroupReader,
+    canReadPublishedProject,
+    publishedProjectOrOwnFilter,
     bypassesRowCheck,
     canManageAsNewsroomEditor,
     canManageJobAsNewsroomEditor,
