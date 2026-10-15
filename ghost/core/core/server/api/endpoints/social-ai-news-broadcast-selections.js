@@ -1,6 +1,7 @@
 const errors = require('@tryghost/errors');
 const models = require('../../models');
 const permissionsService = require('../../services/permissions');
+const staffScope = require('./utils/staff-scope');
 
 const TABLE = 'social_ai_avatar_broadcast_selections';
 const JOBS = 'social_ai_news_jobs';
@@ -79,21 +80,90 @@ const selectionQuery = (knex) => knex(`${TABLE} as s`)
         's.updated_by', 'jm.item_key', 'jm.news_job_id', 'a.id as media_id', 'a.storage_url', 'a.storage_key', 'a.original_filename'
     );
 
-// Unauthenticated broadcast lookups must reveal only renditions attached to
-// posts that the public Content API would expose.
-const publicSelectionQuery = (knex) => selectionQuery(knex)
+// The job that produced the selected media, checked live at read time: a
+// selection validated when it was made must stop being served once its job or
+// project moves to a private group.
+const joinMediaJob = query => query
+    .leftJoin(`${JOBS} as mj`, 'mj.id', 'a.news_job_id');
+
+// SQL mirror of staffScope.isNewsroomJob for the media's job: its own group is
+// none or an active public group, and its project (if it still exists) too.
+const whereMediaJobIsNewsroom = (qb, scope) => {
+    qb.whereNotNull('mj.id')
+        .where(group => staffScope.whereNewsroomGroup(group, 'mj.group_id', scope));
+    staffScope.whereNewsroomProject(qb, 'mj.project_id', scope);
+};
+
+// Unauthenticated broadcast lookups (the public reader) reveal only active
+// renditions on newsroom posts that the public Content API would expose, made
+// by a job that is still newsroom. Browse and `/:id` share this query.
+const publicSelectionQuery = (knex, scope) => joinMediaJob(selectionQuery(knex))
     .join('posts as p', 'p.id', 's.post_id')
+    .where('p.type', 'post')
+    .andWhere('p.public_post', true)
     .whereIn('p.status', ['published', 'sent'])
     .andWhere('p.visibility', 'public')
-    .andWhere(function () {
-        // A legacy-default tombstone intentionally has no media. An active
-        // selection must point to a playable video asset; otherwise a stale
-        // or corrupted generic selection must not become a reader-side video
-        // URL.
-        this.whereNull('s.media_id').orWhere(function () {
-            this.where('a.asset_type', 'video').whereNotNull('a.storage_url');
-        });
-    });
+    // Active selections only: a legacy-default tombstone tells the reader
+    // nothing it would not do anyway (fall back to the legacy avatar).
+    .whereNotNull('s.media_id')
+    .whereNot('s.rendition', 'legacy-default')
+    // An active selection must point to a playable video asset; a stale or
+    // corrupted generic selection must not become a reader-side video URL.
+    .where('a.asset_type', 'video')
+    .whereNotNull('a.storage_url')
+    .where(qb => whereMediaJobIsNewsroom(qb, scope));
+
+const publicScope = async () => ({publicGroupIds: await staffScope.loadPublicGroupIds()});
+
+// Staff lookups (NewsAgent / desk, session only): any status, tombstones
+// included (NewsAgent needs their revision). Posts: newsroom posts, every Post
+// for a system admin.
+const staffSelectionQuery = (knex, scope) => {
+    const query = joinMediaJob(selectionQuery(knex))
+        .join('posts as p', 'p.id', 's.post_id')
+        .where('p.type', 'post');
+    return scope.isSystemAdmin ? query : query.andWhere('p.public_post', true);
+};
+
+// Media a non-admin may see on a selection: its job is newsroom or their own
+// (the staff job read, social-ai-news-jobs). A system admin sees all.
+const whereStaffMayReadMedia = (qb, scope, actor) => {
+    qb.where(newsroom => whereMediaJobIsNewsroom(newsroom, scope))
+        .orWhere('mj.user_id', actor);
+};
+
+// A selection whose media the viewer may not see keeps its row — post,
+// rendition and revision — so the viewer's next write carries the right
+// expected_revision instead of 0 (a permanent 409). Only the media is withheld.
+const withoutMedia = row => ({
+    ...serializeSelection(row),
+    project_id: null,
+    news_job_id: null,
+    item_key: null,
+    media_id: null,
+    name: null,
+    storage_url: null
+});
+
+const postIdsOf = (frame) => {
+    const raw = String(frame.options?.post_ids || '').trim();
+    const postIds = [...new Set(raw.split(',').map(value => value.trim()).filter(Boolean))];
+    if (postIds.length > 200 || postIds.some(id => !/^[a-f0-9]{24}$/i.test(id))) {
+        throw new errors.ValidationError({message: 'post_ids must contain up to 200 valid post IDs.'});
+    }
+    return postIds;
+};
+
+const emptyPage = () => ({data: [], meta: {pagination: {page: 1, limit: 0, pages: 0, total: 0, next: null, prev: null}}});
+
+// What anyone may see: which Post, which rendition, and the file. Internal ids
+// (project / job / media), item key and revision stay on the staff read.
+const serializePublicSelection = row => ({
+    post_id: row.post_id,
+    rendition: row.rendition,
+    name: row.original_filename || String(row.storage_key || '').split('/').pop() || null,
+    storage_url: row.storage_url || null
+});
 
 const serializeSelection = row => ({
     post_id: row.post_id,
@@ -115,17 +185,13 @@ const controller = {
         options: ['post_ids'],
         permissions: false,
         async query(frame) {
-            const raw = String(frame.options?.post_ids || '').trim();
-            const postIds = [...new Set(raw.split(',').map(value => value.trim()).filter(Boolean))];
-            if (postIds.length > 200 || postIds.some(id => !/^[a-f0-9]{24}$/i.test(id))) {
-                throw new errors.ValidationError({message: 'post_ids must contain up to 200 valid post IDs.'});
-            }
+            const postIds = postIdsOf(frame);
             if (!postIds.length) {
-                return {data: [], meta: {pagination: {page: 1, limit: 0, pages: 0, total: 0, next: null, prev: null}}};
+                return emptyPage();
             }
-            const rows = await publicSelectionQuery(models.Base.knex).whereIn('s.post_id', postIds);
+            const rows = await publicSelectionQuery(models.Base.knex, await publicScope()).whereIn('s.post_id', postIds);
             return {
-                data: rows.map(serializeSelection),
+                data: rows.map(serializePublicSelection),
                 meta: {pagination: {page: 1, limit: postIds.length, pages: 1, total: rows.length, next: null, prev: null}}
             };
         }
@@ -139,11 +205,47 @@ const controller = {
             if (!/^[a-f0-9]{24}$/i.test(postId)) {
                 throw new errors.ValidationError({message: 'A valid post id is required.'});
             }
-            const row = await publicSelectionQuery(models.Base.knex).where('s.post_id', postId).first();
+            const row = await publicSelectionQuery(models.Base.knex, await publicScope()).where('s.post_id', postId).first();
             if (!row) {
                 throw new errors.NotFoundError({message: 'Broadcast selection not found.'});
             }
-            return {data: [serializeSelection(row)], meta: {}};
+            return {data: [serializePublicSelection(row)], meta: {}};
+        }
+    },
+
+    staffBrowse: {
+        options: ['post_ids'],
+        // Every staff role browses posts; the selection permission would leave
+        // out roles that read the desk today.
+        permissions: {docName: 'post', method: 'browse'},
+        async query(frame) {
+            const actor = currentUser(frame);
+            if (!actor || integration(frame)) {
+                throw new errors.NoPermissionError({message: 'A user session is required to read broadcast selections.'});
+            }
+            const postIds = postIdsOf(frame);
+            if (!postIds.length) {
+                return emptyPage();
+            }
+            const scope = await staffScope.getNewsroomReadScope(actor);
+            if (!scope) {
+                throw new errors.NoPermissionError({message: 'A staff user is required to read broadcast selections.'});
+            }
+            const knex = models.Base.knex;
+            const rows = await staffSelectionQuery(knex, scope).whereIn('s.post_id', postIds);
+            const mediaVisible = scope.isSystemAdmin
+                ? null
+                : new Set(await staffSelectionQuery(knex, scope)
+                    .whereIn('s.post_id', postIds)
+                    .whereNotNull('s.media_id')
+                    .where(qb => whereStaffMayReadMedia(qb, scope, actor))
+                    .pluck('s.post_id'));
+            return {
+                data: rows.map(row => (!mediaVisible || !row.media_id || mediaVisible.has(row.post_id)
+                    ? serializeSelection(row)
+                    : withoutMedia(row))),
+                meta: {pagination: {page: 1, limit: postIds.length, pages: 1, total: rows.length, next: null, prev: null}}
+            };
         }
     },
 

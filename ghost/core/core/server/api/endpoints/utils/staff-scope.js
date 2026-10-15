@@ -331,6 +331,7 @@ const nqlToken = (value, name = 'value') => {
 
 module.exports = {
     getStaffScope,
+    loadPublicGroupIds,
     isNewsroomRow,
     isNewsroomGroup,
     canReadRowAsNoGroupReader,
