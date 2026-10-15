@@ -312,11 +312,38 @@ describe('News broadcast selections', function () {
             await database('social_ai_news_jobs').where({id: JOB}).update({user_id: 'author'});
             await database('social_ai_projects').where({id: PROJECT}).update({group_id: FAMILY_GROUP});
             await selectOn(POST);
-            const seen = async user => (await endpoint.staffBrowse.query(staffFrame([POST], user))).data.length;
-            assert.equal(await seen('author'), 1);
-            assert.equal(await seen('admin-user'), 1);
-            assert.equal(await seen('editor'), 0);
-            assert.equal(await seen('super-editor'), 0);
+            const urlSeen = async user => (await endpoint.staffBrowse.query(staffFrame([POST], user))).data[0].storage_url;
+            assert.equal(await urlSeen('author'), 'https://cdn.example/story-one-avatar.mp4');
+            assert.equal(await urlSeen('admin-user'), 'https://cdn.example/story-one-avatar.mp4');
+            assert.equal(await urlSeen('editor'), null);
+            assert.equal(await urlSeen('super-editor'), null);
+        });
+
+        it('keeps the revision but withholds the media when the viewer may not see it', async function () {
+            await database('social_ai_projects').where({id: PROJECT}).update({group_id: FAMILY_GROUP});
+            await selectOn(POST);
+            const {data} = await endpoint.staffBrowse.query(staffFrame([POST], 'editor'));
+            assert.deepEqual(data.map(row => [row.post_id, row.rendition, row.revision]), [[POST, 'news-panel-static', 1]]);
+            for (const field of ['project_id', 'news_job_id', 'item_key', 'media_id', 'name', 'storage_url']) {
+                assert.equal(data[0][field], null, field);
+            }
+        });
+
+        it('keeps the row of a selection whose media or job was deleted', async function () {
+            await selectOn(POST);
+            await database('social_ai_news_jobs').where({id: JOB}).del();
+            let {data} = await endpoint.staffBrowse.query(staffFrame([POST], 'editor'));
+            assert.deepEqual(data.map(row => [row.revision, row.storage_url]), [[1, null]]);
+            await database('social_media_assets').where({id: MEDIA}).del();
+            ({data} = await endpoint.staffBrowse.query(staffFrame([POST], 'editor')));
+            assert.deepEqual(data.map(row => [row.revision, row.storage_url]), [[1, null]]);
+        });
+
+        it('shows an Editor their own private-group job selection', async function () {
+            await database('social_ai_news_jobs').where({id: JOB}).update({user_id: 'editor', group_id: FAMILY_GROUP});
+            await selectOn(POST);
+            const {data} = await endpoint.staffBrowse.query(staffFrame([POST], 'editor'));
+            assert.equal(data[0].storage_url, 'https://cdn.example/story-one-avatar.mp4');
         });
 
         it('shows group posts (public_post = false) to system admins only', async function () {

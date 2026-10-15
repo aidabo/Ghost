@@ -117,23 +117,33 @@ const publicScope = async () => ({publicGroupIds: await staffScope.loadPublicGro
 
 // Staff lookups (NewsAgent / desk, session only): any status, tombstones
 // included (NewsAgent needs their revision). Posts: newsroom posts, every Post
-// for a system admin. Media: a system admin sees all; other staff see media
-// whose job is newsroom or their own (the staff job read, social-ai-news-jobs).
-const staffSelectionQuery = (knex, scope, actor) => {
+// for a system admin.
+const staffSelectionQuery = (knex, scope) => {
     const query = joinMediaJob(selectionQuery(knex))
         .join('posts as p', 'p.id', 's.post_id')
         .where('p.type', 'post');
-    if (scope.isSystemAdmin) {
-        return query;
-    }
-    return query
-        .andWhere('p.public_post', true)
-        .andWhere(function () {
-            this.whereNull('s.media_id')
-                .orWhere(qb => whereMediaJobIsNewsroom(qb, scope))
-                .orWhere('mj.user_id', actor);
-        });
+    return scope.isSystemAdmin ? query : query.andWhere('p.public_post', true);
 };
+
+// Media a non-admin may see on a selection: its job is newsroom or their own
+// (the staff job read, social-ai-news-jobs). A system admin sees all.
+const whereStaffMayReadMedia = (qb, scope, actor) => {
+    qb.where(newsroom => whereMediaJobIsNewsroom(newsroom, scope))
+        .orWhere('mj.user_id', actor);
+};
+
+// A selection whose media the viewer may not see keeps its row — post,
+// rendition and revision — so the viewer's next write carries the right
+// expected_revision instead of 0 (a permanent 409). Only the media is withheld.
+const withoutMedia = row => ({
+    ...serializeSelection(row),
+    project_id: null,
+    news_job_id: null,
+    item_key: null,
+    media_id: null,
+    name: null,
+    storage_url: null
+});
 
 const postIdsOf = (frame) => {
     const raw = String(frame.options?.post_ids || '').trim();
@@ -221,9 +231,19 @@ const controller = {
             if (!scope) {
                 throw new errors.NoPermissionError({message: 'A staff user is required to read broadcast selections.'});
             }
-            const rows = await staffSelectionQuery(models.Base.knex, scope, actor).whereIn('s.post_id', postIds);
+            const knex = models.Base.knex;
+            const rows = await staffSelectionQuery(knex, scope).whereIn('s.post_id', postIds);
+            const mediaVisible = scope.isSystemAdmin
+                ? null
+                : new Set(await staffSelectionQuery(knex, scope)
+                    .whereIn('s.post_id', postIds)
+                    .whereNotNull('s.media_id')
+                    .where(qb => whereStaffMayReadMedia(qb, scope, actor))
+                    .pluck('s.post_id'));
             return {
-                data: rows.map(serializeSelection),
+                data: rows.map(row => (!mediaVisible || !row.media_id || mediaVisible.has(row.post_id)
+                    ? serializeSelection(row)
+                    : withoutMedia(row))),
                 meta: {pagination: {page: 1, limit: postIds.length, pages: 1, total: rows.length, next: null, prev: null}}
             };
         }
