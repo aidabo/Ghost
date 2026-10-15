@@ -5,11 +5,25 @@ const knexFactory = require('knex');
 const fixtures = require('../../../../core/server/data/schema/fixtures/fixtures.json');
 
 const endpointPath = require.resolve('../../../../core/server/api/endpoints/social-ai-news-broadcast-selections');
+const staffScopePath = require.resolve('../../../../core/server/api/endpoints/utils/staff-scope');
 const permissionCalls = [];
 const endpointFrame = (data, user = 'admin-user') => ({
     data: {socialainewsbroadcastselections: [data]},
     options: {context: {user}}
 });
+// Role per user id; a user missing here does not exist.
+const roles = {};
+const staffFrame = (postIds, user, extra = {}) => ({options: {post_ids: postIds.join(','), context: {user, ...extra}}});
+
+const POST = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+const DRAFT = '888888888888888888888888';
+const GROUP_POST = '777777777777777777777777';
+const JOB = 'bbbbbbbbbbbbbbbbbbbbbbbb';
+const PROJECT = 'dddddddddddddddddddddddd';
+const MEDIA = 'eeeeeeeeeeeeeeeeeeeeeeee';
+const PUBLIC_GROUP = '1a1a1a1a1a1a1a1a1a1a1a1a';
+const FAMILY_GROUP = '2b2b2b2b2b2b2b2b2b2b2b2b';
+const ARCHIVED_PUBLIC_GROUP = '3c3c3c3c3c3c3c3c3c3c3c3c';
 
 describe('News broadcast selections', function () {
     let database;
@@ -21,10 +35,20 @@ describe('News broadcast selections', function () {
         await database.schema.createTable('users', table => table.string('id').primary());
         await database.schema.createTable('posts', (table) => {
             table.string('id').primary();
+            table.string('type');
+            table.boolean('public_post');
             table.string('status');
             table.string('visibility');
         });
-        await database.schema.createTable('social_ai_projects', table => table.string('id').primary());
+        await database.schema.createTable('social_groups', (table) => {
+            table.string('id').primary();
+            table.string('type');
+            table.string('status');
+        });
+        await database.schema.createTable('social_ai_projects', (table) => {
+            table.string('id').primary();
+            table.string('group_id');
+        });
         await database.schema.createTable('social_ai_news_jobs', (table) => {
             table.string('id').primary();
             table.string('type');
@@ -66,11 +90,17 @@ describe('News broadcast selections', function () {
 
         models = {
             Base: {knex: database},
-            User: {findOne: async () => ({related: () => ({models: [{get: () => 'Admin'}]})})}
+            User: {findOne: async ({id}) => {
+                const role = id === 'admin-user' ? 'Admin' : roles[id];
+                return role ? {related: () => ({models: [{get: () => role}]})} : null;
+            }}
         };
         const originalLoad = Module._load;
         const dependencyStub = sinon.stub(Module, '_load').callsFake(function (request, parent, isMain) {
             if (parent && parent.filename === endpointPath && request === '../../models') {
+                return models;
+            }
+            if (parent && parent.filename === staffScopePath && request === '../../../models') {
                 return models;
             }
             if (parent && parent.filename === endpointPath && request === '../../services/permissions') {
@@ -91,22 +121,31 @@ describe('News broadcast selections', function () {
         });
         try {
             delete require.cache[endpointPath];
+            delete require.cache[staffScopePath];
             endpoint = require(endpointPath);
         } finally {
             dependencyStub.restore();
             delete require.cache[endpointPath];
+            delete require.cache[staffScopePath];
         }
     });
 
     beforeEach(async function () {
-        for (const table of ['social_ai_avatar_broadcast_selections', 'social_ai_news_job_media', 'social_media_assets', 'social_ai_news_jobs', 'posts']) {
+        for (const table of ['social_ai_avatar_broadcast_selections', 'social_ai_news_job_media', 'social_media_assets', 'social_ai_news_jobs', 'social_ai_projects', 'social_groups', 'posts']) {
             await database(table).del();
         }
         await database('posts').insert([
-            {id: 'aaaaaaaaaaaaaaaaaaaaaaaa', status: 'published', visibility: 'public'},
-            {id: '999999999999999999999999', status: 'published', visibility: 'members'},
-            {id: '888888888888888888888888', status: 'draft', visibility: 'public'}
+            {id: 'aaaaaaaaaaaaaaaaaaaaaaaa', type: 'post', public_post: true, status: 'published', visibility: 'public'},
+            {id: '999999999999999999999999', type: 'post', public_post: true, status: 'published', visibility: 'members'},
+            {id: '888888888888888888888888', type: 'post', public_post: true, status: 'draft', visibility: 'public'},
+            {id: GROUP_POST, type: 'post', public_post: false, status: 'published', visibility: 'public'}
         ]);
+        await database('social_groups').insert([
+            {id: PUBLIC_GROUP, type: 'public', status: 'active'},
+            {id: FAMILY_GROUP, type: 'family', status: 'active'},
+            {id: ARCHIVED_PUBLIC_GROUP, type: 'public', status: 'archived'}
+        ]);
+        await database('social_ai_projects').insert({id: PROJECT, group_id: null});
         await database('social_ai_news_jobs').insert({
             id: 'bbbbbbbbbbbbbbbbbbbbbbbb', type: 'news-read', status: 'completed',
             project_id: 'dddddddddddddddddddddddd', user_id: 'admin-user',
@@ -171,6 +210,128 @@ describe('News broadcast selections', function () {
         });
         assert.equal(result.data.length, 1);
         assert.equal(result.data[0].storage_url, 'https://cdn.example/story-one-avatar.mp4');
+    });
+
+    // Selection (made by an admin) on `postId` of the story-one avatar of JOB, written directly.
+    const selectOn = async (postId, mediaId = MEDIA) => {
+        if (postId !== POST) {
+            await database('social_ai_news_job_media').insert({
+                id: `${postId.slice(0, 12)}000000000000`, news_job_id: JOB, media_id: mediaId, role: 'output', item_key: 'story-one', post_id: postId
+            });
+        }
+        await database('social_ai_avatar_broadcast_selections').insert({
+            post_id: postId, project_id: PROJECT, media_id: mediaId, rendition: 'news-panel-static', revision: 1, updated_by: 'admin-user'
+        });
+    };
+    const publicIds = async postIds => (await endpoint.browse.query({options: {post_ids: postIds.join(',')}})).data.map(row => row.post_id);
+
+    describe('public browse / read scope', function () {
+        it('returns only post_id, rendition, name and storage_url', async function () {
+            await selectOn(POST);
+            const browse = await endpoint.browse.query({options: {post_ids: POST}});
+            const read = await endpoint.read.query({options: {id: POST}});
+            const expected = [{post_id: POST, rendition: 'news-panel-static', name: 'story-one-avatar.mp4', storage_url: 'https://cdn.example/story-one-avatar.mp4'}];
+            assert.deepEqual(browse.data, expected);
+            assert.deepEqual(read.data, expected);
+        });
+
+        it('does not return a legacy-default tombstone', async function () {
+            await database('social_ai_avatar_broadcast_selections').insert({post_id: POST, media_id: null, rendition: 'legacy-default', revision: 2});
+            assert.deepEqual(await publicIds([POST]), []);
+            await assert.rejects(endpoint.read.query({options: {id: POST}}), /not found/i);
+        });
+
+        it('leaves out group posts (public_post = false) and non-post types', async function () {
+            await selectOn(GROUP_POST);
+            assert.deepEqual(await publicIds([GROUP_POST]), []);
+            await database('social_ai_avatar_broadcast_selections').del();
+            await database('posts').where({id: POST}).update({type: 'page'});
+            await selectOn(POST);
+            assert.deepEqual(await publicIds([POST]), []);
+        });
+
+        for (const [label, change] of [
+            ['the job project moved to a family group', () => database('social_ai_projects').where({id: PROJECT}).update({group_id: FAMILY_GROUP})],
+            ['the job project moved to an archived public group', () => database('social_ai_projects').where({id: PROJECT}).update({group_id: ARCHIVED_PUBLIC_GROUP})],
+            ['the job itself moved to a family group', () => database('social_ai_news_jobs').where({id: JOB}).update({group_id: FAMILY_GROUP})],
+            ['the media lost its job', () => database('social_media_assets').where({id: MEDIA}).update({news_job_id: null})]
+        ]) {
+            it(`stops serving a selection once ${label}`, async function () {
+                await selectOn(POST);
+                assert.deepEqual(await publicIds([POST]), [POST]);
+                await change();
+                assert.deepEqual(await publicIds([POST]), []);
+                await assert.rejects(endpoint.read.query({options: {id: POST}}), /not found/i);
+            });
+        }
+
+        it('keeps serving a job in an active public group, or whose project is gone', async function () {
+            await selectOn(POST);
+            await database('social_ai_news_jobs').where({id: JOB}).update({group_id: PUBLIC_GROUP});
+            await database('social_ai_projects').where({id: PROJECT}).update({group_id: PUBLIC_GROUP});
+            assert.deepEqual(await publicIds([POST]), [POST]);
+            await database('social_ai_projects').where({id: PROJECT}).del();
+            assert.deepEqual(await publicIds([POST]), [POST]);
+        });
+    });
+
+    describe('staff browse', function () {
+        beforeEach(function () {
+            Object.assign(roles, {editor: 'Editor', author: 'Author', contributor: 'Contributor', 'super-editor': 'Super Editor'});
+        });
+
+        it('gates on post browse and rejects integrations and missing users', async function () {
+            assert.deepEqual(endpoint.staffBrowse.permissions, {docName: 'post', method: 'browse'});
+            await selectOn(POST);
+            await assert.rejects(endpoint.staffBrowse.query(staffFrame([POST], null)), /session is required/);
+            await assert.rejects(endpoint.staffBrowse.query(staffFrame([POST], null, {integration: {id: 'i'}})), /session is required/);
+            await assert.rejects(endpoint.staffBrowse.query(staffFrame([POST], 'editor', {integration: {id: 'i'}})), /session is required/);
+            await assert.rejects(endpoint.staffBrowse.query(staffFrame([POST], 'ghost-user')), /staff user is required/);
+        });
+
+        it('returns draft selections with the full row to every staff role', async function () {
+            await selectOn(DRAFT);
+            for (const user of ['admin-user', 'super-editor', 'editor', 'author', 'contributor']) {
+                const {data} = await endpoint.staffBrowse.query(staffFrame([DRAFT], user));
+                assert.equal(data.length, 1, user);
+                assert.equal(data[0].revision, 1);
+                assert.equal(data[0].news_job_id, JOB);
+                assert.equal(data[0].item_key, 'story-one');
+            }
+        });
+
+        it('returns tombstones so NewsAgent keeps their revision', async function () {
+            await database('social_ai_avatar_broadcast_selections').insert({post_id: POST, media_id: null, rendition: 'legacy-default', revision: 4});
+            const {data} = await endpoint.staffBrowse.query(staffFrame([POST], 'editor'));
+            assert.equal(data.length, 1);
+            assert.equal(data[0].rendition, 'legacy-default');
+            assert.equal(data[0].revision, 4);
+        });
+
+        it('shows a private-project job selection to its owner and to system admins only', async function () {
+            await database('social_ai_news_jobs').where({id: JOB}).update({user_id: 'author'});
+            await database('social_ai_projects').where({id: PROJECT}).update({group_id: FAMILY_GROUP});
+            await selectOn(POST);
+            const seen = async user => (await endpoint.staffBrowse.query(staffFrame([POST], user))).data.length;
+            assert.equal(await seen('author'), 1);
+            assert.equal(await seen('admin-user'), 1);
+            assert.equal(await seen('editor'), 0);
+            assert.equal(await seen('super-editor'), 0);
+        });
+
+        it('shows group posts (public_post = false) to system admins only', async function () {
+            await selectOn(GROUP_POST);
+            const seen = async user => (await endpoint.staffBrowse.query(staffFrame([GROUP_POST], user))).data.length;
+            assert.equal(await seen('admin-user'), 1);
+            for (const user of ['super-editor', 'editor', 'author', 'contributor']) {
+                assert.equal(await seen(user), 0, user);
+            }
+        });
+
+        it('validates post ids like the public browse', async function () {
+            await assert.rejects(endpoint.staffBrowse.query(staffFrame(['not-an-id'], 'editor')), /valid post IDs/);
+            assert.deepEqual((await endpoint.staffBrowse.query(staffFrame([], 'editor'))).data, []);
+        });
     });
 
     it('allows anonymous browse/read only for published public posts', async function () {
