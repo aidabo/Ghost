@@ -130,6 +130,8 @@ describe('Migrations', function () {
             permissions.should.havePermission('Edit tags', ['Administrator', 'Editor', 'Admin Integration', 'Super Editor']);
             permissions.should.havePermission('Add tags', ['Administrator', 'Editor', 'Author', 'Admin Integration', 'Super Editor']);
             permissions.should.havePermission('Delete tags', ['Administrator', 'Editor', 'Admin Integration', 'Super Editor']);
+            // Count Tags: Super Editor gets it from fixtures ("tag": "all") on a fresh DB; existing DBs via 2026-10-17-00-00-00-add-super-editor-count-tags-permission.js
+            permissions.should.havePermission('Count Tags', ['Administrator', 'Editor', 'Author', 'Admin Integration', 'Super Editor']);
 
             permissions.should.havePermission('Browse themes', ['Administrator', 'Editor', 'Author', 'Contributor', 'Admin Integration', 'Super Editor']);
             permissions.should.havePermission('Edit themes', ['Administrator', 'Admin Integration']);
