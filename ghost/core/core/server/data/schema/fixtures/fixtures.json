@@ -1928,7 +1928,7 @@
                     "estateproperty": ["browse", "read", "add", "destroy", "edit"],
                     "estatepropertymedium": ["browse", "read", "add", "destroy", "edit"],
                     "estatepropertypost": ["browse", "read", "add", "destroy"],
-                    "estatepropertystaff": ["add", "destroy"],
+                    "estatepropertystaff": ["browse", "add", "destroy"],
                     "estatepropertytag": ["browse", "read", "add", "destroy"],
                     "estatesetting": ["browse", "read", "edit"],
                     "person": ["add", "destroy", "edit"],
