@@ -16,7 +16,6 @@ const READ_PERMISSIONS = [
     'Browse estate property posts',
     'Browse estate property tags',
     'Browse estate property media',
-    'Browse estate property staff',
     'Browse estate inquiries',
     'Read estate inquiries',
     'Browse estate settings',
