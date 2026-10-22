@@ -123,7 +123,11 @@ RUN set -eux; \
     gosu node yarn cache clean; \
     gosu node npm cache clean --force; \
     npm cache clean --force; \
-    rm -rv /tmp/yarn*;
+    rm -rv /tmp/yarn*; \
+    # psl ships an empty `.env` (0 bytes). The tenant deploy (scripts/tenant/deploy-app.mjs,
+    # P20) refuses any image containing a `.env`, so drop it in this same layer — removing it
+    # in a later RUN would still leave it in this layer of `docker save`.
+    rm -f node_modules/psl/.env;
 
 # The dependency install above recreates node_modules, so custom members-api
 # modules must be overlaid after it completes.
