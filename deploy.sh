@@ -7,6 +7,7 @@
 #   Build   : runs `yarn docker:next:build`, then streams `docker save | gzip` to S3.
 #   Output  : s3://$S3_BUCKET/$S3_FOLDER/ghost-<VERSION>.tar.gz
 #   Pair    : deploy-on-ec2.sh downloads that key and `docker load`s it on the host.
+#   AWS     : uploads with profile DEPLOY_AWS_PROFILE (default 60-think), checked first.
 #   Note    : distribution is S3-only (no Docker Hub push) — decided 2026-09-11.
 #
 # Fail the whole pipeline if any stage fails (e.g. `docker save`), so a broken
@@ -29,6 +30,30 @@ if [ -z "${VERSION:-}" ] || [ "$VERSION" = "undefined" ]; then
   echo "[ERROR] VERSION not resolved (set env VERSION or package.json deployVersion)"
   exit 1
 fi
+
+# AWS profile — which credentials upload to S3. This machine holds several key
+# sets (other jobs too), so never fall back to `default` or to whatever
+# AWS_ACCESS_KEY_ID happens to be exported: an explicit `--profile` wins over env keys.
+# Override for a run:  DEPLOY_AWS_PROFILE=<name> yarn deploy
+DEPLOY_AWS_PROFILE="${DEPLOY_AWS_PROFILE:-60-think}"
+# The account the default profile must resolve to. For another profile, set
+# DEPLOY_AWS_ACCOUNT to have it checked too (unset = only print the account).
+if [ -z "${DEPLOY_AWS_ACCOUNT:-}" ] && [ "$DEPLOY_AWS_PROFILE" = "60-think" ]; then
+  DEPLOY_AWS_ACCOUNT="724304087698"
+fi
+# Checked before the (long) build, so a missing key or a wrong account stops here
+# instead of after the image is built.
+DEPLOY_AWS_ACTUAL="$(aws sts get-caller-identity --profile "$DEPLOY_AWS_PROFILE" --query Account --output text 2>/dev/null)"
+if [ -z "$DEPLOY_AWS_ACTUAL" ] || [ "$DEPLOY_AWS_ACTUAL" = "None" ]; then
+  echo "[ERROR] AWS profile '$DEPLOY_AWS_PROFILE' has no usable credentials (aws sts get-caller-identity failed)."
+  echo "        Pick a configured profile:  DEPLOY_AWS_PROFILE=<name>  (list: aws configure list-profiles)"
+  exit 1
+fi
+if [ -n "${DEPLOY_AWS_ACCOUNT:-}" ] && [ "$DEPLOY_AWS_ACTUAL" != "$DEPLOY_AWS_ACCOUNT" ]; then
+  echo "[ERROR] AWS profile '$DEPLOY_AWS_PROFILE' is account $DEPLOY_AWS_ACTUAL, expected $DEPLOY_AWS_ACCOUNT — not deploying."
+  exit 1
+fi
+echo "[INFO] AWS profile: $DEPLOY_AWS_PROFILE (account $DEPLOY_AWS_ACTUAL)"
 
 # Pre-flight: prd.Dockerfile COPYs the host's pre-built Admin bundle and refuses
 # a dev build (its step-27 guard). `yarn dev` rewrites the Admin-X apps as
@@ -59,7 +84,7 @@ fi
 
 # Save image as gzip-compressed .tar.gz and stream straight to S3 (no local file)
 GZ_KEY="s3://$S3_BUCKET/$S3_FOLDER/$IMAGE_NAME-$VERSION.tar.gz"
-docker save "$IMAGE_NAME:$VERSION" | gzip | aws s3 cp - "$GZ_KEY" --region $AWS_REGION
+docker save "$IMAGE_NAME:$VERSION" | gzip | aws s3 cp - "$GZ_KEY" --region "$AWS_REGION" --profile "$DEPLOY_AWS_PROFILE"
 rc=$?
 if [ $rc -ne 0 ]; then
   echo "[ERROR] Upload failed for $IMAGE_NAME:$VERSION (exit $rc)"
