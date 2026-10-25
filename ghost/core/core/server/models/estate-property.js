@@ -21,7 +21,7 @@ const ESTATE_SEARCH_CACHE_OPTION_KEYS = [
     'land_area_min', 'land_area_max', 'building_area_min', 'building_area_max',
     'year_built_min', 'year_built_max', 'building_age_max', 'nearest_station', 'railway_line',
     'features', 'tags', 'source_type', 'source', 'location', 'floor_plan', 'status',
-    'property_type', 'featured', 'page', 'limit', 'order'
+    'property_type', 'locale', 'featured', 'page', 'limit', 'order'
 ];
 
 let estateSearchRedisClient;
@@ -1090,7 +1090,7 @@ const EstateProperty = ghostBookshelf.Model.extend({
             'query', 'q', 'search', 'query_any', 'station_walk_minutes_max', 'price_min', 'price_max', 'rent_min', 'rent_max',
             'area_min', 'area_max', 'deposit_min', 'deposit_max', 'key_money_min', 'key_money_max', 'yield_min', 'yield_max', 'land_area_min', 'land_area_max', 'building_area_min', 'building_area_max',
             'year_built_min', 'year_built_max', 'building_age_max', 'nearest_station', 'railway_line', 'features', 'tags',
-            'source_type', 'source', 'location', 'floor_plan', 'status', 'property_type', 'featured'
+            'source_type', 'source', 'location', 'floor_plan', 'status', 'property_type', 'locale', 'featured'
         ]});
         const knex = ghostBookshelf.knex;
         if (!await hasSearchIndexTables(knex)) {
