@@ -10,6 +10,36 @@ const ALLOWED_INCLUDES = [
     'posts', 'tags', 'media'
 ];
 
+function filterLocalePosts(payload, locale) {
+    const normalizedLocale = String(locale || '').trim().toLowerCase();
+    if (!normalizedLocale || !payload || typeof payload !== 'object') {
+        return payload;
+    }
+
+    const filterRows = (rows) => Array.isArray(rows)
+        ? rows.filter(row => String(row?.locale || '').trim().toLowerCase() === normalizedLocale)
+        : rows;
+
+    if (Array.isArray(payload.posts)) {
+        payload.posts = filterRows(payload.posts);
+    }
+    if (Array.isArray(payload.estatepropertyposts)) {
+        payload.estatepropertyposts = filterRows(payload.estatepropertyposts);
+    }
+    return payload;
+}
+
+function filterLocalePostsInPage(result, locale) {
+    if (!locale || !result || !Array.isArray(result.data)) {
+        return result;
+    }
+    result.data = result.data.map(model => filterLocalePosts(
+        typeof model?.toJSON === 'function' ? model.toJSON() : model,
+        locale
+    ));
+    return result;
+}
+
 const controller = {
     docName: 'estateproperties',
 
@@ -97,7 +127,7 @@ const controller = {
                 ? models.EstateProperty.findPageWithEstateSearch(options)
                 : models.EstateProperty.findPage(options));
             await models.EstateProperty.attachMediaImages(result);
-            return result;
+            return filterLocalePostsInPage(result, frame.options.locale);
         }
     },
 
@@ -185,7 +215,7 @@ const controller = {
                 ? models.EstateProperty.findPageWithEstateSearch(options)
                 : models.EstateProperty.findPage(options));
             await models.EstateProperty.attachMediaImages(result);
-            return result;
+            return filterLocalePostsInPage(result, frame.options.locale);
         }
     },
 
@@ -195,7 +225,8 @@ const controller = {
         },
         options: [
             'include',
-            'filter'
+            'filter',
+            'locale'
         ],
         data: ['id'],
         validation: {
@@ -220,7 +251,10 @@ const controller = {
             }
 
             await models.EstateProperty.attachMediaImages(entry);
-            return entry;
+            return filterLocalePosts(
+                typeof entry.toJSON === 'function' ? entry.toJSON() : entry,
+                frame.options.locale
+            );
         }
     }
 };
