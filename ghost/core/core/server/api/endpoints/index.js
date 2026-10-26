@@ -396,6 +396,10 @@ module.exports = {
         return apiFramework.pipeline(require('./estate-settings'), localUtils);
     },
 
+    get estateDictionaryTerms() {
+        return apiFramework.pipeline(require('./estate-dictionary-terms'), localUtils);
+    },
+
     // person story admin endpoints
     get personStories() {
         return apiFramework.pipeline(require('./person-stories'), localUtils);
