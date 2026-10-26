@@ -859,6 +859,31 @@
                     "object_type": "estatesetting"
                 },
                 {
+                    "name": "Browse estate dictionary terms",
+                    "action_type": "browse",
+                    "object_type": "estatedictionaryterm"
+                },
+                {
+                    "name": "Read estate dictionary terms",
+                    "action_type": "read",
+                    "object_type": "estatedictionaryterm"
+                },
+                {
+                    "name": "Add estate dictionary terms",
+                    "action_type": "add",
+                    "object_type": "estatedictionaryterm"
+                },
+                {
+                    "name": "Edit estate dictionary terms",
+                    "action_type": "edit",
+                    "object_type": "estatedictionaryterm"
+                },
+                {
+                    "name": "Delete estate dictionary terms",
+                    "action_type": "destroy",
+                    "object_type": "estatedictionaryterm"
+                },
+                {
                     "name": "Add persons",
                     "action_type": "add",
                     "object_type": "person"
