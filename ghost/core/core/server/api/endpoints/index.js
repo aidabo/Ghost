@@ -400,6 +400,10 @@ module.exports = {
         return apiFramework.pipeline(require('./estate-dictionary-terms'), localUtils);
     },
 
+    get estatePropertyTranslations() {
+        return apiFramework.pipeline(require('./estate-property-translations'), localUtils);
+    },
+
     // person story admin endpoints
     get personStories() {
         return apiFramework.pipeline(require('./person-stories'), localUtils);
