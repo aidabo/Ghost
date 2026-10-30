@@ -68,6 +68,9 @@ typings/
 # dotenv environment variables file
 .env
 
+# deploy.sh local settings (account ID / SSM targets)
+/deploy.env
+
 # IDE
 .idea/*
 *.iml
@@ -192,3 +195,6 @@ yalc.lock
 # Vite writes a transient timestamped config while loading vite.config.*;
 # normally auto-deleted, but an interrupted build can leave it behind.
 *.timestamp-*.mjs
+
+# 配布の宛先（本番のインスタンス ID など）。公開リポジトリなので git に入れない。見本は deploy-targets.example.json
+deploy-targets.json
