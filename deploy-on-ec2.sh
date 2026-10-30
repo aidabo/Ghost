@@ -121,10 +121,19 @@ else
     ARCHIVE="$GZ"
   else
     echo "[INFO] $GZ not found in S3 — falling back to $TAR"
-    aws s3 cp "s3://$S3_BUCKET/$S3_FOLDER/$TAR" "$TAR" --region "$AWS_REGION"
+    if ! aws s3 cp "s3://$S3_BUCKET/$S3_FOLDER/$TAR" "$TAR" --region "$AWS_REGION"; then
+      echo "[FATAL] image archive not found in S3: $GZ / $TAR (nothing restarted)" >&2
+      exit 1
+    fi
     ARCHIVE="$TAR"
   fi
-  docker load -i "$ARCHIVE"
+  # A failed load must stop here: a stale local image with the same tag would
+  # otherwise be restarted and pass the tag check.
+  if ! docker load -i "$ARCHIVE"; then
+    rm -f "$ARCHIVE"
+    echo "[FATAL] docker load failed: $ARCHIVE (nothing restarted)" >&2
+    exit 1
+  fi
   rm -f "$ARCHIVE"
 fi
 
