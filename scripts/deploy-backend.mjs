@@ -39,6 +39,13 @@ if (Object.keys(TARGETS).length === 0) {
   console.error("deploy-targets.json has no tenants");
   process.exit(2);
 }
+for (const [tenant, target] of Object.entries(TARGETS)) {
+  const missing = ["instanceId", "workdir", "ssmParam"].filter((k) => typeof target?.[k] !== "string" || !target[k].trim());
+  if (missing.length) {
+    console.error(`deploy-targets.json: ${tenant} is missing ${missing.join(", ")}`);
+    process.exit(2);
+  }
+}
 
 const arg = (name, fallback = "") => {
   const i = process.argv.indexOf(`--${name}`);
@@ -218,7 +225,10 @@ for (const tenant of tenants) {
       "#!/bin/bash",
       "set -eu",
       `cd ${shq(workdir)}`,
-      "img=$(docker inspect ghost --format '{{.Config.Image}}')",
+      // Resolve the container from the compose service (works with or without container_name).
+      "cid=$(docker compose ps -q ghost)",
+      'if [ -z "$cid" ]; then echo "ghost service is not running"; exit 1; fi',
+      "img=$(docker inspect \"$cid\" --format '{{.Config.Image}}')",
       `expected=${shq(`ghost:${version}`)}`,
       'echo "running=$img"',
       'echo "expected=$expected"',
