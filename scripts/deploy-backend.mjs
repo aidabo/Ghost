@@ -225,8 +225,9 @@ for (const tenant of tenants) {
       "#!/bin/bash",
       "set -eu",
       `cd ${shq(workdir)}`,
-      // Resolve the container from the compose service (works with or without container_name).
-      "cid=$(docker compose ps -q ghost)",
+      // Resolve the container from compose labels (no compose config/env needed,
+      // works with or without container_name).
+      'cid=$(docker ps -q --filter label=com.docker.compose.service=ghost --filter "label=com.docker.compose.project.working_dir=$(pwd)")',
       'if [ -z "$cid" ]; then echo "ghost service is not running"; exit 1; fi',
       "img=$(docker inspect \"$cid\" --format '{{.Config.Image}}')",
       `expected=${shq(`ghost:${version}`)}`,

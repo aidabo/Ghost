@@ -85,7 +85,15 @@ if [ -z "$ENV_FILE" ]; then
     if [ -f "$candidate" ]; then ENV_FILE="$candidate"; break; fi
   done
 fi
-if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
+if [ -n "$ENV_FILE" ] && [ ! -f "$ENV_FILE" ]; then
+  echo "[FATAL] DEPLOY_ENV_FILE not found: $ENV_FILE" >&2
+  exit 1
+fi
+if [ -z "$ENV_FILE" ] && [ "${ALLOW_NO_ENV_FILE:-0}" != "1" ]; then
+  echo "[FATAL] no compose env file (env.prd.sh / env-prd.sh in $DIR or $PWD). Set DEPLOY_ENV_FILE, or ALLOW_NO_ENV_FILE=1 if the compose file needs none" >&2
+  exit 1
+fi
+if [ -n "$ENV_FILE" ]; then
   SAFE_ENV="$(mktemp)"
   chmod 600 "$SAFE_ENV"
   grep -vE '^[[:space:]]*(export[[:space:]]+)?GHOST_IMAGE_TAG=' "$ENV_FILE" \
@@ -100,9 +108,11 @@ fi
 
 export GHOST_IMAGE_TAG="$VERSION"
 
-# --- download only when needed ------------------------------------------------
-if [ "${FORCE_PULL:-0}" != "1" ] && docker image inspect "$IMAGE_NAME:$VERSION" >/dev/null 2>&1; then
-  echo "[INFO] image already present: $IMAGE_NAME:$VERSION (skip download; FORCE_PULL=1 to force)"
+# --- download the image --------------------------------------------------------
+# Always load from S3 by default: a tag can be rebuilt and re-uploaded with
+# VERSION=..., and a stale local image with the same tag would pass the tag check.
+if [ "${SKIP_PULL_IF_PRESENT:-0}" = "1" ] && docker image inspect "$IMAGE_NAME:$VERSION" >/dev/null 2>&1; then
+  echo "[INFO] image already present: $IMAGE_NAME:$VERSION (skip download because SKIP_PULL_IF_PRESENT=1)"
 else
   GZ="$ARTIFACT_NAME-$VERSION.tar.gz"
   TAR="$ARTIFACT_NAME-$VERSION.tar"

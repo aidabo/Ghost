@@ -16,7 +16,7 @@
 #   AWS     : uploads with profile DEPLOY_AWS_PROFILE (default 60-think), checked first.
 #   SSM     : after a successful upload, writes the selected tenants' version to
 #             /60-think/prd/deploy/backend/version and /thinkestate/...
-#             DEPLOY_SSM_PARAMS overrides the targets; WRITE_SSM_PARAM=0 skips.
+#             ssmParam in deploy-targets.json (selected TENANTS only); WRITE_SSM_PARAM=0 skips.
 #   Env     : DEPLOY_AWS_ACCOUNT is required (fail closed). Put it in the
 #             gitignored deploy.env or export it. See deploy.env.example.
 #   Note    : distribution is S3-only (no Docker Hub push) — decided 2026-09-11.
@@ -42,6 +42,16 @@ if [ -z "${VERSION:-}" ] || [ "$VERSION" = "undefined" ]; then
   exit 1
 fi
 BUILD_VERSION="$(node -p "require('$_SD/package.json').deployVersion")"
+# Local, gitignored settings (DEPLOY_AWS_PROFILE / DEPLOY_AWS_ACCOUNT).
+# Read before the tenant list is resolved, so TENANTS set here is validated too. Copy deploy.env.example to deploy.env and fill it in.
+_DEPLOY_ENV="$_SD/deploy.env"
+if [ -f "$_DEPLOY_ENV" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$_DEPLOY_ENV"
+  set +a
+fi
+
 # Tenant list and target metadata are defined once in deploy-targets.json.
 _TARGETS_FILE="$_SD/deploy-targets.json"
 if [ ! -f "$_TARGETS_FILE" ]; then
@@ -67,15 +77,6 @@ for tenant in $TENANTS; do
   esac
 done
 
-# Local, gitignored settings (DEPLOY_AWS_PROFILE / DEPLOY_AWS_ACCOUNT /
-# DEPLOY_SSM_PARAMS). Copy deploy.env.example to deploy.env and fill it in.
-_DEPLOY_ENV="$_SD/deploy.env"
-if [ -f "$_DEPLOY_ENV" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "$_DEPLOY_ENV"
-  set +a
-fi
 
 # AWS profile — which credentials upload to S3 and write SSM. This machine holds
 # several key sets (other jobs too), so never fall back to `default` or to
@@ -153,13 +154,20 @@ echo "Upload completed: $GZ_KEY"
 ssm_param_for() {
   DEPLOY_TARGETS_FILE="$_TARGETS_FILE" node -p "JSON.parse(require('fs').readFileSync(process.env.DEPLOY_TARGETS_FILE,'utf8'))['$1']?.ssmParam || ''"
 }
-SSM_PARAMS="${DEPLOY_SSM_PARAMS:-}"
-if [ -z "$SSM_PARAMS" ]; then
-  for tenant in $TENANTS; do
-    param="$(ssm_param_for "$tenant")"
-    [ -n "$param" ] && SSM_PARAMS="$SSM_PARAMS $param"
-  done
+# deploy-targets.json is the single source of the parameter names, and only the
+# selected TENANTS are updated. DEPLOY_SSM_PARAMS is no longer read.
+if [ -n "${DEPLOY_SSM_PARAMS:-}" ]; then
+  echo "[WARN] DEPLOY_SSM_PARAMS is ignored; ssmParam in deploy-targets.json is used for the selected TENANTS" >&2
 fi
+SSM_PARAMS=""
+for tenant in $TENANTS; do
+  param="$(ssm_param_for "$tenant")"
+  if [ -z "$param" ]; then
+    echo "[ERROR] no ssmParam for tenant $tenant in deploy-targets.json" >&2
+    exit 1
+  fi
+  SSM_PARAMS="$SSM_PARAMS $param"
+done
 if [ "${WRITE_SSM_PARAM:-1}" = "1" ]; then
   for param in $SSM_PARAMS; do
     echo "[INFO] Updating SSM parameter: $param=$VERSION"
