@@ -6,7 +6,7 @@ Use this directory as the entry point for Ghost custom backend notes.
 
 These remain at repo root:
 
-- [README.md](../README.md)
+- [README.md](../README.md) — this fork's own README (Japanese), not the upstream one
 - [SECURITY.md](../SECURITY.md)
 - [PRIVACY.md](../PRIVACY.md)
 

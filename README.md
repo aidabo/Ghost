@@ -70,7 +70,7 @@ flowchart LR
 2. 依存とビルド:
 
    ```bash
-   cd ~/work/legacy/00-Ghost-5.116.2
+   cd ~/work/legacy/00-Ghost-5.116.2   # clone したこのリポジトリのルート（この場所は開発機の例）
    nvm use 20.19.0
    yarn
    git submodule update --init   # テーマ（Casper / Source）
