@@ -63,7 +63,11 @@
     "tbf:install": "curl https://tinybird.co | sh",
     "tbf": "tb local start && cd ghost/core/core/server/data/tinybird && tb dev",
     "docker:next:build": "echo Building image: ghost:$npm_package_deployVersion && docker build . -f .docker/prd.Dockerfile -t ghost:$npm_package_deployVersion --no-cache",
-    "deploy": "bash ./deploy.sh"
+    "deploy": "bash ./deploy.sh",
+    "deploy:backend": "node ./scripts/deploy-backend.mjs",
+    "deploy:backend:build-upload": "node ./scripts/deploy-backend.mjs --stage build",
+    "deploy:backend:distribute": "node ./scripts/deploy-backend.mjs --stage deploy",
+    "deploy:backend:verify": "node ./scripts/deploy-backend.mjs --stage verify"
   },
   "resolutions": {
     "@tryghost/errors": "1.3.5",
