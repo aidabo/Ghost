@@ -10,7 +10,7 @@ const messages = {
 };
 
 const getCurrentUserId = frame => frame.options?.context?.user || null;
-const getCurrentIntegrationId = frame => frame.options?.context?.integration || null;
+const {getIntegrationId: getCurrentIntegrationId} = require('./utils/integration-context');
 // @ts-ignore
 const REMINDERS_TABLE = models.SocialAiReminder?.prototype?.tableName || 'social_ai_reminders';
 // @ts-ignore

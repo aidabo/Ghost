@@ -315,6 +315,7 @@ module.exports = {
     buildStorageKeyHash,
     findAssetRowByStorageKey,
     findBroadcastSelectionForMedia,
+    getStorageKeyFromUrl,
     isMissingStorageKeyHashColumnError,
     resolveTag,
     upsertAsset

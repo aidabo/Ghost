@@ -13,7 +13,7 @@ const messages = {
 };
 
 const getCurrentUserId = frame => frame.options?.context?.user || null;
-const getCurrentIntegrationId = frame => frame.options?.context?.integration || null;
+const {getIntegrationId: getCurrentIntegrationId} = require('./utils/integration-context');
 // @ts-ignore
 const PHONES_TABLE = models.SocialAiUserPhone?.prototype?.tableName || 'social_ai_user_phones';
 

@@ -12,7 +12,7 @@ const messages = {
 };
 
 const getCurrentUserId = frame => frame.options?.context?.user || null;
-const getCurrentIntegrationId = frame => frame.options?.context?.integration || null;
+const {getIntegrationId: getCurrentIntegrationId} = require('./utils/integration-context');
 
 const isAdminUser = async (userId) => {
     if (!userId) return false;

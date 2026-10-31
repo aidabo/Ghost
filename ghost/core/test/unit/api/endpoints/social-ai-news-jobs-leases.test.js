@@ -181,9 +181,9 @@ describe('News job lease generation fencing', function () {
         const claim = await endpoint.claim.query(workerFrame({worker_id: 'legacy'}));
         assert.equal(claim.claim_generation, 0);
         assert.equal(Object.hasOwn(claim, 'claim_token'), false);
-        await endpoint.progress.query({options: {id: 'job', context: {integration: {}}}, data: {progress: 12}});
+        await endpoint.progress.query({options: {id: 'job', context: {integration: {id: 'integration-1'}}}, data: {progress: 12}});
         assert.equal((await rowFor('job')).progress, 12);
-        await endpoint.linkAssets.query({options: {id: 'job', context: {integration: {}}}, data: {assets: [asset]}});
+        await endpoint.linkAssets.query({options: {id: 'job', context: {integration: {id: 'integration-1'}}}, data: {assets: [asset]}});
         assert.equal((await database('social_media_assets')).length, 1);
     });
 
@@ -278,7 +278,7 @@ describe('News job lease generation fencing', function () {
         await seed('job');
         await endpoint.claim.query(workerFrame({worker_id: 'legacy'}));
         replaceBeforeWrite();
-        await assert.rejects(endpoint.progress.query({options: {id: 'job', context: {integration: {}}}, data: {progress: 100}}), leaseLost);
+        await assert.rejects(endpoint.progress.query({options: {id: 'job', context: {integration: {id: 'integration-1'}}}, data: {progress: 100}}), leaseLost);
         assert.equal((await rowFor('job')).progress, null);
     });
 

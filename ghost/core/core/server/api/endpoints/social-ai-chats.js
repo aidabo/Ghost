@@ -15,7 +15,7 @@ const messages = {
 };
 
 const getCurrentUserId = frame => frame.options?.context?.user || null;
-const getCurrentIntegrationId = frame => frame.options?.context?.integration || null;
+const {getIntegrationId: getCurrentIntegrationId} = require('./utils/integration-context');
 // @ts-ignore
 const CONVERSATIONS_TABLE = models.SocialAiConversation?.prototype?.tableName || 'social_ai_conversations';
 // @ts-ignore

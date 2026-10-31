@@ -10,7 +10,7 @@ const ASSETS = 'social_media_assets';
 const ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 
 const currentUser = frame => frame.options?.context?.user || null;
-const integration = frame => frame.options?.context?.integration || null;
+const {isIntegrationRequest} = require('./utils/integration-context');
 const payloadOf = frame => frame.data?.socialainewsbroadcastselections?.[0] || frame.data || {};
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const parseJson = value => {
@@ -38,7 +38,7 @@ const assertJobAccess = async (frame, job, write = false) => {
     if (await isAdmin(actor)) {
         return;
     }
-    if (!actor || job.user_id !== actor || integration(frame)) {
+    if (!actor || job.user_id !== actor || isIntegrationRequest(frame)) {
         throw new errors.NoPermissionError({message: 'You are not allowed to select a broadcast for this news job.'});
     }
     if (write && job.group_id) {
@@ -220,7 +220,7 @@ const controller = {
         permissions: {docName: 'post', method: 'browse'},
         async query(frame) {
             const actor = currentUser(frame);
-            if (!actor || integration(frame)) {
+            if (!actor || isIntegrationRequest(frame)) {
                 throw new errors.NoPermissionError({message: 'A user session is required to read broadcast selections.'});
             }
             const postIds = postIdsOf(frame);
@@ -256,7 +256,7 @@ const controller = {
             return permissionsService.canThis(frame.options.context)[action].socialaiavatarbroadcastselection(input.post_id);
         },
         async query(frame) {
-            if (integration(frame)) {
+            if (isIntegrationRequest(frame)) {
                 throw new errors.NoPermissionError({message: 'A user session is required to select a public news broadcast.'});
             }
             const input = payloadOf(frame);

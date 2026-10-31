@@ -50,7 +50,7 @@ const TYPE_AUDIO = 'audio';
 const TYPE_FILE = 'file';
 
 const getCurrentUserId = frame => frame.options?.context?.user || null;
-const getCurrentIntegrationId = frame => frame.options?.context?.integration || null;
+const {getIntegrationId: getCurrentIntegrationId} = require('./utils/integration-context');
 
 // System admin (Owner / Administrator / Admin). Super Editor is not: it only
 // widens the gallery listings below (isNoGroupReader), writes as a normal user.

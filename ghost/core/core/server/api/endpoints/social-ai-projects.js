@@ -75,7 +75,7 @@ const getPayload = (frame) => frame.data?.socialaiprojects?.[0] || {};
 // @ts-ignore
 const getCurrentUserId = frame => frame.options?.context?.user || null;
 // @ts-ignore
-const getCurrentIntegrationId = frame => frame.options?.context?.integration || null;
+const {getIntegrationId: getCurrentIntegrationId} = require('./utils/integration-context');
 // @ts-ignore
 const getRequestedUserId = (frame) => {
     const payload = getPayload(frame);

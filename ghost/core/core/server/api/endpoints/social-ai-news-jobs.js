@@ -95,7 +95,7 @@ const getActionPayload = frame => {
 // @ts-ignore
 const currentUser = frame => frame.options?.context?.user || null;
 // @ts-ignore
-const integration = frame => frame.options?.context?.integration || null;
+const {isIntegrationRequest} = require('./utils/integration-context');
 // @ts-ignore
 const jobId = frame => frame.options?.id || frame.data?.id || null;
 
@@ -248,7 +248,7 @@ const serialize = row => ({
 const assertAccess = async (frame, row, write = false) => {
     const actor = currentUser(frame);
     const scope = await staffScope.getStaffScope(actor);
-    if (integration(frame) || scope.isSystemAdmin) {
+    if (isIntegrationRequest(frame) || scope.isSystemAdmin) {
         return;
     }
     if (write) {
@@ -301,7 +301,7 @@ const assertOpen = row => {
 
 // Only the claiming worker may move a running job forward.
 const assertWorker = (frame, row) => {
-    if (!integration(frame)) {
+    if (!isIntegrationRequest(frame)) {
         throw new errors.NoPermissionError({message: tpl(messages.workerRequired)});
     }
     const payload = getActionPayload(frame);
@@ -355,7 +355,7 @@ const controller = {
             const limit = Math.min(200, Math.max(1, Number(options.limit || 50) || 50));
             const query = models.Base.knex(TABLE).select('*').orderBy('updated_at', 'desc');
             const scope = await staffScope.getNewsroomReadScope(actor);
-            if (scope && !integration(frame) && !scope.isSystemAdmin) {
+            if (scope && !isIntegrationRequest(frame) && !scope.isSystemAdmin) {
                 // Every staff role: every newsroom job outside non-newsroom
                 // projects + its own.
                 query.where((qb) => {
@@ -364,7 +364,7 @@ const controller = {
                         staffScope.whereNewsroomProject(newsroom, `${TABLE}.project_id`, scope);
                     }).orWhere('user_id', actor);
                 });
-            } else if (!integration(frame) && !scope?.isSystemAdmin) {
+            } else if (!isIntegrationRequest(frame) && !scope?.isSystemAdmin) {
                 query.where('user_id', actor);
             }
             if (options.project_id) {
@@ -468,7 +468,7 @@ const controller = {
         permissions: false,
         async query(frame) {
             const payloadInput = getActionPayload(frame);
-            if (!integration(frame)) {
+            if (!isIntegrationRequest(frame)) {
                 throw new errors.NoPermissionError({message: tpl(messages.workerRequired)});
             }
             const types = acceptedTypes(payloadInput);
@@ -732,7 +732,7 @@ const controller = {
         options: ['id'],
         permissions: false,
         async query(frame) {
-            if (!integration(frame)) {
+            if (!isIntegrationRequest(frame)) {
                 throw new errors.NoPermissionError({message: tpl(messages.workerRequired)});
             }
             const row = await loadRow(jobId(frame));
@@ -962,7 +962,7 @@ const controller = {
             // A newsroom-rule Super Editor must not cascade into assets
             // outside the newsroom.
             const scope = await staffScope.getStaffScope(currentUser(frame));
-            if (staffScope.actsAsNewsroomEditor(scope, row.user_id, currentUser(frame), integration(frame))) {
+            if (staffScope.actsAsNewsroomEditor(scope, row.user_id, currentUser(frame), isIntegrationRequest(frame))) {
                 await staffScope.assertAssetsAreNewsroom(models.Base.knex, scope, qb => qb.where('sma.news_job_id', row.id));
             }
 
