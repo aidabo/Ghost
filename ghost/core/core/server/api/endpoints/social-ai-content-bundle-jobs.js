@@ -5,6 +5,7 @@ const staffScope = require('./utils/staff-scope');
 const ObjectId = require('bson-objectid').default;
 const storage = require('../../adapters/storage');
 const socialMediaAssets = require('./utils/social-media-assets');
+const permissionsService = require('../../services/permissions');
 
 const TABLE = 'social_ai_content_bundle_jobs';
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -18,7 +19,7 @@ const parseJson = (value, fallback) => {
 };
 const getPayload = frame => frame.data?.socialaicontentbundlejobs?.[0] || frame.data || {};
 const currentUser = frame => frame.options?.context?.user || null;
-const integration = frame => frame.options?.context?.integration || null;
+const {isIntegrationRequest} = require('./utils/integration-context');
 const jobId = frame => frame.options?.id || frame.data?.id || null;
 
 const defaultSteps = () => [
@@ -66,7 +67,7 @@ const serialize = row => ({
 const assertAccess = async (frame, row, write = false) => {
     const actor = currentUser(frame);
     const scope = await staffScope.getStaffScope(actor);
-    if (integration(frame) || scope.isSystemAdmin) return;
+    if (isIntegrationRequest(frame) || scope.isSystemAdmin) return;
     // Super Editor reads and manages (cancel) jobs of newsroom projects, or
     // project-less newsroom jobs.
     if (await staffScope.canManageJobAsNewsroomEditor(scope, row)) return;
@@ -86,6 +87,59 @@ const loadRow = async id => {
     return row;
 };
 
+const assetMediaId = asset => asset.asset_id || asset.media_id || asset.storage?.assetId || null;
+const assetStorageUrl = asset => String(asset.storage_url || asset.url || asset.storage?.url || '').trim();
+const denyLink = () => new errors.NoPermissionError({message: 'You are not allowed to link assets to this content bundle job.'});
+
+const canWriteGroup = async (groupId, actor) => {
+    const group = await models.SocialGroup.findOne({id: groupId});
+    return Boolean(group && await models.SocialGroup.canAccessGroup(group, actor, 'write'));
+};
+
+// Owner path for link-assets (non-integration callers: browser session or a
+// Staff Access Token, e.g. the MCP bridge linking assets to the job it just
+// created). Everything must belong to the caller:
+// - the job: job.user_id === caller (and write access to the job's group);
+// - the job's project, if any: project author, or write access to its group;
+// - every referenced asset (by id, or an existing row for the storage URL):
+//   asset.user_id === caller;
+// - every post_id: the caller may edit that post (Ghost post permissions).
+// A missing job is reported as 403 like a foreign one (no existence oracle).
+// Checked up front, before any write.
+const assertOwnerCanLinkAssets = async ({frame, row, assets, store}) => {
+    const actor = currentUser(frame);
+    if (!actor || !row || row.user_id !== actor) throw denyLink();
+    if (row.group_id && !(await canWriteGroup(row.group_id, actor))) throw denyLink();
+    const knex = models.Base.knex;
+    if (row.project_id) {
+        const project = await knex('social_ai_projects').where({id: row.project_id}).first('id', 'user_id', 'group_id');
+        const ownsProject = project && (project.user_id === actor || (project.group_id && await canWriteGroup(project.group_id, actor)));
+        if (!ownsProject) throw denyLink();
+    }
+    for (const asset of assets) {
+        const mediaId = assetMediaId(asset);
+        let existing = null;
+        if (mediaId) {
+            existing = await knex('social_media_assets').where({id: mediaId}).first('id', 'user_id');
+            if (!existing) throw denyLink();
+        } else {
+            const storageKey = socialMediaAssets.getStorageKeyFromUrl(store, assetStorageUrl(asset));
+            existing = storageKey ? await socialMediaAssets.findAssetRowByStorageKey(knex, storageKey, ['id', 'user_id']) : null;
+        }
+        if (existing && existing.user_id !== actor) throw denyLink();
+        const postId = String(asset.post_id || '').trim();
+        if (postId) {
+            const post = await knex('posts').where({id: postId}).first('id');
+            if (!post) throw denyLink();
+            try {
+                await permissionsService.canThis(frame.options.context).edit.post(postId);
+            } catch (err) {
+                throw denyLink();
+            }
+        }
+    }
+};
+
 const controller = {
     docName: 'socialaicontentbundlejobs',
     browse: {
@@ -95,7 +149,7 @@ const controller = {
             const options = frame.options || {};
             const query = models.Base.knex(TABLE).select('*').orderBy('updated_at', 'desc');
             const scope = await staffScope.getStaffScope(actor);
-            if (scope.isNoGroupReader && !integration(frame)) {
+            if (scope.isNoGroupReader && !isIntegrationRequest(frame)) {
                 // Super Editor: every newsroom job outside non-newsroom
                 // projects + its own.
                 query.where((qb) => {
@@ -104,7 +158,7 @@ const controller = {
                         staffScope.whereNewsroomProject(newsroom, `${TABLE}.project_id`, scope);
                     }).orWhere('user_id', actor);
                 });
-            } else if (!integration(frame) && !scope.isSystemAdmin) {
+            } else if (!isIntegrationRequest(frame) && !scope.isSystemAdmin) {
                 query.where('user_id', actor);
             }
             if (options.project_id) query.where('project_id', options.project_id);
@@ -128,7 +182,7 @@ const controller = {
         async query(frame) {
             const payload = getPayload(frame);
             const actor = currentUser(frame) || payload.user_id;
-            if (!actor && !integration(frame)) throw new errors.NoPermissionError({message: 'A user is required.'});
+            if (!actor && !isIntegrationRequest(frame)) throw new errors.NoPermissionError({message: 'A user is required.'});
             if (payload.project_id) {
                 const project = await models.SocialAiProject.findOne({id: payload.project_id});
                 if (!project) throw new errors.NotFoundError({message: 'Project not found.'});
@@ -166,7 +220,7 @@ const controller = {
     claim: {
         permissions: false,
         async query(frame) {
-            if (!integration(frame)) throw new errors.NoPermissionError({message: 'Worker integration is required.'});
+            if (!isIntegrationRequest(frame)) throw new errors.NoPermissionError({message: 'Worker integration is required.'});
             const workerId = String(getPayload(frame).worker_id || 'content-bundle-runner');
             const timestamp = now();
             const lease = new Date(Date.now() + 300000).toISOString().slice(0, 19).replace('T', ' ');
@@ -186,9 +240,10 @@ const controller = {
         }
     },
     progress: {
+        options: ['id'],
         permissions: false,
         async query(frame) {
-            if (!integration(frame)) throw new errors.NoPermissionError({message: 'Worker integration is required.'});
+            if (!isIntegrationRequest(frame)) throw new errors.NoPermissionError({message: 'Worker integration is required.'});
             const row = await loadRow(jobId(frame));
             const payload = getPayload(frame);
             if (row.status === 'canceled' || (row.claim_worker_id && payload.claim_worker_id !== row.claim_worker_id)) throw new errors.ValidationError({message: 'Invalid job transition.'});
@@ -210,9 +265,10 @@ const controller = {
         }
     },
     complete: {
+        options: ['id'],
         permissions: false,
         async query(frame) {
-            if (!integration(frame)) throw new errors.NoPermissionError({message: 'Worker integration is required.'});
+            if (!isIntegrationRequest(frame)) throw new errors.NoPermissionError({message: 'Worker integration is required.'});
             const row = await loadRow(jobId(frame));
             const payload = getPayload(frame);
             const steps = parseJson(row.steps, []);
@@ -230,9 +286,10 @@ const controller = {
         }
     },
     fail: {
+        options: ['id'],
         permissions: false,
         async query(frame) {
-            if (!integration(frame)) throw new errors.NoPermissionError({message: 'Worker integration is required.'});
+            if (!isIntegrationRequest(frame)) throw new errors.NoPermissionError({message: 'Worker integration is required.'});
             const row = await loadRow(jobId(frame));
             const payload = getPayload(frame);
             const steps = parseJson(row.steps, []);
@@ -246,19 +303,27 @@ const controller = {
         }
     },
     linkAssets: {
+        options: ['id'],
         permissions: false,
         async query(frame) {
-            if (!integration(frame)) throw new errors.NoPermissionError({message: 'Worker integration is required.'});
-            const row = await loadRow(jobId(frame));
             const payload = getPayload(frame);
             const assets = Array.isArray(payload.assets) ? payload.assets : [];
-            const mediaIds = [];
-            const postMediaIds = [];
             const store = storage.getStorage('media');
             const knex = models.Base.knex;
+            let row;
+            if (isIntegrationRequest(frame)) {
+                row = await loadRow(jobId(frame));
+            } else {
+                const id = jobId(frame);
+                if (!id) throw new errors.ValidationError({message: '`id` is required.'});
+                row = await knex(TABLE).where({id}).first();
+                await assertOwnerCanLinkAssets({frame, row, assets, store});
+            }
+            const mediaIds = [];
+            const postMediaIds = [];
             for (const asset of assets) {
-                let mediaId = asset.asset_id || asset.media_id || asset.storage?.assetId || null;
-                const storageUrl = String(asset.storage_url || asset.url || asset.storage?.url || '').trim();
+                let mediaId = assetMediaId(asset);
+                const storageUrl = assetStorageUrl(asset);
                 if (mediaId) {
                     const existing = await knex('social_media_assets').where({id: mediaId}).first();
                     if (!existing) throw new errors.NotFoundError({message: `Content Bundle media asset not found: ${mediaId}`});
@@ -306,6 +371,7 @@ const controller = {
         }
     },
     cancel: {
+        options: ['id'],
         permissions: false,
         async query(frame) {
             const row = await loadRow(jobId(frame));

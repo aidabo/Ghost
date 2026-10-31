@@ -24,7 +24,7 @@ const messages = {
 
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const currentUserId = frame => frame.options?.context?.user || null;
-const currentIntegrationId = frame => frame.options?.context?.integration || null;
+const {getIntegrationId: currentIntegrationId} = require('./utils/integration-context');
 const payload = frame => frame.data?.socialaiavatarprofiles?.[0] || frame.data || {};
 
 async function canManage(userId) {
