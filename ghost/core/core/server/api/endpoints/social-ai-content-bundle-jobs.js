@@ -106,6 +106,11 @@ const canWriteGroup = async (groupId, actor) => {
 // - every post_id: the caller may edit that post (Ghost post permissions).
 // A missing job is reported as 403 like a foreign one (no existence oracle).
 // Checked up front, before any write.
+// Deliberately stricter than assertAccess (read/cancel): system admins and
+// newsroom editors may view or cancel other users' jobs, but they may NOT attach
+// assets/posts to a job they did not create. Linking writes post_media and
+// re-parents assets, so only the job's own creator (or a worker integration) may
+// do it. No admin flow calls link-assets for someone else's job.
 const assertOwnerCanLinkAssets = async ({frame, row, assets, store}) => {
     const actor = currentUser(frame);
     if (!actor || !row || row.user_id !== actor) throw denyLink();
