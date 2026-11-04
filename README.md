@@ -151,7 +151,7 @@ flowchart LR
 
 手順の正は [03-backend-ghost.md](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/03-backend-ghost.md)。ここでは流れだけを書く。
 
-1. MySQL を `02-ghost-compose` の `docker-compose.yml` で起動し、DB `ghost_db` を一度だけ手で作る。
+1. MySQL と Redis を `02-ghost-compose` の `docker-compose.yml` で起動し、DB `ghost_db` を一度だけ手で作る。
 2. 設定とenvを準備する:
    - 開発の設定 `ghost/core/core/shared/config/env/config.development.json` は **git に入っていない**（`.gitignore`）。
      引き継ぎ元から受け取る。
@@ -169,7 +169,7 @@ flowchart LR
    yarn dev                      # http://localhost:2368 、管理画面は /ghost/
    ```
 
-Ghost本体だけを起動するときは、同じ準備をしたshellで`yarn dev:ghost`を使います。
+   Ghost本体だけを起動するときは、同じ準備をしたshellで`yarn dev:ghost`を使います。
 
 4. テスト:
 
