@@ -90,6 +90,42 @@ S3 adapterを使うlocal構成では、`ghost/core/content/adapters`が
 `07-ghost-content`を指すsymlinkであることも確認します。必要な共通repositoryの配置は
 frontendの[workspace手順](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/01-workspace.md)を参照してください。
 
+```bash
+cd ~/work/legacy/00-Ghost-5.116.2
+ls -ld ghost/core/content/adapters
+readlink ghost/core/content/adapters
+readlink -f ghost/core/content/adapters
+```
+
+期待するlink先は`../../../../07-ghost-content/adapters`です。link先が無い場合は
+`07-ghost-content`をworkspace直下へ取得し、既存のlinkを勝手に通常ディレクトリへ置き換えません。
+
+### local開発環境の読み込みと秘密情報
+
+`yarn dev`で使うlocalのDB・S3・メールなどの環境変数は、git管理外の
+`02-ghost-compose/env-dev.sh`から読み込みます。開発shellごとに手動sourceする代わりに、
+`~/.bashrc`へ次を追加できます。
+
+```bash
+# Export ghost development environments
+source ~/work/legacy/02-ghost-compose/env-dev.sh
+```
+
+追加後は新しいshellを開くか、現在のshellで`source ~/.bashrc`を実行します。
+`env-dev.sh`にはsecret関連情報が含まれるため、次を守ります。
+
+- `env-dev.sh`の実値をREADME・PR・チャット・screenshotへ転載しない
+- `env-dev.sh`をgitへ追加しない。`git check-ignore -v ~/work/legacy/02-ghost-compose/env-dev.sh`で確認する
+- `chmod 600 ~/work/legacy/02-ghost-compose/env-dev.sh`にする
+- `config.development.json`や`config.local.json`へS3 access key、secret key、メールpasswordなどを直接書かない
+- Ghostが読む`storage__s3__*`等のsecretは、`env-dev.sh`からexportして渡す
+- `GHOST_S3_PATH_PREFIX`はlocal開発用のprefixを使い、本番prefixを使わない
+
+`env-dev.sh.example`は値のないひな形です。実値は引継ぎ元の安全なsecret管理場所から
+受け取り、exampleやREADMEへ貼り付けません。S3の環境変数名変換と起動確認は、frontendの
+[backend引継ぎ資料](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/03-backend-ghost.md)
+を正本にします。
+
 ### 詳細なbuildとlocal起動
 
 依存のinstall、MySQL/Redis・`ghost_db`・開発config・envの準備、build、migration初期化、
