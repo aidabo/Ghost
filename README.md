@@ -10,6 +10,7 @@
 | [役割と位置](#役割と位置) | システムの中でどこにあるか |
 | [fork で足したもの](#fork-で足したもの) | 独自のテーブル・API・その場所 |
 | [中の構成](#中の構成) | 主なフォルダ |
+| [取得と初回セットアップ](#取得と初回セットアップ) | repository、Node.js、依存、buildの準備 |
 | [開発の手順](#開発の手順) | 入れる・起動する・テスト |
 | [スキーマを変えるとき](#スキーマを変えるとき) | schema・model・migration の決まり |
 | [配布](#配布) | 本番イメージの作り方と配り方 |
@@ -45,7 +46,7 @@ Ghostの開発手順に合わせます。
 nvm install 20.19.0
 nvm use 20.19.0
 node --version                 # v20.19.0
-yarn --version
+yarn --version                 # Yarn Classic 1.22.x
 git submodule update --init --recursive
 yarn install
 ```
@@ -87,6 +88,16 @@ S3 adapterを使うlocal構成では、`ghost/core/content/adapters`が
 frontendの[workspace手順](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/01-workspace.md)を参照してください。
 
 ### buildとlocal起動
+
+以下を、migrationと起動の前に済ませます。
+
+1. `02-ghost-compose`で開発用MySQLとRedisを起動する。
+2. MySQLに開発用DB `ghost_db` を一度だけ作成する。
+3. 引継ぎ元から受け取った`ghost/core/core/shared/config/env/config.development.json`を配置する。
+4. `02-ghost-compose/env-dev.sh`をsourceし、開発用のDB・S3環境変数を読み込む。
+
+`07-ghost-content`を使う構成では、`ghost/core/content/adapters`のsymlink先も
+workspace直下に取得しておきます。
 
 ```bash
 cd ~/work/legacy/00-Ghost-5.116.2
