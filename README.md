@@ -99,7 +99,7 @@ readlink ghost/core/content/adapters
 readlink -f ghost/core/content/adapters
 ```
 
-期待するlink先は`../../../../07-ghost-content/adapters`です。link先が無い場合は
+期待する相対symlink先は`../../../../07-ghost-content/adapters`です。`readlink -f`では`~/work/legacy/07-ghost-content/adapters`に解決します。link先が無い場合は
 `07-ghost-content`をworkspace直下へ取得し、既存のlinkを通常ディレクトリへ置き換えません。
 tracked linkを誤って変更した場合は、このrepositoryのmainから
 `git restore --source=main -- ghost/core/content/adapters`で復元します。localに`main`が無い場合は
@@ -108,6 +108,8 @@ tracked linkを誤って変更した場合は、このrepositoryのmainから
 ### local開発環境の読み込みと秘密情報
 
 `env-dev.sh`の作成からMySQL/Redis、Ghost、Estate frontendの起動順は[全体環境ガイド](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/00-local-full-stack.md)を参照してください。
+
+ローカルの`yarn dev`は`ghost/core/core/shared/config/env/config.development.json`を読みます。本番はこのファイルを使わず、Composeがホストの`/data/ghost/config/${GHOST_CONFIG_JSON}`をコンテナの`/var/lib/ghost/config.production.json`へbind mountします。
 
 `yarn dev`で使うlocalのDB・S3・メールなどの環境変数は、git管理外の
 `02-ghost-compose/env-dev.sh`から読み込みます。開発shellごとに手動sourceする代わりに、
