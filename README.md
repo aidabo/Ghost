@@ -50,6 +50,38 @@ git submodule update --init --recursive
 yarn install
 ```
 
+### 主要ツールの版
+
+| ツール | 版 | 根拠・注意 |
+|---|---|---|
+| NVM | 固定なし | Node.jsの切替に使う。NVM自体の版は各開発環境で確認する |
+| Node.js | `20.19.0`を開発基準にする | package.jsonの対応範囲は`^18.12.1 || ^20.11.1 || ^22.13.1` |
+| Ghost | `5.116.2` | `ghost/core/package.json` |
+| fork deploy version | `5.116.2-next-r261022` | root `package.json`の`version` / `deployVersion`。配布時は更新値を確認 |
+| Yarn | 固定なし | lockfileと既存開発環境に合わせる。frontendはYarn `1.22.22` |
+| Nx | lockfileで解決された版 | root scriptのbuild/testを実行するtask runner |
+| Knex | `2.4.2` | `ghost/core/package.json` |
+| MySQL | 固定なし | `02-ghost-compose`のcomposeと環境に従う。DB serverの実版を`SELECT VERSION()`で確認 |
+| Redis | `7-alpine` | `02-ghost-compose/docker-compose.yml`のlocal image |
+| Docker Engine | 固定なし | `docker --version`で確認。image tagはcompose/Dockerfileを正本にする |
+| AWS CLI | v2、patch固定なし | 配布時に`aws --version`とAWS profileを確認 |
+
+版の確認コマンド:
+
+```bash
+node --version
+yarn --version
+docker --version
+aws --version
+git submodule status
+node -p "require('./package.json').deployVersion"
+node -p "require('./ghost/core/package.json').version"
+```
+
+backendの`package.json`に明示されたNode.js対応範囲と、引継ぎ基準のNode.js版が
+異なる場合は、引継ぎ基準（現在は`20.19.0`）を優先し、変更時はREADMEとfrontendの
+開発資料を同時に更新します。
+
 S3 adapterを使うlocal構成では、`ghost/core/content/adapters`が
 `07-ghost-content`を指すsymlinkであることも確認します。必要な共通repositoryの配置は
 frontendの[workspace手順](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/01-workspace.md)を参照してください。
