@@ -60,7 +60,7 @@ yarn install
 | Ghost | `5.116.2` | `ghost/core/package.json` |
 | fork deploy version | `5.116.2-next-r261022` | root `package.json`の`version` / `deployVersion`。配布時は更新値を確認 |
 | Yarn | 固定なし | lockfileと既存開発環境に合わせる。frontendはYarn `1.22.22` |
-| Nx | lockfileで解決された版 | root scriptのbuild/testを実行するtask runner |
+| Nx | `19.8.14` | root `package.json`で明示されたbuild/test用task runner |
 | Knex | `2.4.2` | `ghost/core/package.json` |
 | MySQL | 固定なし | `02-ghost-compose`のcomposeと環境に従う。DB serverの実版を`SELECT VERSION()`で確認 |
 | Redis | `7-alpine` | `02-ghost-compose/docker-compose.yml`のlocal image |
@@ -75,6 +75,7 @@ yarn --version
 docker --version
 aws --version
 git submodule status
+node -p "require('./package.json').devDependencies.nx"
 node -p "require('./package.json').deployVersion"
 node -p "require('./ghost/core/package.json').version"
 ```
