@@ -37,7 +37,7 @@ git pull --ff-only origin main
 既にclone済みの場合は、作業中の変更を確認してから`main`を更新します。
 未コミット変更を残したままpullやbranch切替を行わないでください。
 
-### Node.js・依存・submodule
+### Node.js・Yarn
 
 現在の開発基準はNode.js `20.19.0`です。Yarnの版はこのrepositoryのlockfileと
 Ghostの開発手順に合わせます。
@@ -47,9 +47,11 @@ nvm install 20.19.0
 nvm use 20.19.0
 node --version                 # v20.19.0
 yarn --version                 # Yarn Classic 1.22.x
-git submodule update --init --recursive
-yarn install
 ```
+
+Yarnは`yarn.lock`がYarn Classic v1形式のため、Yarn 1.xを使います。frontendと同じ
+workspaceで作業する場合は`1.22.22`を使用してください。依存installとsubmodule初期化は、
+後述の[開発の手順](#開発の手順)で一度だけ行います。
 
 ### 主要ツールの版
 
@@ -88,7 +90,7 @@ S3 adapterを使うlocal構成では、`ghost/core/content/adapters`が
 `07-ghost-content`を指すsymlinkであることも確認します。必要な共通repositoryの配置は
 frontendの[workspace手順](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/01-workspace.md)を参照してください。
 
-### buildとlocal起動
+### 詳細なbuildとlocal起動
 
 依存のinstall、MySQL/Redis・`ghost_db`・開発config・envの準備、build、migration初期化、
 local起動の正しい順序は、重複を避けるため下の「[開発の手順](#開発の手順)」を正本とします。
