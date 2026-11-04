@@ -98,7 +98,9 @@ readlink -f ghost/core/content/adapters
 ```
 
 期待するlink先は`../../../../07-ghost-content/adapters`です。link先が無い場合は
-`07-ghost-content`をworkspace直下へ取得し、既存のlinkを勝手に通常ディレクトリへ置き換えません。
+`07-ghost-content`をworkspace直下へ取得し、既存のlinkを通常ディレクトリへ置き換えません。
+tracked linkを誤って変更した場合は、このrepositoryのmainから
+`ghost/core/content/adapters`を復元します。
 
 ### local開発環境の読み込みと秘密情報
 
@@ -108,21 +110,43 @@ readlink -f ghost/core/content/adapters
 
 ```bash
 # Export ghost development environments
-source ~/work/legacy/02-ghost-compose/env-dev.sh
+[ -f ~/work/legacy/02-ghost-compose/env-dev.sh ] && source ~/work/legacy/02-ghost-compose/env-dev.sh
 ```
 
-追加後は新しいshellを開くか、現在のshellで`source ~/.bashrc`を実行します。
+パスは開発機の配置例です。追加後は新しいshellを開くか、現在のshellで`source ~/.bashrc`を実行します。
 `env-dev.sh`にはsecret関連情報が含まれるため、次を守ります。
 
 - `env-dev.sh`の実値をREADME・PR・チャット・screenshotへ転載しない
-- `env-dev.sh`をgitへ追加しない。`git check-ignore -v ~/work/legacy/02-ghost-compose/env-dev.sh`で確認する
+- `env-dev.sh`をgitへ追加しない。`cd ~/work/legacy/02-ghost-compose && git check-ignore -v env-dev.sh`でignore規則を確認する
+- `git ls-files --error-unmatch env-dev.sh`が失敗することを確認し、追跡されていないことも確認する
 - `chmod 600 ~/work/legacy/02-ghost-compose/env-dev.sh`にする
 - `config.development.json`や`config.local.json`へS3 access key、secret key、メールpasswordなどを直接書かない
 - Ghostが読む`storage__s3__*`等のsecretは、`env-dev.sh`からexportして渡す
 - `GHOST_S3_PATH_PREFIX`はlocal開発用のprefixを使い、本番prefixを使わない
 
-`env-dev.sh.example`は値のないひな形です。実値は引継ぎ元の安全なsecret管理場所から
-受け取り、exampleやREADMEへ貼り付けません。S3の環境変数名変換と起動確認は、frontendの
+`env-dev.sh.example`は`02-ghost-compose/env-dev.sh.example`にある値のないひな形です。
+初回は次のようにlocalファイルを作り、実値は引継ぎ元の安全なsecret管理場所から受け取ります。
+
+```bash
+cd ~/work/legacy/02-ghost-compose
+cp env-dev.sh.example env-dev.sh
+chmod 600 env-dev.sh
+```
+
+S3設定のキー名は、値を入れずに次のような`storage__s3__*`形式を使います。
+
+```text
+storage__s3__bucket
+storage__s3__region
+storage__s3__assetHost
+storage__s3__pathPrefix
+storage__s3__accessKeyId
+storage__s3__secretAccessKey
+```
+
+実値はREADMEやexampleへ貼り付けません。引継ぎ元から受け取った
+`config.development.json`などにsecretが含まれていた場合は、そのままcommitせず、
+secretを削除して`env-dev.sh`から環境変数として渡します。S3の環境変数名変換と起動確認は、frontendの
 [backend引継ぎ資料](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/03-backend-ghost.md)
 を正本にします。
 
