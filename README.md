@@ -56,7 +56,7 @@ yarn install
 | ツール | 版 | 根拠・注意 |
 |---|---|---|
 | NVM | 固定なし | Node.jsの切替に使う。NVM自体の版は各開発環境で確認する |
-| Node.js | `20.19.0`を開発基準にする | package.jsonの対応範囲は`^18.12.1 || ^20.11.1 || ^22.13.1` |
+| Node.js | `20.19.0`を開発基準にする | package.jsonはNode 18.12.1系・20.11.1系・22.13.1系を許可 |
 | Ghost | `5.116.2` | `ghost/core/package.json` |
 | fork deploy version | `5.116.2-next-r261022` | root `package.json`の`version` / `deployVersion`。配布時は更新値を確認 |
 | Yarn | 固定なし | lockfileと既存開発環境に合わせる。frontendはYarn `1.22.22` |
@@ -90,27 +90,9 @@ frontendの[workspace手順](https://github.com/aidabo/jibunsee-react/blob/main/
 
 ### buildとlocal起動
 
-以下を、migrationと起動の前に済ませます。
-
-1. `02-ghost-compose`で開発用MySQLとRedisを起動する。
-2. MySQLに開発用DB `ghost_db` を一度だけ作成する。
-3. 引継ぎ元から受け取った`ghost/core/core/shared/config/env/config.development.json`を配置する。
-4. `02-ghost-compose/env-dev.sh`をsourceし、開発用のDB・S3環境変数を読み込む。
-
-`07-ghost-content`を使う構成では、`ghost/core/content/adapters`のsymlink先も
-workspace直下に取得しておきます。
-
-```bash
-cd ~/work/legacy/00-Ghost-5.116.2
-yarn build
-yarn knex-migrator init
-yarn dev
-```
-
-Ghostは`http://localhost:2368`、管理画面は`http://localhost:2368/ghost/`です。
-開発用MySQL/Redis、`config.development.json`、S3環境変数は
-`02-ghost-compose`とfrontendの引継ぎ資料に従って設定します。設定ファイルや鍵は
-repositoryへcommitしません。
+依存のinstall、MySQL/Redis・`ghost_db`・開発config・envの準備、build、migration初期化、
+local起動の正しい順序は、重複を避けるため下の「[開発の手順](#開発の手順)」を正本とします。
+Ghostは起動後に`http://localhost:2368`、管理画面は`http://localhost:2368/ghost/`で確認できます。
 
 buildや起動で問題が出た場合は、先に次を確認します。
 
