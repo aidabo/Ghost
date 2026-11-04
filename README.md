@@ -100,8 +100,8 @@ readlink -f ghost/core/content/adapters
 期待するlink先は`../../../../07-ghost-content/adapters`です。link先が無い場合は
 `07-ghost-content`をworkspace直下へ取得し、既存のlinkを通常ディレクトリへ置き換えません。
 tracked linkを誤って変更した場合は、このrepositoryのmainから
-`git restore --source=main -- ghost/core/content/adapters`で復元します。手で`ln -s`を作らず、
-tracked symlinkを使います。
+`git restore --source=main -- ghost/core/content/adapters`で復元します。localに`main`が無い場合は
+`--source=origin/main`を使います。手で`ln -s`を作らず、tracked symlinkを使います。
 
 ### local開発環境の読み込みと秘密情報
 
@@ -151,7 +151,8 @@ storage__s3__secretAccessKey
 `bucket`、`region`、`pathPrefix`、`accessKeyId`、`secretAccessKey`はS3保存に必要です。
 `assetHost`はCloudFront等のCDN URLを使う場合に設定します。`env-dev.sh`の
 `GHOST_S3_PATH_PREFIX`が`storage__s3__pathPrefix`へ変換されるため、local用prefixと本番prefixを混ぜません。
-値を表示せず、変数名だけ確認するには`compgen -v | grep '^storage__s3__'`を使います。
+`source`した同じshellで、値を表示せずexport済みの変数名だけ確認するには
+`compgen -e | grep '^storage__s3__'`を使います。
 
 実値はREADMEやexampleへ貼り付けません。引継ぎ元から受け取った
 `config.development.json`などにsecretが含まれていた場合は、そのままcommitせず、
