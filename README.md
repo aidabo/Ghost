@@ -152,24 +152,26 @@ flowchart LR
 手順の正は [03-backend-ghost.md](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/03-backend-ghost.md)。ここでは流れだけを書く。
 
 1. MySQL を `02-ghost-compose` の `docker-compose.yml` で起動し、DB `ghost_db` を一度だけ手で作る。
-2. 依存とビルド:
+2. 設定とenvを準備する:
+   - 開発の設定 `ghost/core/core/shared/config/env/config.development.json` は **git に入っていない**（`.gitignore`）。
+     引き継ぎ元から受け取る。
+   - S3 は `storage__s3__*`（`__` 区切り）のenvで渡す。画像のプレフィックスは開発用にする（本番のプレフィックスにしない）。
+3. 依存・build・migration・起動を同じshellで実行する。`source`した環境変数を後続の全コマンドへ引き継ぐため、途中で別shellを開かない:
 
    ```bash
    cd ~/work/legacy/00-Ghost-5.116.2   # clone したこのリポジトリのルート（この場所は開発機の例）
    nvm use 20.19.0
    yarn
    git submodule update --init   # テーマ（Casper / Source）
+   source ../02-ghost-compose/env-dev.sh
    yarn build
    yarn knex-migrator init       # 空の ghost_db にテーブルを作る
+   yarn dev                      # http://localhost:2368 、管理画面は /ghost/
    ```
 
-3. 設定と env:
-   - 開発の設定 `ghost/core/core/shared/config/env/config.development.json` は **git に入っていない**（`.gitignore`）。
-     引き継ぎ元から受け取る。
-   - S3 は `storage__s3__*`（`__` 区切り）の env で渡す。`02-ghost-compose/env-dev.sh` を `source` してから起動する。
-     画像のプレフィックスは開発用にする（本番のプレフィックスにしない）。
-4. 起動: `yarn dev`（http://localhost:2368 、管理画面は `/ghost/`）。Ghost 本体だけなら `yarn dev:ghost`。
-5. テスト:
+Ghost本体だけを起動するときは、同じ準備をしたshellで`yarn dev:ghost`を使います。
+
+4. テスト:
 
    ```bash
    yarn test:unit                     # ルート（nx）。全パッケージ
