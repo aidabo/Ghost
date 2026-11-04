@@ -10,6 +10,7 @@
 | [役割と位置](#役割と位置) | システムの中でどこにあるか |
 | [fork で足したもの](#fork-で足したもの) | 独自のテーブル・API・その場所 |
 | [中の構成](#中の構成) | 主なフォルダ |
+| [取得と初回セットアップ](#取得と初回セットアップ) | repository、Node.js、依存、buildの準備 |
 | [開発の手順](#開発の手順) | 入れる・起動する・テスト |
 | [スキーマを変えるとき](#スキーマを変えるとき) | schema・model・migration の決まり |
 | [配布](#配布) | 本番イメージの作り方と配り方 |
@@ -17,6 +18,92 @@
 | [注意](#注意) | 壊しやすい所 |
 | [詳しい文書](#詳しい文書) | 01-ghost-front の docs と、このリポジトリの docs |
 | [ライセンス](#ライセンス) | 上流の著作権表示 |
+
+## 取得と初回セットアップ
+
+backendは`aidabo/Ghost`のforkです。作業フォルダはfrontendと同じworkspace直下の
+`00-Ghost-5.116.2`を使います。
+
+```bash
+mkdir -p ~/work/legacy
+cd ~/work/legacy
+git clone git@github.com:aidabo/Ghost.git 00-Ghost-5.116.2
+cd 00-Ghost-5.116.2
+git fetch origin main
+git switch main
+git pull --ff-only origin main
+```
+
+既にclone済みの場合は、作業中の変更を確認してから`main`を更新します。
+未コミット変更を残したままpullやbranch切替を行わないでください。
+
+### Node.js・Yarn
+
+現在の開発基準はNode.js `20.19.0`です。Yarnの版はこのrepositoryのlockfileと
+Ghostの開発手順に合わせます。
+
+```bash
+nvm install 20.19.0
+nvm use 20.19.0
+node --version                 # v20.19.0
+yarn --version                 # Yarn Classic 1.22.x
+```
+
+Yarnは`yarn.lock`がYarn Classic v1形式のため、Yarn 1.xを使います。frontendと同じ
+workspaceで作業する場合は`1.22.22`を使用してください。依存installとsubmodule初期化は、
+後述の[開発の手順](#開発の手順)で一度だけ行います。
+
+### 主要ツールの版
+
+| ツール | 版 | 根拠・注意 |
+|---|---|---|
+| NVM | 固定なし | Node.jsの切替に使う。NVM自体の版は各開発環境で確認する |
+| Node.js | `20.19.0`を開発基準にする | package.jsonはNode 18.12.1系・20.11.1系・22.13.1系を許可 |
+| Ghost | `5.116.2` | `ghost/core/package.json` |
+| fork deploy version | `5.116.2-next-r261022` | root `package.json`の`version` / `deployVersion`。配布時は更新値を確認 |
+| Yarn | 固定なし | lockfileと既存開発環境に合わせる。frontendはYarn `1.22.22` |
+| Nx | `19.8.14` | root `package.json`で明示されたbuild/test用task runner |
+| Knex | `2.4.2` | `ghost/core/package.json` |
+| MySQL | 固定なし | `02-ghost-compose`のcomposeと環境に従う。DB serverの実版を`SELECT VERSION()`で確認 |
+| Redis | `7-alpine` | `02-ghost-compose/docker-compose.yml`のlocal image |
+| Docker Engine | 固定なし | `docker --version`で確認。image tagはcompose/Dockerfileを正本にする |
+| AWS CLI | v2、patch固定なし | 配布時に`aws --version`とAWS profileを確認 |
+
+版の確認コマンド:
+
+```bash
+node --version
+yarn --version
+docker --version
+aws --version
+git submodule status
+node -p "require('./package.json').devDependencies.nx"
+node -p "require('./package.json').deployVersion"
+node -p "require('./ghost/core/package.json').version"
+```
+
+backendの`package.json`に明示されたNode.js対応範囲と、引継ぎ基準のNode.js版が
+異なる場合は、引継ぎ基準（現在は`20.19.0`）を優先し、変更時はREADMEとfrontendの
+開発資料を同時に更新します。
+
+S3 adapterを使うlocal構成では、`ghost/core/content/adapters`が
+`07-ghost-content`を指すsymlinkであることも確認します。必要な共通repositoryの配置は
+frontendの[workspace手順](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/01-workspace.md)を参照してください。
+
+### 詳細なbuildとlocal起動
+
+依存のinstall、MySQL/Redis・`ghost_db`・開発config・envの準備、build、migration初期化、
+local起動の正しい順序は、重複を避けるため下の「[開発の手順](#開発の手順)」を正本とします。
+Ghostは起動後に`http://localhost:2368`、管理画面は`http://localhost:2368/ghost/`で確認できます。
+
+buildや起動で問題が出た場合は、先に次を確認します。
+
+```bash
+git status -sb
+test -f ghost/core/package.json
+test -e ghost/core/content/adapters
+yarn build
+```
 
 ## 役割と位置
 
@@ -66,25 +153,27 @@ flowchart LR
 
 手順の正は [03-backend-ghost.md](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/03-backend-ghost.md)。ここでは流れだけを書く。
 
-1. MySQL を `02-ghost-compose` の `docker-compose.yml` で起動し、DB `ghost_db` を一度だけ手で作る。
-2. 依存とビルド:
+1. MySQL と Redis を `02-ghost-compose` の `docker-compose.yml` で起動し、DB `ghost_db` を一度だけ手で作る。
+2. 設定とenvを準備する:
+   - 開発の設定 `ghost/core/core/shared/config/env/config.development.json` は **git に入っていない**（`.gitignore`）。
+     引き継ぎ元から受け取る。
+   - S3 は `storage__s3__*`（`__` 区切り）のenvで渡す。画像のプレフィックスは開発用にする（本番のプレフィックスにしない）。
+3. 依存・build・migration・起動を同じshellで実行する。`source`した環境変数を後続の全コマンドへ引き継ぐため、途中で別shellを開かない:
 
    ```bash
    cd ~/work/legacy/00-Ghost-5.116.2   # clone したこのリポジトリのルート（この場所は開発機の例）
    nvm use 20.19.0
    yarn
    git submodule update --init   # テーマ（Casper / Source）
+   source ../02-ghost-compose/env-dev.sh
    yarn build
    yarn knex-migrator init       # 空の ghost_db にテーブルを作る
+   yarn dev                      # http://localhost:2368 、管理画面は /ghost/
    ```
 
-3. 設定と env:
-   - 開発の設定 `ghost/core/core/shared/config/env/config.development.json` は **git に入っていない**（`.gitignore`）。
-     引き継ぎ元から受け取る。
-   - S3 は `storage__s3__*`（`__` 区切り）の env で渡す。`02-ghost-compose/env-dev.sh` を `source` してから起動する。
-     画像のプレフィックスは開発用にする（本番のプレフィックスにしない）。
-4. 起動: `yarn dev`（http://localhost:2368 、管理画面は `/ghost/`）。Ghost 本体だけなら `yarn dev:ghost`。
-5. テスト:
+   Ghost本体だけを起動するときは、同じ準備をしたshellで`yarn dev:ghost`を使います。
+
+4. テスト:
 
    ```bash
    yarn test:unit                     # ルート（nx）。全パッケージ
