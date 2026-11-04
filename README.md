@@ -18,6 +18,65 @@
 | [詳しい文書](#詳しい文書) | 01-ghost-front の docs と、このリポジトリの docs |
 | [ライセンス](#ライセンス) | 上流の著作権表示 |
 
+## 取得と初回セットアップ
+
+backendは`aidabo/Ghost`のforkです。作業フォルダはfrontendと同じworkspace直下の
+`00-Ghost-5.116.2`を使います。
+
+```bash
+mkdir -p ~/work/legacy
+cd ~/work/legacy
+git clone git@github.com:aidabo/Ghost.git 00-Ghost-5.116.2
+cd 00-Ghost-5.116.2
+git fetch origin main
+git switch main
+git pull --ff-only origin main
+```
+
+既にclone済みの場合は、作業中の変更を確認してから`main`を更新します。
+未コミット変更を残したままpullやbranch切替を行わないでください。
+
+### Node.js・依存・submodule
+
+現在の開発基準はNode.js `20.19.0`です。Yarnの版はこのrepositoryのlockfileと
+Ghostの開発手順に合わせます。
+
+```bash
+nvm install 20.19.0
+nvm use 20.19.0
+node --version                 # v20.19.0
+yarn --version
+git submodule update --init --recursive
+yarn install
+```
+
+S3 adapterを使うlocal構成では、`ghost/core/content/adapters`が
+`07-ghost-content`を指すsymlinkであることも確認します。必要な共通repositoryの配置は
+frontendの[workspace手順](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/01-workspace.md)を参照してください。
+
+### buildとlocal起動
+
+```bash
+cd ~/work/legacy/00-Ghost-5.116.2
+yarn build
+yarn knex-migrator init
+yarn dev
+```
+
+Ghostは`http://localhost:2368`、管理画面は`http://localhost:2368/ghost/`です。
+開発用MySQL/Redis、`config.development.json`、S3環境変数は
+`02-ghost-compose`とfrontendの引継ぎ資料に従って設定します。設定ファイルや鍵は
+repositoryへcommitしません。
+
+buildや起動で問題が出た場合は、先に次を確認します。
+
+```bash
+git status -sb
+test -f ghost/core/package.json
+test -e ghost/core/content/adapters
+yarn build
+```
+
 ## 役割と位置
 
 ```mermaid
