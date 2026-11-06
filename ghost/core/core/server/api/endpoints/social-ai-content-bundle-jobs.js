@@ -169,7 +169,7 @@ const controller = {
     browse: {
         // Without this list the api-framework Frame drops every query param,
         // so ?project_id= / ?status= / ?limit= below would never apply.
-        options: ['project_id', 'status', 'limit'],
+        options: ['project_id', 'status', 'limit', 'page'],
         permissions: false,
         async query(frame) {
             const actor = currentUser(frame);
@@ -190,13 +190,28 @@ const controller = {
             }
             if (options.project_id) query.where('project_id', options.project_id);
             if (options.status) query.where('status', options.status);
-            const rows = await query.limit(browseLimit(options.limit));
+            const limit = browseLimit(options.limit);
+            const page = Math.max(1, Math.floor(Number(options.page)) || 1);
+            // total counts every matching job (same scope and filters), not just this page
+            const counted = await query.clone().clearSelect().clearOrder().count({count: '*'}).first();
+            const total = Number(counted?.count || 0);
+            const pages = Math.max(1, Math.ceil(total / limit));
+            const rows = await query.limit(limit).offset((page - 1) * limit);
             // The api-framework maps `data` onto the docName key and passes `meta`
             // through ({socialaicontentbundlejobs: [...], meta}). A bare array
             // would be wrapped once more and nest the list one level deeper.
             return {
                 data: rows.map(serialize),
-                meta: {pagination: {page: 1, limit: browseLimit(options.limit), pages: 1, total: rows.length, next: null, prev: null}}
+                meta: {
+                    pagination: {
+                        page,
+                        limit,
+                        pages,
+                        total,
+                        next: page < pages ? page + 1 : null,
+                        prev: page > 1 ? page - 1 : null
+                    }
+                }
             };
         }
     },
