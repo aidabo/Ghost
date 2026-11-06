@@ -183,6 +183,46 @@ describe('Content bundle jobs: worker integration and owner checks', function ()
         });
     });
 
+    describe('browse filters', function () {
+        const PROJECT = 'p-mine';
+        const ids = rows => rows.map(row => row.id).sort();
+
+        beforeEach(async function () {
+            await database(TABLE).where({id: JOB}).update({project_id: PROJECT, status: 'completed'});
+            await database(TABLE).where({id: OTHER_JOB}).update({project_id: PROJECT});
+            await database(TABLE).insert([
+                {id: '111111111111111111111111', type: 'content-bundle', status: 'failed', progress: 0, user_id: OWNER, project_id: PROJECT, updated_at: 'y'},
+                {id: '222222222222222222222222', type: 'content-bundle', status: 'completed', progress: 0, user_id: OWNER, project_id: 'p-else', updated_at: 'z'}
+            ]);
+        });
+
+        it('declares project_id, status and limit so the Frame keeps them from the query string', function () {
+            assert.deepEqual(endpoint.browse.options, ['project_id', 'status', 'limit']);
+            const {Frame} = require('@tryghost/api-framework');
+            const frame = new Frame({
+                options: {context: {user: OWNER}},
+                query: {project_id: PROJECT, status: 'failed', limit: '5', other: 'dropped'}
+            });
+            frame.configure({options: endpoint.browse.options});
+            assert.equal(frame.options.project_id, PROJECT);
+            assert.equal(frame.options.status, 'failed');
+            assert.equal(frame.options.limit, '5');
+            assert.equal(frame.options.other, undefined);
+        });
+
+        it('narrows to one project, still only the caller\'s jobs', async function () {
+            const rows = await endpoint.browse.query(staffFrame(OWNER, {project_id: PROJECT}));
+            assert.deepEqual(ids(rows), ['111111111111111111111111', JOB]);
+        });
+
+        it('narrows by status and honours limit (capped at 200)', async function () {
+            const failed = await endpoint.browse.query(staffFrame(OWNER, {project_id: PROJECT, status: 'failed'}));
+            assert.deepEqual(ids(failed), ['111111111111111111111111']);
+            const one = await endpoint.browse.query(staffFrame(OWNER, {limit: '1'}));
+            assert.equal(one.length, 1);
+        });
+    });
+
     describe('link-assets owner path', function () {
         const link = (frame, assets) => endpoint.linkAssets.query({...frame, data: {assets}});
 

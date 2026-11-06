@@ -148,6 +148,9 @@ const assertOwnerCanLinkAssets = async ({frame, row, assets, store}) => {
 const controller = {
     docName: 'socialaicontentbundlejobs',
     browse: {
+        // Without this list the api-framework Frame drops every query param,
+        // so ?project_id= / ?status= / ?limit= below would never apply.
+        options: ['project_id', 'status', 'limit'],
         permissions: false,
         async query(frame) {
             const actor = currentUser(frame);
