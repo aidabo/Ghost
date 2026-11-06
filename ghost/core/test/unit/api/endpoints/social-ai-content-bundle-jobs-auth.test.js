@@ -178,13 +178,14 @@ describe('Content bundle jobs: worker integration and owner checks', function ()
         });
 
         it('browse lists only the staff token user\'s jobs', async function () {
-            const rows = await endpoint.browse.query(staffFrame(OWNER));
-            assert.deepEqual(rows.map(row => row.id), [JOB]);
+            const {data} = await endpoint.browse.query(staffFrame(OWNER));
+            assert.deepEqual(data.map(row => row.id), [JOB]);
         });
     });
 
     describe('browse filters', function () {
         const PROJECT = 'p-mine';
+        const browse = async options => (await endpoint.browse.query(staffFrame(OWNER, options))).data;
         const ids = rows => rows.map(row => row.id).sort();
 
         beforeEach(async function () {
@@ -197,7 +198,7 @@ describe('Content bundle jobs: worker integration and owner checks', function ()
         });
 
         it('declares project_id, status and limit so the Frame keeps them from the query string', function () {
-            assert.deepEqual(endpoint.browse.options, ['project_id', 'status', 'limit']);
+            assert.deepEqual([...endpoint.browse.options].sort(), ['limit', 'project_id', 'status']);
             const {Frame} = require('@tryghost/api-framework');
             const frame = new Frame({
                 options: {context: {user: OWNER}},
@@ -211,15 +212,40 @@ describe('Content bundle jobs: worker integration and owner checks', function ()
         });
 
         it('narrows to one project, still only the caller\'s jobs', async function () {
-            const rows = await endpoint.browse.query(staffFrame(OWNER, {project_id: PROJECT}));
-            assert.deepEqual(ids(rows), ['111111111111111111111111', JOB]);
+            assert.deepEqual(ids(await browse({project_id: PROJECT})), ['111111111111111111111111', JOB]);
         });
 
-        it('narrows by status and honours limit (capped at 200)', async function () {
-            const failed = await endpoint.browse.query(staffFrame(OWNER, {project_id: PROJECT, status: 'failed'}));
-            assert.deepEqual(ids(failed), ['111111111111111111111111']);
-            const one = await endpoint.browse.query(staffFrame(OWNER, {limit: '1'}));
-            assert.equal(one.length, 1);
+        it('narrows by status', async function () {
+            assert.deepEqual(ids(await browse({project_id: PROJECT, status: 'failed'})), ['111111111111111111111111']);
+        });
+
+        it('returns {data, meta} so the reply is not nested one level deeper', async function () {
+            const result = await endpoint.browse.query(staffFrame(OWNER, {limit: '2'}));
+            assert.ok(Array.isArray(result.data));
+            assert.ok(result.data.every(row => !Array.isArray(row) && row.id));
+            assert.equal(result.meta.pagination.limit, 2);
+            const serializer = require('../../../../core/server/api/endpoints/utils/serializers/output/default');
+            const frame = {options: {}};
+            serializer.all(result, {docName: 'socialaicontentbundlejobs', method: 'browse'}, frame);
+            assert.equal(frame.response.socialaicontentbundlejobs.length, 2);
+            assert.ok(!Array.isArray(frame.response.socialaicontentbundlejobs[0]));
+        });
+
+        it('keeps limit within 1..200 whatever the query says', async function () {
+            const many = Array.from({length: 205}, (_, i) => ({
+                id: `9${String(i).padStart(23, '0')}`, type: 'content-bundle', status: 'queued', progress: 0, user_id: OWNER, updated_at: 'w'
+            }));
+            for (let i = 0; i < many.length; i += 50) {
+                await database(TABLE).insert(many.slice(i, i + 50));
+            }
+            const count = async limit => (await browse(limit === undefined ? {} : {limit})).length;
+            assert.equal(await count('1'), 1);
+            assert.equal(await count(undefined), 50);
+            assert.equal(await count('0'), 50);
+            assert.equal(await count('5x'), 50);
+            assert.equal(await count('-1'), 1);
+            assert.equal(await count('1000'), 200);
+            assert.equal(await count('all'), 200);
         });
     });
 
