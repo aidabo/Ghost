@@ -145,9 +145,31 @@ const assertOwnerCanLinkAssets = async ({frame, row, assets, store}) => {
     }
 };
 
+const BROWSE_LIMIT_DEFAULT = 50;
+const BROWSE_LIMIT_MAX = 200;
+
+/**
+ * 1..200. Missing, 0 or not a number (`5x`) → 50; `all` → 200; negative → 1.
+ * The shared input validator lets `all` and `5x` through, so never hand the
+ * raw value (or NaN / a negative number, which SQLite treats as no limit) to knex.
+ */
+const browseLimit = (value) => {
+    if (String(value).trim().toLowerCase() === 'all') {
+        return BROWSE_LIMIT_MAX;
+    }
+    const n = Math.floor(Number(value));
+    if (!Number.isFinite(n) || n === 0) {
+        return BROWSE_LIMIT_DEFAULT;
+    }
+    return Math.min(BROWSE_LIMIT_MAX, Math.max(1, n));
+};
+
 const controller = {
     docName: 'socialaicontentbundlejobs',
     browse: {
+        // Without this list the api-framework Frame drops every query param,
+        // so ?project_id= / ?status= / ?limit= below would never apply.
+        options: ['project_id', 'status', 'limit', 'page'],
         permissions: false,
         async query(frame) {
             const actor = currentUser(frame);
@@ -168,8 +190,29 @@ const controller = {
             }
             if (options.project_id) query.where('project_id', options.project_id);
             if (options.status) query.where('status', options.status);
-            const rows = await query.limit(Math.min(200, Number(options.limit || 50)));
-            return rows.map(serialize);
+            const limit = browseLimit(options.limit);
+            const page = Math.max(1, Math.floor(Number(options.page)) || 1);
+            // total counts every matching job (same scope and filters), not just this page
+            const counted = await query.clone().clearSelect().clearOrder().count({count: '*'}).first();
+            const total = Number(counted?.count || 0);
+            const pages = Math.max(1, Math.ceil(total / limit));
+            const rows = await query.limit(limit).offset((page - 1) * limit);
+            // The api-framework maps `data` onto the docName key and passes `meta`
+            // through ({socialaicontentbundlejobs: [...], meta}). A bare array
+            // would be wrapped once more and nest the list one level deeper.
+            return {
+                data: rows.map(serialize),
+                meta: {
+                    pagination: {
+                        page,
+                        limit,
+                        pages,
+                        total,
+                        next: page < pages ? page + 1 : null,
+                        prev: page > 1 ? page - 1 : null
+                    }
+                }
+            };
         }
     },
     read: {

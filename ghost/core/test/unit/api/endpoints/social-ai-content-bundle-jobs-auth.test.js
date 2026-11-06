@@ -178,8 +178,95 @@ describe('Content bundle jobs: worker integration and owner checks', function ()
         });
 
         it('browse lists only the staff token user\'s jobs', async function () {
-            const rows = await endpoint.browse.query(staffFrame(OWNER));
-            assert.deepEqual(rows.map(row => row.id), [JOB]);
+            const {data} = await endpoint.browse.query(staffFrame(OWNER));
+            assert.deepEqual(data.map(row => row.id), [JOB]);
+        });
+    });
+
+    describe('browse filters', function () {
+        const PROJECT = 'p-mine';
+        const browse = async options => (await endpoint.browse.query(staffFrame(OWNER, options))).data;
+        const ids = rows => rows.map(row => row.id).sort();
+
+        beforeEach(async function () {
+            await database(TABLE).where({id: JOB}).update({project_id: PROJECT, status: 'completed'});
+            await database(TABLE).where({id: OTHER_JOB}).update({project_id: PROJECT});
+            await database(TABLE).insert([
+                {id: '111111111111111111111111', type: 'content-bundle', status: 'failed', progress: 0, user_id: OWNER, project_id: PROJECT, updated_at: 'y'},
+                {id: '222222222222222222222222', type: 'content-bundle', status: 'completed', progress: 0, user_id: OWNER, project_id: 'p-else', updated_at: 'z'}
+            ]);
+        });
+
+        it('declares project_id, status and limit so the Frame keeps them from the query string', function () {
+            assert.deepEqual([...endpoint.browse.options].sort(), ['limit', 'page', 'project_id', 'status']);
+            const {Frame} = require('@tryghost/api-framework');
+            const frame = new Frame({
+                options: {context: {user: OWNER}},
+                query: {project_id: PROJECT, status: 'failed', limit: '5', other: 'dropped'}
+            });
+            frame.configure({options: endpoint.browse.options});
+            assert.equal(frame.options.project_id, PROJECT);
+            assert.equal(frame.options.status, 'failed');
+            assert.equal(frame.options.limit, '5');
+            assert.equal(frame.options.other, undefined);
+        });
+
+        it('narrows to one project, still only the caller\'s jobs', async function () {
+            assert.deepEqual(ids(await browse({project_id: PROJECT})), ['111111111111111111111111', JOB]);
+        });
+
+        it('narrows by status', async function () {
+            assert.deepEqual(ids(await browse({project_id: PROJECT, status: 'failed'})), ['111111111111111111111111']);
+        });
+
+        it('returns {data, meta} so the reply is not nested one level deeper', async function () {
+            const result = await endpoint.browse.query(staffFrame(OWNER, {limit: '2'}));
+            assert.ok(Array.isArray(result.data));
+            assert.ok(result.data.every(row => !Array.isArray(row) && row.id));
+            assert.equal(result.meta.pagination.limit, 2);
+            // the caller has 3 jobs here (its own JOB + the two added above): pages of two
+            assert.deepEqual(result.meta.pagination, {page: 1, limit: 2, pages: 2, total: 3, next: 2, prev: null});
+            const serializer = require('../../../../core/server/api/endpoints/utils/serializers/output/default');
+            const frame = {options: {}};
+            serializer.all(result, {docName: 'socialaicontentbundlejobs', method: 'browse'}, frame);
+            assert.equal(frame.response.socialaicontentbundlejobs.length, 2);
+            assert.ok(!Array.isArray(frame.response.socialaicontentbundlejobs[0]));
+        });
+
+        it('keeps limit within 1..200 whatever the query says', async function () {
+            const many = Array.from({length: 205}, (_, i) => ({
+                id: `9${String(i).padStart(23, '0')}`, type: 'content-bundle', status: 'queued', progress: 0, user_id: OWNER, updated_at: 'w'
+            }));
+            for (let i = 0; i < many.length; i += 50) {
+                await database(TABLE).insert(many.slice(i, i + 50));
+            }
+            const count = async limit => (await browse(limit === undefined ? {} : {limit})).length;
+            assert.equal(await count('1'), 1);
+            assert.equal(await count(undefined), 50);
+            assert.equal(await count('0'), 50);
+            assert.equal(await count('5x'), 50);
+            assert.equal(await count('-1'), 1);
+            assert.equal(await count('1000'), 200);
+            assert.equal(await count('all'), 200);
+        });
+
+        it('tells the real total past the 200 cap and reads the next page', async function () {
+            const many = Array.from({length: 205}, (_, i) => ({
+                id: `8${String(i).padStart(23, '0')}`, type: 'content-bundle', status: 'queued', progress: 0, user_id: OWNER, project_id: 'p-big', updated_at: 'v'
+            }));
+            for (let i = 0; i < many.length; i += 50) {
+                await database(TABLE).insert(many.slice(i, i + 50));
+            }
+            await database(TABLE).insert({id: '7'.repeat(24), type: 'content-bundle', status: 'queued', progress: 0, user_id: OTHER, project_id: 'p-big', updated_at: 'v'});
+            const first = await endpoint.browse.query(staffFrame(OWNER, {project_id: 'p-big', limit: 'all'}));
+            assert.equal(first.data.length, 200);
+            assert.deepEqual(first.meta.pagination, {page: 1, limit: 200, pages: 2, total: 205, next: 2, prev: null});
+            const second = await endpoint.browse.query(staffFrame(OWNER, {project_id: 'p-big', limit: 'all', page: '2'}));
+            assert.equal(second.data.length, 5);
+            assert.deepEqual(second.meta.pagination, {page: 2, limit: 200, pages: 2, total: 205, next: null, prev: 1});
+            // pages never overlap
+            const seen = new Set([...first.data, ...second.data].map(row => row.id));
+            assert.equal(seen.size, 205);
         });
     });
 
