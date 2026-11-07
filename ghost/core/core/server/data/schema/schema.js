@@ -1800,9 +1800,10 @@ module.exports = {
         source_updated_at: {type: 'dateTime', nullable: true},
         indexed_at: {type: 'dateTime', nullable: false},
         // The sort/filter composites (price×area, rent×area, area×price,
-        // age×price, featured) are NOT declared here because they are created
-        // in migrations/hooks/init/after.js with explicit short names. Keep
-        // the schema and hook definitions in sync.
+        // age×price, featured) remain in migrations/hooks/init/after.js because
+        // their short names and repair behavior are mirrored by existing
+        // migrations and verification logic. Moving them requires a coordinated
+        // migration change.
         '@@INDEXES@@': [
             ['status', 'property_type'],
             ['city', 'ward']

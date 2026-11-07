@@ -11,8 +11,11 @@
 //
 // Why not in schema.js:
 // schema.js covers tables, plain/named indexes (@@INDEXES@@) and composite UNIQUE
-// constraints (@@UNIQUE_CONSTRAINTS@@), but it cannot express:
-//   - FULLTEXT at all, and
+// constraints (@@UNIQUE_CONSTRAINTS@@), but it cannot express FULLTEXT at all.
+// The estate composites remain in this hook because their short names and
+// repair behavior are mirrored by existing migrations and verification logic.
+// Moving them requires a coordinated migration change.
+//
 // Using the migrations' own short names here also keeps a fresh database
 // identical to a migrated one, which is what the tenant verification diffs.
 //

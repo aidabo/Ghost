@@ -69,6 +69,13 @@ function addTableColumn(tableName, tableBuilder, columnName, columnSpec = schema
     }
 }
 
+/**
+ * Normalizes a schema index declaration.
+ *
+ * Supported forms are `string[]` for the existing auto-named index and
+ * `[string[], string]` for a composite index with an explicit name. Explicit
+ * names keep MySQL identifiers below its 64-character limit.
+ */
 function normalizeIndexSpec(index) {
     if (Array.isArray(index[0]) && typeof index[1] === 'string') {
         return {columns: index[0], name: index[1]};
@@ -494,7 +501,11 @@ function createTable(table, transaction = db.knex, tableSpec = schema[table]) {
         if (tableSpec['@@INDEXES@@']) {
             tableSpec['@@INDEXES@@'].forEach((index) => {
                 const {columns, name} = normalizeIndexSpec(index);
-                name ? t.index(columns, name) : t.index(columns);
+                if (name) {
+                    t.index(columns, name);
+                } else {
+                    t.index(columns);
+                }
             });
         }
         if (tableSpec['@@UNIQUE_CONSTRAINTS@@']) {
