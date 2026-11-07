@@ -108,6 +108,15 @@ fi
 
 export GHOST_IMAGE_TAG="$VERSION"
 
+# 手で `docker compose down/up` を叩くときにも同じイメージタグが要る。
+# 配備は --env-file で一時ファイル（秘密を含む）を渡しているため、SSM で入った
+# 素のシェルには GHOST_IMAGE_TAG が無く、`${GHOST_IMAGE_TAG:?...}` で落ちる。
+# compose と同じディレクトリに「タグだけ」の .env を置き、手動操作でも同じタグを
+# 引けるようにする（秘密は書かない）。
+printf 'GHOST_IMAGE_TAG=%s\n' "$VERSION" > "$DIR/.env"
+chmod 0644 "$DIR/.env"
+echo "[INFO] wrote $DIR/.env (GHOST_IMAGE_TAG=$VERSION) for manual docker compose"
+
 # --- download the image --------------------------------------------------------
 # Always load from S3 by default: a tag can be rebuilt and re-uploaded with
 # VERSION=..., and a stale local image with the same tag would pass the tag check.
