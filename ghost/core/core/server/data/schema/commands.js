@@ -70,6 +70,21 @@ function addTableColumn(tableName, tableBuilder, columnName, columnSpec = schema
 }
 
 /**
+ * Normalizes a schema index declaration.
+ *
+ * Supported forms are `string[]` for the existing auto-named index and
+ * `[string[], string]` for a composite index with an explicit name. Explicit
+ * names keep MySQL identifiers below its 64-character limit.
+ */
+function normalizeIndexSpec(index) {
+    if (Array.isArray(index[0]) && typeof index[1] === 'string') {
+        return {columns: index[0], name: index[1]};
+    }
+
+    return {columns: index, name: undefined};
+}
+
+/**
  * @param {string} tableName
  * @param {string} column
  * @param {import('knex').Knex} [transaction]
@@ -485,12 +500,11 @@ function createTable(table, transaction = db.knex, tableSpec = schema[table]) {
 
         if (tableSpec['@@INDEXES@@']) {
             tableSpec['@@INDEXES@@'].forEach((index) => {
-                // A tuple of [columns, name] allows migrations to keep MySQL
-                // index identifiers below its 64-character limit.
-                if (Array.isArray(index[0]) && typeof index[1] === 'string') {
-                    t.index(index[0], index[1]);
+                const {columns, name} = normalizeIndexSpec(index);
+                if (name) {
+                    t.index(columns, name);
                 } else {
-                    t.index(index);
+                    t.index(columns);
                 }
             });
         }
@@ -592,6 +606,7 @@ function createColumnMigration(...migrations) {
 
 module.exports = {
     createTable,
+    normalizeIndexSpec,
     deleteTable,
     getTables,
     getIndexes,

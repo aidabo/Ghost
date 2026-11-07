@@ -12,6 +12,7 @@ const generateEvents = require('../../../../../core/server/data/seeders/utils/ev
 const DataGenerator = require('../../../../../core/server/data/seeders/DataGenerator');
 
 const schema = require('../../../../../core/server/data/schema');
+const {normalizeIndexSpec} = require('../../../../../core/server/data/schema/commands');
 
 const schemaTables = schema.tables;
 
@@ -39,7 +40,8 @@ describe('Data Generator', function () {
                         break;
                     } else if (rowName === '@@INDEXES@@') {
                         for (const indexes of row) {
-                            table.index(indexes);
+                            const {columns, name} = normalizeIndexSpec(indexes);
+                            table.index(columns, name);
                         }
                         break;
                     }

@@ -1800,12 +1800,10 @@ module.exports = {
         source_updated_at: {type: 'dateTime', nullable: true},
         indexed_at: {type: 'dateTime', nullable: false},
         // The sort/filter composites (price×area, rent×area, area×price,
-        // age×price, featured) are NOT declared here: MySQL caps identifiers at
-        // 64 characters and commands.js only supports the auto-generated
-        // `<table>_<cols>_index` name, which for these would be 68-76 chars and
-        // fail with ER_TOO_LONG_IDENT. They are created in
-        // migrations/hooks/init/after.js under the same short names the
-        // migrations use. Keep the two in sync.
+        // age×price, featured) remain in migrations/hooks/init/after.js because
+        // their short names and repair behavior are mirrored by existing
+        // migrations and verification logic. Moving them requires a coordinated
+        // migration change.
         '@@INDEXES@@': [
             ['status', 'property_type'],
             ['city', 'ward']
