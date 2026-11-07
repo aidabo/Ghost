@@ -69,6 +69,14 @@ function addTableColumn(tableName, tableBuilder, columnName, columnSpec = schema
     }
 }
 
+function normalizeIndexSpec(index) {
+    if (Array.isArray(index[0]) && typeof index[1] === 'string') {
+        return {columns: index[0], name: index[1]};
+    }
+
+    return {columns: index, name: undefined};
+}
+
 /**
  * @param {string} tableName
  * @param {string} column
@@ -485,13 +493,8 @@ function createTable(table, transaction = db.knex, tableSpec = schema[table]) {
 
         if (tableSpec['@@INDEXES@@']) {
             tableSpec['@@INDEXES@@'].forEach((index) => {
-                // A tuple of [columns, name] allows migrations to keep MySQL
-                // index identifiers below its 64-character limit.
-                if (Array.isArray(index[0]) && typeof index[1] === 'string') {
-                    t.index(index[0], index[1]);
-                } else {
-                    t.index(index);
-                }
+                const {columns, name} = normalizeIndexSpec(index);
+                name ? t.index(columns, name) : t.index(columns);
             });
         }
         if (tableSpec['@@UNIQUE_CONSTRAINTS@@']) {
@@ -592,6 +595,7 @@ function createColumnMigration(...migrations) {
 
 module.exports = {
     createTable,
+    normalizeIndexSpec,
     deleteTable,
     getTables,
     getIndexes,

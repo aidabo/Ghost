@@ -10,13 +10,9 @@
 // database every time, so it hit this immediately.
 //
 // Why not in schema.js:
-// schema.js covers tables, plain indexes (@@INDEXES@@) and composite UNIQUE
+// schema.js covers tables, plain/named indexes (@@INDEXES@@) and composite UNIQUE
 // constraints (@@UNIQUE_CONSTRAINTS@@), but it cannot express:
 //   - FULLTEXT at all, and
-//   - an explicit index name — commands.js does a bare `t.index(columns)`, so
-//     knex auto-generates `<table>_<cols joined by _>_index`. For the estate
-//     composites that name is 68-76 characters, and MySQL caps identifiers at
-//     64, so CREATE TABLE would fail with ER_TOO_LONG_IDENT.
 // Using the migrations' own short names here also keeps a fresh database
 // identical to a migrated one, which is what the tenant verification diffs.
 //
