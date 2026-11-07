@@ -14,7 +14,7 @@ module.exports = addTable('social_ai_avatar_broadcast_selections', {
     created_at: {type: 'dateTime', nullable: false},
     updated_at: {type: 'dateTime', nullable: false},
     '@@INDEXES@@': [
-        ['project_id', 'updated_at'],
+        [['project_id', 'updated_at'], 'avatar_broadcast_sel_project_updated_idx'],
         ['media_id']
     ]
 });
