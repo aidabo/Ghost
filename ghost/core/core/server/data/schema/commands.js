@@ -484,7 +484,15 @@ function createTable(table, transaction = db.knex, tableSpec = schema[table]) {
             .forEach(column => addTableColumn(table, t, column, tableSpec[column]));
 
         if (tableSpec['@@INDEXES@@']) {
-            tableSpec['@@INDEXES@@'].forEach(index => t.index(index));
+            tableSpec['@@INDEXES@@'].forEach((index) => {
+                // A tuple of [columns, name] allows migrations to keep MySQL
+                // index identifiers below its 64-character limit.
+                if (Array.isArray(index[0]) && typeof index[1] === 'string') {
+                    t.index(index[0], index[1]);
+                } else {
+                    t.index(index);
+                }
+            });
         }
         if (tableSpec['@@UNIQUE_CONSTRAINTS@@']) {
             tableSpec['@@UNIQUE_CONSTRAINTS@@'].forEach(unique => t.unique(unique));
