@@ -201,9 +201,9 @@ for (const tenant of tenants) {
     log(`[deploy] ${tenant} version=${version} (${source}) artifact=ghost-${version}.tar.gz instance=${instanceId}`);
     // The script is stored next to the compose file (same layout as the
     // frontend / worker deploys) and /usr/local/sbin is only a symlink.
-    // It stays root-owned 0755 so the file root executes cannot be edited by
-    // the deploy user; ubuntu can still read/execute it (and already has
-    // passwordless sudo on these hosts, so the privilege boundary is unchanged).
+    // Root ownership is explicitness, not a privilege boundary: the workdir is
+    // writable by the deploy user, and ubuntu already has passwordless sudo on
+    // these hosts. ubuntu can still read/execute the script.
     const scriptPath = path.posix.join(workdir, "deploy-backend-on-ec2.sh");
     const ok = runCommand(instanceId, [
       "#!/bin/bash",
@@ -227,7 +227,7 @@ for (const tenant of tenants) {
       'ls -la "$LINK" "$SCRIPT"',
       // root-owned log dir; ubuntu (manual) falls back to ./logs inside the script
       'install -d -o root -g root -m 0750 /var/log/ghost-deploy 2>/dev/null || true',
-      `TENANT=${shq(tenant)} VERSION=${shq(version)} SSM_PARAM=${shq(ssmParam)} bash "$SCRIPT" ${shq(version)}`,
+      `DEPLOY_USER=${shq(deployUser)} TENANT=${shq(tenant)} VERSION=${shq(version)} SSM_PARAM=${shq(ssmParam)} bash "$SCRIPT" ${shq(version)}`,
       "",
     ], `deploy-${tenant}`);
     if (!ok) {

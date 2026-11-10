@@ -150,7 +150,10 @@ write_tag_env() {
     echo "[FATAL] $DIR/.env is a symlink; refusing to write" >&2
     return 1
   fi
+  # 失敗して途中で抜けても .env.tmp を残さない。
+  rm -f "$DIR/.env.tmp"
   if ! printf 'GHOST_IMAGE_TAG=%s\n' "$VERSION" > "$DIR/.env.tmp"; then
+    rm -f "$DIR/.env.tmp"
     echo "[FATAL] cannot write $DIR/.env (owner: $(ls -ld "$DIR" | awk '{print $3}'))" >&2
     return 1
   fi
