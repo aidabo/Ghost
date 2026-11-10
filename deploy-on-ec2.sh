@@ -150,19 +150,24 @@ write_tag_env() {
     echo "[FATAL] $DIR/.env is a symlink; refusing to write" >&2
     return 1
   fi
-  # 失敗して途中で抜けても .env.tmp を残さない。
-  rm -f "$DIR/.env.tmp"
-  if ! printf 'GHOST_IMAGE_TAG=%s\n' "$VERSION" > "$DIR/.env.tmp"; then
-    rm -f "$DIR/.env.tmp"
+  # 固定名だと、deploy user が先に symlink を置いて root に任意ファイルを書かせられる。
+  # mktemp は O_EXCL で作るので、置かれた symlink をたどらない。
+  TMP="$(mktemp "$DIR/.env.tmp.XXXXXX")" || {
+    echo "[FATAL] cannot create a temp file in $DIR" >&2
+    return 1
+  }
+  if ! printf 'GHOST_IMAGE_TAG=%s\n' "$VERSION" > "$TMP"; then
+    rm -f "$TMP"
     echo "[FATAL] cannot write $DIR/.env (owner: $(ls -ld "$DIR" | awk '{print $3}'))" >&2
     return 1
   fi
-  chmod 0644 "$DIR/.env.tmp"
+  chmod 0644 "$TMP"
   # root（SSM）で配備したあとでも ubuntu の手動実行が .env を書けるようにする。
-  chown "${DEPLOY_USER:-ubuntu}:${DEPLOY_USER:-ubuntu}" "$DIR/.env.tmp" 2>/dev/null || true
+  chown "${DEPLOY_USER:-ubuntu}:${DEPLOY_USER:-ubuntu}" "$TMP" 2>/dev/null || true
   # この script は set -e ではないので、mv の失敗を自分で拾って後片付けする。
-  if ! mv -f "$DIR/.env.tmp" "$DIR/.env"; then
-    rm -f "$DIR/.env.tmp"
+  # rename は directory entry を置き換えるので、置かれた symlink をたどらない。
+  if ! mv -f "$TMP" "$DIR/.env"; then
+    rm -f "$TMP"
     echo "[FATAL] cannot replace $DIR/.env (owner: $(ls -ld "$DIR" | awk '{print $3}'))" >&2
     return 1
   fi
