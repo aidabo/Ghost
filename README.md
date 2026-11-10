@@ -290,9 +290,20 @@ yarn knex-migrator migrate   # 手元の DB に当てる。そのあと Ghost �
   - `yarn deploy:go` … 配布だけ（S3 の tar を EC2 で `docker load`）
   - `yarn deploy:verify` … 確認だけ（read-only）
   - 旧名 `deploy:backend` / `deploy:backend:build-upload` / `deploy:backend:distribute` /
-    `deploy:backend:verify` も同じものを指す（互換のため残す）
+    `deploy:backend:verify` も同じものを指す（互換のため残す。不要になったら削除する）
   - thinkestate は `--tenant thinkestate` を足す（例 `yarn deploy:go --tenant thinkestate`）。
     既定は 60-think だけ。両方なら `--tenant all`。
+  - **以前の `yarn deploy`（= `bash deploy.sh`、build + upload だけ）は、今の
+    `yarn deploy:build:up`。** 配布まで進むので、実行前に `yarn deploy --dry-run` で
+    何が起きるかを確認できる。配布は `[y/N]` で一度止まる（非対話は `--yes` が必要）。
+  - 実行例:
+    ```bash
+    yarn deploy --dry-run                    # 計画だけ（AWS を呼ばない）
+    yarn deploy:build:up                     # build + upload（配布しない）
+    yarn deploy:go --tenant all              # 両テナントへ配布
+    yarn deploy:go --version <tag>           # tag を明示して配布（rollback など）
+    yarn deploy --tenant thinkestate --yes   # 非対話で all
+    ```
   - 先に本番用の Admin のビルド（`yarn build`）が要る。`yarn dev` のあとの Admin のままだと `deploy.sh` が止まる
     （[docs/operations-docker-admin-build.md](docs/operations-docker-admin-build.md)）。
 - 本番のホストでは `deploy-on-ec2.sh <VERSION>` が、その tar を `docker load` して compose を起動し直す。
