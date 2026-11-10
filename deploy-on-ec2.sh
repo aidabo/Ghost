@@ -55,7 +55,8 @@ fi
 if [ -z "${VERSION:-}" ] && [ -f "$DIR/.env" ]; then
   # 手動実行の既定は「いま動いている tag」。deploy.version はビルド時の控えで
   # 古いことがあるため、配備のたびにこの script が書く .env を先に見る。
-  VERSION="$(grep -E '^GHOST_IMAGE_TAG=' "$DIR/.env" | head -n1 | cut -d= -f2- || true)"
+  # .env の行は `export KEY=VALUE`（source できる形）。export の有無どちらも読む。
+  VERSION="$(grep -E '^(export[[:space:]]+)?GHOST_IMAGE_TAG=' "$DIR/.env" | head -n1 | sed -E 's/^(export[[:space:]]+)?[^=]*=//' || true)"
   if [ -n "${VERSION:-}" ]; then
     VERSION_SOURCE="$DIR/.env"
     echo "[INFO] VERSION from $DIR/.env: $VERSION"
@@ -167,7 +168,7 @@ write_tag_env() {
   chown "${DEPLOY_USER:-ubuntu}:${DEPLOY_USER:-ubuntu}" "$TMP" 2>/dev/null || true
   # この script は set -e ではないので、mv の失敗を自分で拾って後片付けする。
   # rename は directory entry を置き換えるので、置かれた symlink をたどらない。
-  if ! mv -f "$TMP" "$DIR/.env"; then
+  if ! mv -fT "$TMP" "$DIR/.env"; then
     rm -f "$TMP"
     echo "[FATAL] cannot replace $DIR/.env (owner: $(ls -ld "$DIR" | awk '{print $3}'))" >&2
     return 1

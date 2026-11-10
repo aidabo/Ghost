@@ -213,6 +213,7 @@ for (const tenant of tenants) {
       `export DEPLOY_USER=${shq(deployUser)}`,
       "LINK=/usr/local/sbin/deploy-backend-on-ec2.sh",
       "ts=$(date +%Y%m%dT%H%M%S)",
+      '[ -L .backup ] && { echo "[FATAL] .backup is a symlink; refusing" >&2; exit 1; }',
       'mkdir -p .backup',
       // The workdir is writable by the deploy user, so a fixed name (SCRIPT.new)
       // could be pre-planted as a symlink and make root overwrite any file.
@@ -227,10 +228,10 @@ for (const tenant of tenants) {
       `echo ${shq(scriptB64)} | base64 -d > "$STAGE/deploy-backend-on-ec2.sh"`,
       'chmod 0755 "$STAGE/deploy-backend-on-ec2.sh"',
       'chown root:root "$STAGE/deploy-backend-on-ec2.sh"',
-      'mv -f "$STAGE/deploy-backend-on-ec2.sh" "$SCRIPT"',
+      'mv -fT "$STAGE/deploy-backend-on-ec2.sh" "$SCRIPT"',
       'chown -h root:root "$SCRIPT" 2>/dev/null || true',
-      'if [ -f "$STAGE/script.prev" ]; then mv -f "$STAGE/script.prev" ".backup/deploy-backend-on-ec2.sh.$ts"; chown root:root ".backup/deploy-backend-on-ec2.sh.$ts"; fi',
-      'if [ -f "$STAGE/sbin.prev" ]; then mv -f "$STAGE/sbin.prev" ".backup/sbin-deploy-backend-on-ec2.sh.$ts"; chown root:root ".backup/sbin-deploy-backend-on-ec2.sh.$ts"; fi',
+      'if [ -f "$STAGE/script.prev" ]; then mv -fT "$STAGE/script.prev" ".backup/deploy-backend-on-ec2.sh.$ts"; chown -h root:root ".backup/deploy-backend-on-ec2.sh.$ts"; fi',
+      'if [ -f "$STAGE/sbin.prev" ]; then mv -fT "$STAGE/sbin.prev" ".backup/sbin-deploy-backend-on-ec2.sh.$ts"; chown -h root:root ".backup/sbin-deploy-backend-on-ec2.sh.$ts"; fi',
       'ln -sfn "$SCRIPT" "$LINK"',
       'ls -la "$LINK" "$SCRIPT"',
       // root-owned log dir; ubuntu (manual) falls back to ./logs inside the script
