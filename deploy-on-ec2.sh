@@ -38,13 +38,17 @@ DIR="$(cd "$(dirname "$SELF")" && pwd)"
 cd "$DIR"
 
 # --- version resolution -------------------------------------------------------
+# どの出どころの値かは失敗時に効くので、最後まで持ち回る。
+VERSION_SOURCE="${VERSION:+environment}"
 if [ -z "${VERSION:-}" ] && [ -n "${1:-}" ]; then
   VERSION="$1"
+  VERSION_SOURCE="argument"
 fi
 if [ -z "${VERSION:-}" ] && [ -n "$SSM_PARAM" ] && command -v aws >/dev/null 2>&1; then
   VERSION="$(aws ssm get-parameter --region "$AWS_REGION" --name "$SSM_PARAM" \
     --query Parameter.Value --output text 2>/dev/null || true)"
   if [ -n "${VERSION:-}" ]; then
+    VERSION_SOURCE="SSM $SSM_PARAM"
     echo "[INFO] VERSION from SSM $SSM_PARAM: $VERSION"
   fi
 fi
@@ -53,6 +57,7 @@ if [ -z "${VERSION:-}" ] && [ -f "$DIR/.env" ]; then
   # 古いことがあるため、配備のたびにこの script が書く .env を先に見る。
   VERSION="$(grep -E '^GHOST_IMAGE_TAG=' "$DIR/.env" | head -n1 | cut -d= -f2- || true)"
   if [ -n "${VERSION:-}" ]; then
+    VERSION_SOURCE="$DIR/.env"
     echo "[INFO] VERSION from $DIR/.env: $VERSION"
   fi
 fi
@@ -64,6 +69,7 @@ if [ -z "${VERSION:-}" ]; then
     VERSION="${VERSION#\"}"; VERSION="${VERSION%\"}"
     VERSION="${VERSION#\'}"; VERSION="${VERSION%\'}"
     if [ -n "$VERSION" ]; then
+      VERSION_SOURCE="$vf"
       echo "[WARN] VERSION from $vf (build-time note; can be stale): $VERSION" >&2
       break
     fi
@@ -78,7 +84,7 @@ fi
 # conservative tag alphabet.
 case "$VERSION" in
   ""|*[!A-Za-z0-9._-]*|[.-]*|*[.-])
-    echo "[ERROR] invalid VERSION: $VERSION" >&2
+    echo "[ERROR] invalid VERSION: $VERSION (from ${VERSION_SOURCE:-unknown})" >&2
     exit 1
     ;;
 esac
@@ -93,7 +99,7 @@ if ! { mkdir -p "$LOG_DIR" 2>/dev/null && [ -w "$LOG_DIR" ]; }; then
 fi
 LOG="$LOG_DIR/backend-$(date +%Y%m%dT%H%M%S%z).log"
 exec > >(tee -a "$LOG") 2>&1
-echo "[INFO] deploy start tenant=$TENANT version=$VERSION dir=$DIR log=$LOG"
+echo "[INFO] deploy start tenant=$TENANT version=$VERSION (from ${VERSION_SOURCE:-unknown}) dir=$DIR log=$LOG"
 
 # --- backend compose env ------------------------------------------------------
 # The backend compose file interpolates ${GHOST_MYSQL_*} / ${GHOST_S3_*} /
@@ -135,14 +141,25 @@ export GHOST_IMAGE_TAG="$VERSION"
 # 素のシェルには GHOST_IMAGE_TAG が無く、`${GHOST_IMAGE_TAG:?...}` で落ちる。
 # compose と同じディレクトリに「タグだけ」の .env を置き、手動操作でも同じタグを
 # 引けるようにする（秘密は書かない）。
-printf 'GHOST_IMAGE_TAG=%s\n' "$VERSION" > "$DIR/.env" || {
-  echo "[FATAL] cannot write $DIR/.env (owner: $(ls -ld "$DIR" | awk '{print $3}'))" >&2
-  exit 1
+#
+# **検証が通ってから**書く。途中で失敗したときに .env だけ新 tag になると、手動の
+# `docker compose` が存在しない／未稼働の tag を指してしまう。symlink はたどらず、
+# 同一 dir の temp から mv で置き換える。
+write_tag_env() {
+  if [ -L "$DIR/.env" ]; then
+    echo "[FATAL] $DIR/.env is a symlink; refusing to write" >&2
+    return 1
+  fi
+  if ! printf 'GHOST_IMAGE_TAG=%s\n' "$VERSION" > "$DIR/.env.tmp"; then
+    echo "[FATAL] cannot write $DIR/.env (owner: $(ls -ld "$DIR" | awk '{print $3}'))" >&2
+    return 1
+  fi
+  chmod 0644 "$DIR/.env.tmp"
+  # root（SSM）で配備したあとでも ubuntu の手動実行が .env を書けるようにする。
+  chown "${DEPLOY_USER:-ubuntu}:${DEPLOY_USER:-ubuntu}" "$DIR/.env.tmp" 2>/dev/null || true
+  mv -f "$DIR/.env.tmp" "$DIR/.env"
+  echo "[INFO] wrote $DIR/.env (GHOST_IMAGE_TAG=$VERSION) for manual docker compose"
 }
-chmod 0644 "$DIR/.env"
-# root（SSM）で配備したあとでも ubuntu の手動実行が .env を書けるようにする。
-chown ubuntu:ubuntu "$DIR/.env" 2>/dev/null || true
-echo "[INFO] wrote $DIR/.env (GHOST_IMAGE_TAG=$VERSION) for manual docker compose"
 
 # --- download the image --------------------------------------------------------
 # Always load from S3 by default: a tag can be rebuilt and re-uploaded with
@@ -191,6 +208,9 @@ case "$IMG" in
   "$IMAGE_NAME:$VERSION") ;;
   *) echo "[FATAL] $SERVICE_NAME is not running $IMAGE_NAME:$VERSION" >&2; exit 1 ;;
 esac
+
+# 検証が通ったので、手動 compose 用の tag を確定する。
+write_tag_env || exit 1
 
 # --- mandatory post-deploy log ------------------------------------------------
 echo "=== docker compose ps ==="
