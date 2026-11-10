@@ -210,7 +210,7 @@ for (const tenant of tenants) {
       "set -eu",
       `cd ${shq(workdir)}`,
       `SCRIPT=${shq(scriptPath)}`,
-      `DEPLOY_USER=${shq(deployUser)}`,
+      `export DEPLOY_USER=${shq(deployUser)}`,
       "LINK=/usr/local/sbin/deploy-backend-on-ec2.sh",
       "ts=$(date +%Y%m%dT%H%M%S)",
       'mkdir -p .backup',
@@ -227,7 +227,7 @@ for (const tenant of tenants) {
       'ls -la "$LINK" "$SCRIPT"',
       // root-owned log dir; ubuntu (manual) falls back to ./logs inside the script
       'install -d -o root -g root -m 0750 /var/log/ghost-deploy 2>/dev/null || true',
-      `DEPLOY_USER=${shq(deployUser)} TENANT=${shq(tenant)} VERSION=${shq(version)} SSM_PARAM=${shq(ssmParam)} bash "$SCRIPT" ${shq(version)}`,
+      `TENANT=${shq(tenant)} VERSION=${shq(version)} SSM_PARAM=${shq(ssmParam)} bash "$SCRIPT" ${shq(version)}`,
       "",
     ], `deploy-${tenant}`);
     if (!ok) {

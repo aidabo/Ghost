@@ -160,7 +160,12 @@ write_tag_env() {
   chmod 0644 "$DIR/.env.tmp"
   # root（SSM）で配備したあとでも ubuntu の手動実行が .env を書けるようにする。
   chown "${DEPLOY_USER:-ubuntu}:${DEPLOY_USER:-ubuntu}" "$DIR/.env.tmp" 2>/dev/null || true
-  mv -f "$DIR/.env.tmp" "$DIR/.env"
+  # この script は set -e ではないので、mv の失敗を自分で拾って後片付けする。
+  if ! mv -f "$DIR/.env.tmp" "$DIR/.env"; then
+    rm -f "$DIR/.env.tmp"
+    echo "[FATAL] cannot replace $DIR/.env (owner: $(ls -ld "$DIR" | awk '{print $3}'))" >&2
+    return 1
+  fi
   echo "[INFO] wrote $DIR/.env (GHOST_IMAGE_TAG=$VERSION) for manual docker compose"
 }
 
