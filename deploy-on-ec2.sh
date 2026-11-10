@@ -156,7 +156,8 @@ write_tag_env() {
     echo "[FATAL] cannot create a temp file in $DIR" >&2
     return 1
   }
-  if ! printf 'GHOST_IMAGE_TAG=%s\n' "$VERSION" > "$TMP"; then
+  # source しても効くよう export を付ける（compose の .env も export を受ける）。
+  if ! printf 'export GHOST_IMAGE_TAG=%s\n' "$VERSION" > "$TMP"; then
     rm -f "$TMP"
     echo "[FATAL] cannot write $DIR/.env (owner: $(ls -ld "$DIR" | awk '{print $3}'))" >&2
     return 1
