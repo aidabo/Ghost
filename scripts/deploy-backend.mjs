@@ -72,6 +72,9 @@ function loadEnvFile(file) {
 
 const env = {...loadEnvFile(path.join(REPO, "deploy.env")), ...process.env};
 const profile = env.DEPLOY_AWS_PROFILE || "60-think";
+// Image-tag `.env` is chowned to this user so a manual (non-root) deploy can
+// rewrite it. Override with DEPLOY_USER for hosts with a different login.
+const deployUser = String(env.DEPLOY_USER || "ubuntu").trim();
 const expectedAccount = String(env.DEPLOY_AWS_ACCOUNT || "").trim();
 if (!expectedAccount) {
   console.error("DEPLOY_AWS_ACCOUNT is not set (deploy.env)");
@@ -196,14 +199,42 @@ for (const tenant of tenants) {
   if (doDeploy) {
     const {version, source} = resolvedVersion(tenant);
     log(`[deploy] ${tenant} version=${version} (${source}) artifact=ghost-${version}.tar.gz instance=${instanceId}`);
+    // The script is stored next to the compose file (same layout as the
+    // frontend / worker deploys) and /usr/local/sbin is only a symlink.
+    // Root ownership is explicitness, not a privilege boundary: the workdir is
+    // writable by the deploy user, and ubuntu already has passwordless sudo on
+    // these hosts. ubuntu can still read/execute the script.
+    const scriptPath = path.posix.join(workdir, "deploy-backend-on-ec2.sh");
     const ok = runCommand(instanceId, [
       "#!/bin/bash",
       "set -eu",
       `cd ${shq(workdir)}`,
-      "SCRIPT=/usr/local/sbin/deploy-backend-on-ec2.sh",
-      `echo ${shq(scriptB64)} | base64 -d > "$SCRIPT.new"`,
-      'chmod 0700 "$SCRIPT.new"',
-      'mv "$SCRIPT.new" "$SCRIPT"',
+      `SCRIPT=${shq(scriptPath)}`,
+      `export DEPLOY_USER=${shq(deployUser)}`,
+      "LINK=/usr/local/sbin/deploy-backend-on-ec2.sh",
+      "ts=$(date +%Y%m%dT%H%M%S)",
+      'mkdir -p .backup',
+      // The workdir is writable by the deploy user, so a fixed name (SCRIPT.new)
+      // could be pre-planted as a symlink and make root overwrite any file.
+      // Stage in a root-only dir on the SAME filesystem, then mv (rename) into
+      // place: rename replaces the directory entry and never follows a symlink.
+      'STAGE=$(mktemp -d "$PWD/.deploy-stage.XXXXXX")',
+      'trap \'rm -rf "$STAGE"\' EXIT',
+      'if [ -f "$SCRIPT" ] && [ ! -L "$SCRIPT" ]; then cp -p "$SCRIPT" "$STAGE/script.prev"; fi',
+      'if [ -e "$LINK" ] && [ ! -L "$LINK" ]; then cp -p "$LINK" "$STAGE/sbin.prev"; fi',
+      // keep the last 10 script backups (they are small, but unbounded growth is noise)
+      'ls -1t .backup/deploy-backend-on-ec2.sh.* .backup/sbin-deploy-backend-on-ec2.sh.* 2>/dev/null | tail -n +11 | xargs -r rm -f || true',
+      `echo ${shq(scriptB64)} | base64 -d > "$STAGE/deploy-backend-on-ec2.sh"`,
+      'chmod 0755 "$STAGE/deploy-backend-on-ec2.sh"',
+      'chown root:root "$STAGE/deploy-backend-on-ec2.sh"',
+      'mv -f "$STAGE/deploy-backend-on-ec2.sh" "$SCRIPT"',
+      'chown -h root:root "$SCRIPT" 2>/dev/null || true',
+      'if [ -f "$STAGE/script.prev" ]; then mv -f "$STAGE/script.prev" ".backup/deploy-backend-on-ec2.sh.$ts"; chown root:root ".backup/deploy-backend-on-ec2.sh.$ts"; fi',
+      'if [ -f "$STAGE/sbin.prev" ]; then mv -f "$STAGE/sbin.prev" ".backup/sbin-deploy-backend-on-ec2.sh.$ts"; chown root:root ".backup/sbin-deploy-backend-on-ec2.sh.$ts"; fi',
+      'ln -sfn "$SCRIPT" "$LINK"',
+      'ls -la "$LINK" "$SCRIPT"',
+      // root-owned log dir; ubuntu (manual) falls back to ./logs inside the script
+      'install -d -o root -g root -m 0750 /var/log/ghost-deploy 2>/dev/null || true',
       `TENANT=${shq(tenant)} VERSION=${shq(version)} SSM_PARAM=${shq(ssmParam)} bash "$SCRIPT" ${shq(version)}`,
       "",
     ], `deploy-${tenant}`);
