@@ -72,6 +72,20 @@ const extractGroupIdsFromFilter = (filter) => {
     return [...ids];
 };
 
+/**
+ * A filter that finds the row as it was just saved: its type, status and group (or no group).
+ * Naming group_id keeps the default `public_post:true` filter out, and type/status replace the defaults
+ * (`type:post+status:published`), so drafts, pages and private-group posts are found too.
+ */
+const filterForSavedPost = (post) => {
+    const groupId = post.get('group_id');
+    return [
+        `type:${post.get('type')}`,
+        `status:${post.get('status')}`,
+        groupId ? `group_id:'${groupId}'` : 'group_id:null'
+    ].join('+');
+};
+
 const getAllowlistedSocialGroupPostApiKeyIds = () => {
     const rawAllowlist = process.env.SOCIAL_GROUP_POST_API_KEY_IDS;
 
@@ -1586,6 +1600,22 @@ Post = ghostBookshelf.Model.extend({
                         status: 'all',
                         id: options.id
                     }, _.merge({transacting: options.transacting}, unfilteredOptions))
+                        .then((found) => {
+                            // The request's filter picks the row as it was before the save. When the save moved the
+                            // post to another group (or out of / into one), that filter no longer matches: the old
+                            // `group_id:'<old>'`, or the default `public_post:true` added when the filter has no
+                            // group_id. The save is already done (and its group was checked in onSaving), so read the
+                            // row again with a filter that matches what was saved instead of answering 500.
+                            if (!found) {
+                                return this.findOne({
+                                    status: 'all',
+                                    id: options.id
+                                }, _.merge({transacting: options.transacting}, _.omit(unfilteredOptions, 'filter'), {
+                                    filter: filterForSavedPost(post)
+                                }));
+                            }
+                            return found;
+                        })
                         .then((found) => {
                             if (found) {
                                 // Pass along the updated attributes for checking status changes
