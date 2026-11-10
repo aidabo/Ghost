@@ -2,7 +2,8 @@
 #
 # deploy-on-ec2.sh — backend (ghost) deploy on the EC2 host.
 #
-#   Version : env VERSION > 1st arg > SSM parameter > deploy.version
+#   Version : env VERSION > 1st arg > SSM parameter > workdir/.env (running tag)
+#             > deploy.version (stale by design; last resort)
 #   Tenant  : TENANT=<tenant>; used for the SSM parameter default and logs.
 #             The image is shared by tenants.
 #   Image   : s3://60-legacy/deploy-image/ghost-<VERSION>.tar.gz
@@ -26,7 +27,15 @@ case "$TENANT" in
 esac
 ARTIFACT_NAME="${ARTIFACT_NAME:-$IMAGE_NAME}"
 SSM_PARAM="${SSM_PARAM:-/$TENANT/prd/deploy/backend/version}"
-DIR="$(cd "$(dirname "$0")" && pwd)"
+# 実体の場所を基準にする。この script は compose の作業ディレクトリに置き、
+# /usr/local/sbin/deploy-backend-on-ec2.sh から symlink で呼べるようにする。
+# symlink 経由でも `docker compose` が compose ファイルを見つけられるよう cd する。
+SELF="$0"
+if command -v readlink >/dev/null 2>&1; then
+  SELF="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
+fi
+DIR="$(cd "$(dirname "$SELF")" && pwd)"
+cd "$DIR"
 
 # --- version resolution -------------------------------------------------------
 if [ -z "${VERSION:-}" ] && [ -n "${1:-}" ]; then
@@ -39,6 +48,14 @@ if [ -z "${VERSION:-}" ] && [ -n "$SSM_PARAM" ] && command -v aws >/dev/null 2>&
     echo "[INFO] VERSION from SSM $SSM_PARAM: $VERSION"
   fi
 fi
+if [ -z "${VERSION:-}" ] && [ -f "$DIR/.env" ]; then
+  # 手動実行の既定は「いま動いている tag」。deploy.version はビルド時の控えで
+  # 古いことがあるため、配備のたびにこの script が書く .env を先に見る。
+  VERSION="$(grep -E '^GHOST_IMAGE_TAG=' "$DIR/.env" | head -n1 | cut -d= -f2- || true)"
+  if [ -n "${VERSION:-}" ]; then
+    echo "[INFO] VERSION from $DIR/.env: $VERSION"
+  fi
+fi
 if [ -z "${VERSION:-}" ]; then
   for vf in "$DIR/deploy.version" "$PWD/deploy.version"; do
     [ -f "$vf" ] || continue
@@ -46,12 +63,15 @@ if [ -z "${VERSION:-}" ]; then
     VERSION="${VERSION#VERSION=}"
     VERSION="${VERSION#\"}"; VERSION="${VERSION%\"}"
     VERSION="${VERSION#\'}"; VERSION="${VERSION%\'}"
-    [ -n "$VERSION" ] && break
+    if [ -n "$VERSION" ]; then
+      echo "[WARN] VERSION from $vf (build-time note; can be stale): $VERSION" >&2
+      break
+    fi
   done
 fi
 if [ -z "${VERSION:-}" ]; then
   echo "[ERROR] VERSION not set. Pass it: ./deploy-on-ec2.sh <VERSION>" >&2
-  echo "        (or set $SSM_PARAM / place deploy.version next to this script)" >&2
+  echo "        (or set $SSM_PARAM / run once so workdir/.env has the tag / place deploy.version next to this script)" >&2
   exit 1
 fi
 # The tag goes into an S3 key and a Docker tag; refuse anything outside a
@@ -65,7 +85,9 @@ esac
 
 # --- logging -----------------------------------------------------------------
 LOG_DIR="${LOG_DIR:-/var/log/ghost-deploy}"
-if ! mkdir -p "$LOG_DIR" 2>/dev/null; then
+# 配備は root（SSM）でも ubuntu でも走る。root が作った 0755 の dir は ubuntu から
+# 書けないので、書けるかどうかまで見る（tee が失敗すると以降のログが消える）。
+if ! { mkdir -p "$LOG_DIR" 2>/dev/null && [ -w "$LOG_DIR" ]; }; then
   LOG_DIR="$DIR/logs"
   mkdir -p "$LOG_DIR"
 fi
@@ -113,8 +135,13 @@ export GHOST_IMAGE_TAG="$VERSION"
 # 素のシェルには GHOST_IMAGE_TAG が無く、`${GHOST_IMAGE_TAG:?...}` で落ちる。
 # compose と同じディレクトリに「タグだけ」の .env を置き、手動操作でも同じタグを
 # 引けるようにする（秘密は書かない）。
-printf 'GHOST_IMAGE_TAG=%s\n' "$VERSION" > "$DIR/.env"
+printf 'GHOST_IMAGE_TAG=%s\n' "$VERSION" > "$DIR/.env" || {
+  echo "[FATAL] cannot write $DIR/.env (owner: $(ls -ld "$DIR" | awk '{print $3}'))" >&2
+  exit 1
+}
 chmod 0644 "$DIR/.env"
+# root（SSM）で配備したあとでも ubuntu の手動実行が .env を書けるようにする。
+chown ubuntu:ubuntu "$DIR/.env" 2>/dev/null || true
 echo "[INFO] wrote $DIR/.env (GHOST_IMAGE_TAG=$VERSION) for manual docker compose"
 
 # --- download the image --------------------------------------------------------

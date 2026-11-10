@@ -196,14 +196,29 @@ for (const tenant of tenants) {
   if (doDeploy) {
     const {version, source} = resolvedVersion(tenant);
     log(`[deploy] ${tenant} version=${version} (${source}) artifact=ghost-${version}.tar.gz instance=${instanceId}`);
+    // The script is stored next to the compose file (same layout as the
+    // frontend / worker deploys) and /usr/local/sbin is only a symlink.
+    // Whoever runs it — root over SSM, or ubuntu by hand — gets the same
+    // file, and `docker compose down/up` keeps working in the workdir.
+    const scriptPath = path.posix.join(workdir, "deploy-backend-on-ec2.sh");
     const ok = runCommand(instanceId, [
       "#!/bin/bash",
       "set -eu",
       `cd ${shq(workdir)}`,
-      "SCRIPT=/usr/local/sbin/deploy-backend-on-ec2.sh",
+      `SCRIPT=${shq(scriptPath)}`,
+      "LINK=/usr/local/sbin/deploy-backend-on-ec2.sh",
+      "ts=$(date +%Y%m%dT%H%M%S)",
+      'mkdir -p .backup',
+      'if [ -f "$SCRIPT" ]; then cp -p "$SCRIPT" ".backup/deploy-backend-on-ec2.sh.$ts"; fi',
+      'if [ -e "$LINK" ] && [ ! -L "$LINK" ]; then cp -p "$LINK" ".backup/sbin-deploy-backend-on-ec2.sh.$ts"; fi',
       `echo ${shq(scriptB64)} | base64 -d > "$SCRIPT.new"`,
-      'chmod 0700 "$SCRIPT.new"',
+      'chmod 0755 "$SCRIPT.new"',
+      'chown ubuntu:ubuntu "$SCRIPT.new" 2>/dev/null || true',
       'mv "$SCRIPT.new" "$SCRIPT"',
+      'chown -h ubuntu:ubuntu "$SCRIPT" 2>/dev/null || true',
+      'ln -sfn "$SCRIPT" "$LINK"',
+      'ls -la "$LINK" "$SCRIPT"',
+      'install -d -o ubuntu -g ubuntu -m 0755 /var/log/ghost-deploy 2>/dev/null || true',
       `TENANT=${shq(tenant)} VERSION=${shq(version)} SSM_PARAM=${shq(ssmParam)} bash "$SCRIPT" ${shq(version)}`,
       "",
     ], `deploy-${tenant}`);
