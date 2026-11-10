@@ -9,6 +9,8 @@
 //
 // Tenant: --tenant 60-think | thinkestate | all (default 60-think)
 // Version: --version <tag> (default: the tenant's SSM parameter)
+// Flags: --dry-run  show stage / tenants / version and stop (no AWS call)
+//        --yes      skip the production confirmation (non-interactive runs)
 //
 // Env: deploy.env (gitignored) or the environment:
 //   DEPLOY_AWS_PROFILE (default 60-think)
@@ -115,6 +117,26 @@ const doBuild = stage === "build" || stage === "all";
 const doDeploy = stage === "deploy" || stage === "all";
 const doVerify = stage === "verify" || stage === "all";
 
+// --dry-run: show what would happen (stage / tenants / version) and stop
+// before any AWS call. `yarn deploy` = all, so this is the way to check the
+// plan without touching production.
+if (has("dry-run")) {
+  const steps = [
+    doBuild ? "build: bash ./deploy.sh (image build -> S3 upload -> SSM)" : null,
+    doDeploy ? "deploy: install deploy-on-ec2.sh on each target, docker load, restart" : null,
+    doVerify ? "verify: read-only (docker inspect / docker ps / curl localhost:80)" : null,
+  ].filter(Boolean);
+  console.log(JSON.stringify({
+    stage,
+    tenants,
+    profile,
+    account: expectedAccount,
+    version: versionArg || "(the tenant's SSM parameter, else package.json deployVersion)",
+    steps,
+  }, null, 2));
+  process.exit(0);
+}
+
 const logDir = path.join(REPO, "logs");
 fs.mkdirSync(logDir, {recursive: true});
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -125,9 +147,32 @@ const log = (line) => {
   fs.appendFileSync(logPath, `${text}\n`);
 };
 
+// Distribution goes straight to production EC2, so ask before it starts.
+// Non-interactive runs (CI, nohup) must say --yes explicitly.
+function confirmDeploy() {
+  if (!doDeploy || has("yes")) return;
+  if (!process.stdin.isTTY) {
+    console.error("[ABORT] 非対話では --yes を付けてください（本番への配布は確認必須）");
+    process.exit(1);
+  }
+  const question = `配布します: stage=${stage} tenant=${tenants.join(",")} `
+    + `version=${versionArg || "SSM / deployVersion"} -> 本番 EC2。続けますか? [y/N] `;
+  const answer = execFileSync(
+    "bash",
+    ["-c", `read -r -p ${shq(question)} ans; printf %s "$ans"`],
+    {encoding: "utf8", stdio: ["inherit", "pipe", "inherit"]},
+  ).trim();
+  if (!/^y(es)?$/i.test(answer)) {
+    console.error("[ABORT] 中止しました（何もしていません）");
+    process.exit(1);
+  }
+}
+
 log(`backend stage=${stage} tenant=${tenants.join(",")} profile=${profile}`);
 accountGuard();
 log("account guard passed");
+confirmDeploy();
+log("deploy confirmed");
 log(`log=${logPath}`);
 
 if (doBuild) {

@@ -2,6 +2,8 @@
 #
 # deploy.sh — build the Ghost Docker image and upload to S3 as gzip (.tar.gz).
 #
+#   Run     : from the repo root, `yarn deploy:build:up` (this script).
+#             `yarn deploy` runs this and then distributes to the tenants.
 #   Version : read from package.json "deployVersion" (bump there only).
 #             Override for a one-off run with:  VERSION=... ./deploy.sh
 #   Build   : runs `yarn docker:next:build`, then streams `docker save | gzip` to S3.
@@ -82,7 +84,7 @@ done
 # several key sets (other jobs too), so never fall back to `default` or to
 # whatever AWS_ACCESS_KEY_ID happens to be exported: an explicit `--profile`
 # wins over env keys.
-# Override for a run:  DEPLOY_AWS_PROFILE=<name> yarn deploy
+# Override for a run:  DEPLOY_AWS_PROFILE=<name> yarn deploy:build:up
 DEPLOY_AWS_PROFILE="${DEPLOY_AWS_PROFILE:-60-think}"
 # Expected account is required: fail closed rather than upload to whatever
 # credentials happen to be active. The value lives in the gitignored deploy.env

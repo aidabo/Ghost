@@ -198,3 +198,7 @@ yalc.lock
 
 # 配布の宛先（本番のインスタンス ID など）。公開リポジトリなので git に入れない。見本は deploy-targets.example.json
 deploy-targets.json
+
+# Editor swap files (nano/vim)
+*.swp
+*.swo

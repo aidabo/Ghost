@@ -282,14 +282,33 @@ yarn knex-migrator migrate   # 手元の DB に当てる。そのあと Ghost �
 
 ## 配布
 
-- `yarn deploy`（= `deploy.sh`）: `.docker/prd.Dockerfile` でイメージ `ghost:<deployVersion>` を作り、
-  `s3://60-legacy/deploy-image/ghost-<version>.tar.gz` に上げる。バージョンは `package.json` の `deployVersion`。
+- `yarn deploy`（all: build → upload → 配布 → verify）: `.docker/prd.Dockerfile` でイメージ
+  `ghost:<deployVersion>` を作り、`s3://60-legacy/deploy-image/ghost-<version>.tar.gz` に上げ、
+  既定テナント（60-think）へ配って確認する。バージョンは `package.json` の `deployVersion`。
+  frontend repo の `yarn deploy` と同じ並び（`--stage all`）。
+  - `yarn deploy:build:up` … build + S3 upload だけ（`deploy.sh`。SSM の version も更新）
+  - `yarn deploy:go` … 配布だけ（S3 の tar を EC2 で `docker load`）
+  - `yarn deploy:verify` … 確認だけ（read-only）
+  - 旧名 `deploy:backend` / `deploy:backend:build-upload` / `deploy:backend:distribute` /
+    `deploy:backend:verify` も同じものを指す（互換のため残す。不要になったら削除する）
+  - thinkestate は `--tenant thinkestate` を足す（例 `yarn deploy:go --tenant thinkestate`）。
+    既定は 60-think だけ。両方なら `--tenant all`。
+  - **以前の `yarn deploy`（= `bash deploy.sh`、build + upload だけ）は、今の
+    `yarn deploy:build:up`。** 配布まで進むので、実行前に `yarn deploy --dry-run` で
+    何が起きるかを確認できる。配布は `[y/N]` で一度止まる（非対話は `--yes` が必要）。
+  - 実行例:
+    ```bash
+    yarn deploy --dry-run                    # 計画だけ（AWS を呼ばない）
+    yarn deploy:build:up                     # build + upload（配布しない）
+    yarn deploy:go --tenant all              # 両テナントへ配布
+    yarn deploy:go --version <tag>           # tag を明示して配布（rollback など）
+    yarn deploy --tenant thinkestate --yes   # 非対話で all
+    ```
   - 先に本番用の Admin のビルド（`yarn build`）が要る。`yarn dev` のあとの Admin のままだと `deploy.sh` が止まる
     （[docs/operations-docker-admin-build.md](docs/operations-docker-admin-build.md)）。
 - 本番のホストでは `deploy-on-ec2.sh <VERSION>` が、その tar を `docker load` して compose を起動し直す。
-- テナントへ配る `yarn deploy:backend --tenant <60-think|thinkestate>` は
+- テナントごとの環境変数・確認手順は
   [tenant/ghost-backend-deploy.md](https://github.com/aidabo/jibunsee-react/blob/main/docs/tenant/ghost-backend-deploy.md) にある。
-  **このコマンドはまだ main に入っていない**（ブランチ `private/feat/deploy-backend-command`）。
 - mars-times（janabiz）の backend は、フロント側の `yarn deploy:news:backend`（`01-ghost-front`）で配る。
 - 全体の順番（backend → frontend → worker）は [08-deploy.md](https://github.com/aidabo/jibunsee-react/blob/main/docs/development/08-deploy.md)。
 
