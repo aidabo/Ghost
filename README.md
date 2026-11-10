@@ -289,8 +289,6 @@ yarn knex-migrator migrate   # 手元の DB に当てる。そのあと Ghost �
   - `yarn deploy:build:up` … build + S3 upload だけ（`deploy.sh`。SSM の version も更新）
   - `yarn deploy:go` … 配布だけ（S3 の tar を EC2 で `docker load`）
   - `yarn deploy:verify` … 確認だけ（read-only）
-  - 旧名 `deploy:backend` / `deploy:backend:build-upload` / `deploy:backend:distribute` /
-    `deploy:backend:verify` も同じものを指す（互換のため残す。不要になったら削除する）
   - thinkestate は `--tenant thinkestate` を足す（例 `yarn deploy:go --tenant thinkestate`）。
     既定は 60-think だけ。両方なら `--tenant all`。
   - **以前の `yarn deploy`（= `bash deploy.sh`、build + upload だけ）は、今の
