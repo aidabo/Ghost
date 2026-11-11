@@ -62,7 +62,7 @@
     "tb:local:stop": "docker stop tinybird-local && docker rm tinybird-local",
     "tbf:install": "curl https://tinybird.co | sh",
     "tbf": "tb local start && cd ghost/core/core/server/data/tinybird && tb dev",
-    "docker:next:build": "echo Building image: ghost:$npm_package_deployVersion && docker build . -f .docker/prd.Dockerfile -t ghost:$npm_package_deployVersion --no-cache",
+    "docker:next:build": "yarn build && echo Building image: ghost:$npm_package_deployVersion && docker build . -f .docker/prd.Dockerfile -t ghost:$npm_package_deployVersion --no-cache",
     "deploy": "yarn deploy:build:up && yarn deploy:go",
     "deploy:build:up": "node ./scripts/deploy-backend.mjs --stage build",
     "deploy:verify": "node ./scripts/deploy-backend.mjs --stage verify",
