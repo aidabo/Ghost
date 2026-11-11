@@ -66,8 +66,16 @@
     "deploy": "node ./scripts/deploy-backend.mjs",
     "deploy:build:up": "node ./scripts/deploy-backend.mjs --stage build",
     "deploy:verify": "node ./scripts/deploy-backend.mjs --stage verify",
+    "deploy:60think": "node ./scripts/deploy-backend.mjs --tenant 60-think",
+    "deploy:60think:build:up": "node ./scripts/deploy-backend.mjs --tenant 60-think --stage build",
+    "deploy:60think:go": "node ./scripts/deploy-backend.mjs --tenant 60-think --stage deploy",
+    "deploy:60think:verify": "node ./scripts/deploy-backend.mjs --tenant 60-think --stage verify",
+    "deploy:estate": "node ./scripts/deploy-backend.mjs --tenant thinkestate",
+    "deploy:estate:build:up": "node ./scripts/deploy-backend.mjs --tenant thinkestate --stage build",
+    "deploy:estate:go": "node ./scripts/deploy-backend.mjs --tenant thinkestate --stage deploy",
+    "deploy:estate:verify": "node ./scripts/deploy-backend.mjs --tenant thinkestate --stage verify",
     "deploy:go": "node ./scripts/deploy-backend.mjs --stage deploy"
- },
+  },
   "resolutions": {
     "@tryghost/errors": "1.3.5",
     "@tryghost/logging": "2.4.21",

@@ -282,6 +282,28 @@ yarn knex-migrator migrate   # 手元の DB に当てる。そのあと Ghost �
 
 ## 配布
 
+- テナント別のコマンド（`--tenant` を固定したもの）:
+  - 60-think: `yarn deploy:60think` / `:build:up` / `:go` / `:verify`
+  - thinkestate: `yarn deploy:estate` / `:build:up` / `:go` / `:verify`
+  - 既定（tenant 省略）は 60-think。両方なら `--tenant all`。
+- テナントごとの profile / account は **`deploy-targets.json` の各テナント**に
+  `profile` / `account` として足す（未設定なら `deploy.env` の全体値）。
+
+  ```json
+  "60-think": { "profile": "<aws-profile>", "account": "<12桁>" }
+  ```
+
+  `profile` / `account` は上書きしたいときだけ書く（省略すれば `deploy.env` の全体値）。
+
+  - `deploy-targets.json` は gitignore。初回は `cp deploy-targets.example.json deploy-targets.json`
+  - 配布先は `instanceId` か `tags`（例 `{"System":"60-think","Role":"backend"}`）。
+    `instanceId` が無ければ **running のインスタンスをタグで探す**（1 台に絞れなければ中止）。
+    ASG は使っていないので、インスタンスの入れ替え時も `tags` のままでよい
+  - `workdir` / `ssmParam` は必須
+  - **S3 への upload は全体の `DEPLOY_AWS_PROFILE`、`DEPLOY_AWS_ACCOUNT` が必須**
+  - SSM の更新と account guard はテナントごとの値
+- 本番に触れず設定を確かめるとき: `yarn deploy:estate --dry-run`（tenant ごとの
+  profile / account が出る）
 - `yarn deploy`（all: build → upload → 配布 → verify）: `.docker/prd.Dockerfile` でイメージ
   `ghost:<deployVersion>` を作り、`s3://60-legacy/deploy-image/ghost-<version>.tar.gz` に上げ、
   既定テナント（60-think）へ配って確認する。バージョンは `package.json` の `deployVersion`。
