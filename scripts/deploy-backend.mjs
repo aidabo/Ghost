@@ -13,8 +13,10 @@
 //        --yes      skip the production confirmation (non-interactive runs)
 //
 // Env: deploy.env (gitignored) or the environment:
-//   DEPLOY_AWS_PROFILE (default 60-think)
-//   DEPLOY_AWS_ACCOUNT (required)
+//   DEPLOY_AWS_PROFILE (default 60-think; build の S3 upload もこれ)
+//   DEPLOY_AWS_ACCOUNT (build/upload では必須)
+//   テナント別の profile / account は deploy-targets.json の profile / account
+//   （未設定なら上の全体値）。SSM の読み書きと account guard はテナントごとの値。
 
 import fs from "node:fs";
 import path from "node:path";
@@ -42,7 +44,15 @@ if (Object.keys(TARGETS).length === 0) {
   process.exit(2);
 }
 for (const [tenant, target] of Object.entries(TARGETS)) {
-  const missing = ["instanceId", "workdir", "ssmParam"].filter((k) => typeof target?.[k] !== "string" || !target[k].trim());
+  const missing = ["workdir", "ssmParam"].filter((k) => typeof target?.[k] !== "string" || !target[k].trim());
+  const hasInstance = typeof target?.instanceId === "string" && target.instanceId.trim();
+  const tags = target?.tags;
+  const tagsOk =
+    tags && typeof tags === "object" && !Array.isArray(tags) &&
+    Object.keys(tags).length > 0 &&
+    Object.entries(tags).every(([k, v]) => typeof v === "string" && v.trim() && !v.includes(",") && !k.includes(","));
+  const hasTags = Boolean(tagsOk);
+  if (!hasInstance && !hasTags) missing.push("instanceId（または tags。キー/値はカンマ無しの文字列）");
   if (missing.length) {
     console.error(`deploy-targets.json: ${tenant} is missing ${missing.join(", ")}`);
     process.exit(2);
@@ -73,28 +83,118 @@ function loadEnvFile(file) {
 }
 
 const env = {...loadEnvFile(path.join(REPO, "deploy.env")), ...process.env};
-const profile = env.DEPLOY_AWS_PROFILE || "60-think";
+const profile = String(env.DEPLOY_AWS_PROFILE || "60-think").trim();
 // Image-tag `.env` is chowned to this user so a manual (non-root) deploy can
 // rewrite it. Override with DEPLOY_USER for hosts with a different login.
 const deployUser = String(env.DEPLOY_USER || "ubuntu").trim();
-const expectedAccount = String(env.DEPLOY_AWS_ACCOUNT || "").trim();
-if (!expectedAccount) {
-  console.error("DEPLOY_AWS_ACCOUNT is not set (deploy.env)");
-  process.exit(2);
+
+// tenant ごとの profile / account は deploy-targets.json に持つ（未設定なら全体値）。
+function profileFor(tenant) {
+  return String(TARGETS[tenant]?.profile || profile).trim();
+}
+function accountFor(tenant) {
+  return String(TARGETS[tenant]?.account || env.DEPLOY_AWS_ACCOUNT || "").trim();
 }
 
-function aws(args) {
+function aws(args, profileName = profile) {
   return execFileSync(
     "aws",
-    ["--profile", profile, "--region", REGION, ...args],
+    ["--profile", profileName, "--region", REGION, ...args],
     {encoding: "utf8", stdio: ["ignore", "pipe", "pipe"]},
   ).trim();
 }
 
-function accountGuard() {
-  const identity = JSON.parse(aws(["sts", "get-caller-identity", "--output", "json"]));
-  if (String(identity.Account) !== expectedAccount) {
-    console.error(`account mismatch for profile=${profile} — abort`);
+// 配布先: instanceId があればそれ。無ければ tags（例 {"System":"60-think","Role":"backend"}）
+// で running のインスタンスを探す。ASG を使っていないので数は増えないが、複数見つかったら
+// 取り違えを避けるため中止する。
+const instanceCache = new Map();
+function instanceFor(tenant) {
+  if (instanceCache.has(tenant)) return instanceCache.get(tenant);
+  const target = TARGETS[tenant];
+  if (typeof target.instanceId === "string" && target.instanceId.trim()) {
+    instanceCache.set(tenant, target.instanceId.trim());
+    return target.instanceId.trim();
+  }
+  const filters = ["Name=instance-state-name,Values=running"];
+  for (const [key, value] of Object.entries(target.tags)) {
+    filters.push(`Name=tag:${key},Values=${value}`);
+  }
+  const out = aws([
+    "ec2", "describe-instances", "--filters", ...filters,
+    "--query", "Reservations[].{owner:OwnerId,ids:Instances[].InstanceId}", "--output", "json",
+  ], profileFor(tenant));
+  let found = [];
+  try {
+    found = JSON.parse(out);
+  } catch {
+    found = [];
+  }
+  const expected = accountFor(tenant);
+  const owned = found.filter((r) => String(r.owner) === expected);
+  const ids = owned.flatMap((r) => r.ids || []);
+  if (found.length !== owned.length) {
+    console.error(
+      `[FATAL] ${tenant}: tags に合うインスタンスの持ち主が account ${expected} ではない — abort`,
+    );
+    process.exit(1);
+  }
+  if (ids.length === 1) {
+    instanceCache.set(tenant, ids[0]);
+    return ids[0];
+  }
+  console.error(
+    `[FATAL] ${tenant}: tags ${JSON.stringify(target.tags)} で instance を 1 台に特定できない` +
+      `（見つかった: ${ids.join(", ") || "なし"}）。deploy-targets.json に instanceId を書くこと`,
+  );
+  process.exit(1);
+}
+
+// SendCommand の直前に、配布先が running で、account とタグが期待どおりかを再確認する
+// （タグ検索で選んだ id を、そのまま盲信しない）。
+function assertInstance(tenant, instanceId) {
+  const target = TARGETS[tenant];
+  const out = aws([
+    "ec2", "describe-instances", "--instance-ids", instanceId,
+    "--query", "Reservations[].{owner:OwnerId,state:Instances[].State.Name,tags:Instances[].Tags}",
+    "--output", "json",
+  ], profileFor(tenant));
+  const info = JSON.parse(out)?.[0];
+  if (!info) {
+    console.error(`[FATAL] ${tenant}: instance ${instanceId} が見つからない — abort`);
+    process.exit(1);
+  }
+  const state = info.state?.[0];
+  if (state !== "running") {
+    console.error(`[FATAL] ${tenant}: instance ${instanceId} は running ではない (${state}) — abort`);
+    process.exit(1);
+  }
+  if (String(info.owner) !== accountFor(tenant)) {
+    console.error(`[FATAL] ${tenant}: instance ${instanceId} の owner が account と一致しない — abort`);
+    process.exit(1);
+  }
+  if (target.tags) {
+    const have = new Map((info.tags || []).map((t) => [t.Key, t.Value]));
+    for (const [key, value] of Object.entries(target.tags)) {
+      if (have.get(key) !== value) {
+        console.error(`[FATAL] ${tenant}: instance ${instanceId} の tag ${key}=${value} が一致しない — abort`);
+        process.exit(1);
+      }
+    }
+  }
+}
+
+function accountGuard(tenant) {
+  const profileName = profileFor(tenant);
+  const expected = accountFor(tenant);
+  if (!expected) {
+    console.error(
+      `${tenant} の account が未設定（deploy-targets.json の account か DEPLOY_AWS_ACCOUNT）— abort`,
+    );
+    process.exit(2);
+  }
+  const identity = JSON.parse(aws(["sts", "get-caller-identity", "--output", "json"], profileName));
+  if (String(identity.Account) !== expected) {
+    console.error(`account mismatch for tenant=${tenant} profile=${profileName} — abort`);
     process.exit(1);
   }
 }
@@ -126,11 +226,18 @@ if (has("dry-run")) {
     doDeploy ? "deploy: install deploy-on-ec2.sh on each target, docker load, restart" : null,
     doVerify ? "verify: read-only (docker inspect / docker ps / curl localhost:80)" : null,
   ].filter(Boolean);
+  // --resolve を付けたときだけ EC2 を読む（--dry-run 単体は AWS を呼ばない）。
+  const resolve = has("resolve");
   console.log(JSON.stringify({
     stage,
-    tenants,
-    profile,
-    account: expectedAccount,
+    tenants: tenants.map((t) => ({
+      tenant: t,
+      profile: profileFor(t),
+      account: accountFor(t) || "<unset>",
+      target: resolve
+        ? instanceFor(t)
+        : TARGETS[t].instanceId || `tags ${JSON.stringify(TARGETS[t].tags || {})}`,
+    })),
     version: versionArg || "(the tenant's SSM parameter, else package.json deployVersion)",
     steps,
   }, null, 2));
@@ -168,8 +275,17 @@ function confirmDeploy() {
   }
 }
 
-log(`backend stage=${stage} tenant=${tenants.join(",")} profile=${profile}`);
-accountGuard();
+log(`backend stage=${stage} tenant=${tenants.join(",")}`);
+for (const tenant of tenants) {
+  log(`[guard] tenant=${tenant} profile=${profileFor(tenant)} account=${accountFor(tenant) || "<unset>"}`);
+  accountGuard(tenant);
+}
+// 配布先も、何も実行する前に全テナント分を解決しておく（途中で止まらないように）。
+if (doDeploy || doVerify) {
+  for (const tenant of tenants) {
+    log(`[target] tenant=${tenant} -> ${instanceFor(tenant)}`);
+  }
+}
 log("account guard passed");
 confirmDeploy();
 log("deploy confirmed");
@@ -198,7 +314,7 @@ function resolvedVersion(tenant) {
     const version = aws([
       "ssm", "get-parameter", "--name", TARGETS[tenant].ssmParam,
       "--query", "Parameter.Value", "--output", "text",
-    ]);
+    ], profileFor(tenant));
     return {version, source: `SSM ${TARGETS[tenant].ssmParam}`};
   } catch {
     console.error(`[WARN] SSM parameter not found: ${TARGETS[tenant].ssmParam}; using deployVersion=${deployVersion}`);
@@ -206,13 +322,13 @@ function resolvedVersion(tenant) {
   }
 }
 
-function runCommand(instanceId, commands, label) {
+function runCommand(instanceId, commands, label, profileName = profile) {
   const payload = JSON.stringify({commands, executionTimeout: ["3600"]});
   const commandId = aws([
     "ssm", "send-command", "--instance-ids", instanceId,
     "--document-name", "AWS-RunShellScript", "--comment", `deploy backend ${label}`,
     "--parameters", payload, "--query", "Command.CommandId", "--output", "text",
-  ]);
+  ], profileName);
   log(`[${label}] SSM command: ${commandId}`);
   for (let i = 0; i < 720; i++) {
     sleep(5000);
@@ -221,7 +337,7 @@ function runCommand(instanceId, commands, label) {
       invocation = JSON.parse(aws([
         "ssm", "get-command-invocation", "--command-id", commandId,
         "--instance-id", instanceId, "--output", "json",
-      ]));
+      ], profileName));
     } catch {
       continue;
     }
@@ -239,9 +355,12 @@ function runCommand(instanceId, commands, label) {
 const scriptB64 = fs.readFileSync(path.join(REPO, "deploy-on-ec2.sh")).toString("base64");
 let failed = 0;
 for (const tenant of tenants) {
-  const {instanceId, workdir, ssmParam} = TARGETS[tenant];
+  const {workdir, ssmParam} = TARGETS[tenant];
+  const tenantProfile = profileFor(tenant);
 
   if (doDeploy) {
+    const instanceId = instanceFor(tenant);
+    assertInstance(tenant, instanceId);
     const {version, source} = resolvedVersion(tenant);
     log(`[deploy] ${tenant} version=${version} (${source}) artifact=ghost-${version}.tar.gz instance=${instanceId}`);
     // The script is stored next to the compose file (same layout as the
@@ -283,19 +402,21 @@ for (const tenant of tenants) {
       'install -d -o root -g root -m 0750 /var/log/ghost-deploy 2>/dev/null || true',
       `TENANT=${shq(tenant)} VERSION=${shq(version)} SSM_PARAM=${shq(ssmParam)} bash "$SCRIPT" ${shq(version)}`,
       "",
-    ], `deploy-${tenant}`);
+    ], `deploy-${tenant}`, tenantProfile);
     if (!ok) {
       failed++;
     } else {
       aws([
         "ssm", "put-parameter", "--name", ssmParam,
         "--value", version, "--type", "String", "--overwrite",
-      ]);
+      ], tenantProfile);
       log(`[deploy] SSM updated: ${ssmParam}=${version}`);
     }
   }
 
   if (doVerify) {
+    const instanceId = instanceFor(tenant);
+    assertInstance(tenant, instanceId);
     const {version, source} = resolvedVersion(tenant);
     log(`[verify] ${tenant} expected=ghost:${version} (${source})`);
     const ok = runCommand(instanceId, [
@@ -314,7 +435,7 @@ for (const tenant of tenants) {
       "docker ps --format '{{.Names}} {{.Image}} {{.Status}}'",
       "curl -s -o /dev/null -w 'http=%{http_code}\\n' http://localhost:80/ || true",
       "",
-    ], `verify-${tenant}`);
+    ], `verify-${tenant}`, tenantProfile);
     if (!ok) failed++;
   }
 }

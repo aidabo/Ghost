@@ -1,12 +1,18 @@
 {
   "60-think": {
-    "instanceId": "i-xxxxxxxxxxxxxxxxx",
     "workdir": "/path/to/02-ghost-compose",
-    "ssmParam": "/60-think/prd/deploy/backend/version"
+    "ssmParam": "/60-think/prd/deploy/backend/version",
+    "tags": {
+      "System": "<system-tag>",
+      "Role": "<role-tag>"
+    }
   },
   "thinkestate": {
-    "instanceId": "i-xxxxxxxxxxxxxxxxx",
     "workdir": "/path/to/02-ghost-compose",
-    "ssmParam": "/thinkestate/prd/deploy/backend/version"
+    "ssmParam": "/thinkestate/prd/deploy/backend/version",
+    "tags": {
+      "System": "<system-tag>",
+      "Role": "<role-tag>"
+    }
   }
 }

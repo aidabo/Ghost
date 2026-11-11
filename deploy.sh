@@ -156,6 +156,21 @@ echo "Upload completed: $GZ_KEY"
 ssm_param_for() {
   DEPLOY_TARGETS_FILE="$_TARGETS_FILE" node -p "JSON.parse(require('fs').readFileSync(process.env.DEPLOY_TARGETS_FILE,'utf8'))['$1']?.ssmParam || ''"
 }
+# tenant ごとの設定は deploy-targets.json に持つ（profile / account）。
+# 未設定なら deploy.env の全体値（DEPLOY_AWS_PROFILE / DEPLOY_AWS_ACCOUNT）を使う。
+target_field_for() {
+  DEPLOY_TARGETS_FILE="$_TARGETS_FILE" node -p "JSON.parse(require('fs').readFileSync(process.env.DEPLOY_TARGETS_FILE,'utf8'))['$1']?.$2 || ''"
+}
+profile_for_tenant() {
+  local value
+  value="$(target_field_for "$1" profile)"
+  printf '%s' "${value:-$DEPLOY_AWS_PROFILE}"
+}
+account_for_tenant() {
+  local value
+  value="$(target_field_for "$1" account)"
+  printf '%s' "${value:-${DEPLOY_AWS_ACCOUNT:-}}"
+}
 # deploy-targets.json is the single source of the parameter names, and only the
 # selected TENANTS are updated. DEPLOY_SSM_PARAMS is no longer read.
 if [ -n "${DEPLOY_SSM_PARAMS:-}" ]; then
@@ -171,9 +186,21 @@ for tenant in $TENANTS; do
   SSM_PARAMS="$SSM_PARAMS $param"
 done
 if [ "${WRITE_SSM_PARAM:-1}" = "1" ]; then
-  for param in $SSM_PARAMS; do
-    echo "[INFO] Updating SSM parameter: $param=$VERSION"
-    if ! aws ssm put-parameter --region "$AWS_REGION" --profile "$DEPLOY_AWS_PROFILE" \
+  for tenant in $TENANTS; do
+    param="$(ssm_param_for "$tenant")"
+    t_profile="$(profile_for_tenant "$tenant")"
+    t_account="$(account_for_tenant "$tenant")"
+    if [ -z "$t_account" ]; then
+      echo "[ERROR] $tenant の account が未設定（deploy-targets.json の account か DEPLOY_AWS_ACCOUNT）" >&2
+      exit 1
+    fi
+    actual="$(aws sts get-caller-identity --profile "$t_profile" --query Account --output text 2>/dev/null || true)"
+    if [ "$actual" != "$t_account" ]; then
+      echo "[ERROR] $tenant: profile '$t_profile' の account ($actual) が $t_account と一致しない — abort" >&2
+      exit 1
+    fi
+    echo "[INFO] Updating SSM parameter: $param=$VERSION (tenant=$tenant profile=$t_profile)"
+    if ! aws ssm put-parameter --region "$AWS_REGION" --profile "$t_profile" \
         --name "$param" --value "$VERSION" --type String --overwrite; then
       echo "[ERROR] Failed to update SSM parameter: $param" >&2
       exit 1
