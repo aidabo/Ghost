@@ -46,8 +46,13 @@ if (Object.keys(TARGETS).length === 0) {
 for (const [tenant, target] of Object.entries(TARGETS)) {
   const missing = ["workdir", "ssmParam"].filter((k) => typeof target?.[k] !== "string" || !target[k].trim());
   const hasInstance = typeof target?.instanceId === "string" && target.instanceId.trim();
-  const hasTags = target?.tags && typeof target.tags === "object" && Object.keys(target.tags).length > 0;
-  if (!hasInstance && !hasTags) missing.push("instanceId（または tags）");
+  const tags = target?.tags;
+  const tagsOk =
+    tags && typeof tags === "object" && !Array.isArray(tags) &&
+    Object.keys(tags).length > 0 &&
+    Object.entries(tags).every(([k, v]) => typeof v === "string" && v.trim() && !v.includes(",") && !k.includes(","));
+  const hasTags = Boolean(tagsOk);
+  if (!hasInstance && !hasTags) missing.push("instanceId（または tags。キー/値はカンマ無しの文字列）");
   if (missing.length) {
     console.error(`deploy-targets.json: ${tenant} is missing ${missing.join(", ")}`);
     process.exit(2);
@@ -178,13 +183,17 @@ if (has("dry-run")) {
     doDeploy ? "deploy: install deploy-on-ec2.sh on each target, docker load, restart" : null,
     doVerify ? "verify: read-only (docker inspect / docker ps / curl localhost:80)" : null,
   ].filter(Boolean);
+  // --resolve を付けたときだけ EC2 を読む（--dry-run 単体は AWS を呼ばない）。
+  const resolve = has("resolve");
   console.log(JSON.stringify({
     stage,
     tenants: tenants.map((t) => ({
       tenant: t,
       profile: profileFor(t),
       account: accountFor(t) || "<unset>",
-      target: TARGETS[t].instanceId || `tags ${JSON.stringify(TARGETS[t].tags || {})}`,
+      target: resolve
+        ? instanceFor(t)
+        : TARGETS[t].instanceId || `tags ${JSON.stringify(TARGETS[t].tags || {})}`,
     })),
     version: versionArg || "(the tenant's SSM parameter, else package.json deployVersion)",
     steps,
@@ -227,6 +236,12 @@ log(`backend stage=${stage} tenant=${tenants.join(",")}`);
 for (const tenant of tenants) {
   log(`[guard] tenant=${tenant} profile=${profileFor(tenant)} account=${accountFor(tenant) || "<unset>"}`);
   accountGuard(tenant);
+}
+// 配布先も、何も実行する前に全テナント分を解決しておく（途中で止まらないように）。
+if (doDeploy || doVerify) {
+  for (const tenant of tenants) {
+    log(`[target] tenant=${tenant} -> ${instanceFor(tenant)}`);
+  }
 }
 log("account guard passed");
 confirmDeploy();
@@ -298,10 +313,10 @@ const scriptB64 = fs.readFileSync(path.join(REPO, "deploy-on-ec2.sh")).toString(
 let failed = 0;
 for (const tenant of tenants) {
   const {workdir, ssmParam} = TARGETS[tenant];
-  const instanceId = instanceFor(tenant);
   const tenantProfile = profileFor(tenant);
 
   if (doDeploy) {
+    const instanceId = instanceFor(tenant);
     const {version, source} = resolvedVersion(tenant);
     log(`[deploy] ${tenant} version=${version} (${source}) artifact=ghost-${version}.tar.gz instance=${instanceId}`);
     // The script is stored next to the compose file (same layout as the
@@ -356,6 +371,7 @@ for (const tenant of tenants) {
   }
 
   if (doVerify) {
+    const instanceId = instanceFor(tenant);
     const {version, source} = resolvedVersion(tenant);
     log(`[verify] ${tenant} expected=ghost:${version} (${source})`);
     const ok = runCommand(instanceId, [
