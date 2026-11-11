@@ -121,13 +121,22 @@ function instanceFor(tenant) {
   }
   const out = aws([
     "ec2", "describe-instances", "--filters", ...filters,
-    "--query", "Reservations[].Instances[].InstanceId", "--output", "json",
+    "--query", "Reservations[].{owner:OwnerId,ids:Instances[].InstanceId}", "--output", "json",
   ], profileFor(tenant));
-  let ids = [];
+  let found = [];
   try {
-    ids = JSON.parse(out);
+    found = JSON.parse(out);
   } catch {
-    ids = [];
+    found = [];
+  }
+  const expected = accountFor(tenant);
+  const owned = found.filter((r) => String(r.owner) === expected);
+  const ids = owned.flatMap((r) => r.ids || []);
+  if (found.length !== owned.length) {
+    console.error(
+      `[FATAL] ${tenant}: tags に合うインスタンスの持ち主が account ${expected} ではない — abort`,
+    );
+    process.exit(1);
   }
   if (ids.length === 1) {
     instanceCache.set(tenant, ids[0]);
@@ -138,6 +147,40 @@ function instanceFor(tenant) {
       `（見つかった: ${ids.join(", ") || "なし"}）。deploy-targets.json に instanceId を書くこと`,
   );
   process.exit(1);
+}
+
+// SendCommand の直前に、配布先が running で、account とタグが期待どおりかを再確認する
+// （タグ検索で選んだ id を、そのまま盲信しない）。
+function assertInstance(tenant, instanceId) {
+  const target = TARGETS[tenant];
+  const out = aws([
+    "ec2", "describe-instances", "--instance-ids", instanceId,
+    "--query", "Reservations[].{owner:OwnerId,state:Instances[].State.Name,tags:Instances[].Tags}",
+    "--output", "json",
+  ], profileFor(tenant));
+  const info = JSON.parse(out)?.[0];
+  if (!info) {
+    console.error(`[FATAL] ${tenant}: instance ${instanceId} が見つからない — abort`);
+    process.exit(1);
+  }
+  const state = info.state?.[0];
+  if (state !== "running") {
+    console.error(`[FATAL] ${tenant}: instance ${instanceId} は running ではない (${state}) — abort`);
+    process.exit(1);
+  }
+  if (String(info.owner) !== accountFor(tenant)) {
+    console.error(`[FATAL] ${tenant}: instance ${instanceId} の owner が account と一致しない — abort`);
+    process.exit(1);
+  }
+  if (target.tags) {
+    const have = new Map((info.tags || []).map((t) => [t.Key, t.Value]));
+    for (const [key, value] of Object.entries(target.tags)) {
+      if (have.get(key) !== value) {
+        console.error(`[FATAL] ${tenant}: instance ${instanceId} の tag ${key}=${value} が一致しない — abort`);
+        process.exit(1);
+      }
+    }
+  }
 }
 
 function accountGuard(tenant) {
@@ -317,6 +360,7 @@ for (const tenant of tenants) {
 
   if (doDeploy) {
     const instanceId = instanceFor(tenant);
+    assertInstance(tenant, instanceId);
     const {version, source} = resolvedVersion(tenant);
     log(`[deploy] ${tenant} version=${version} (${source}) artifact=ghost-${version}.tar.gz instance=${instanceId}`);
     // The script is stored next to the compose file (same layout as the
@@ -372,6 +416,7 @@ for (const tenant of tenants) {
 
   if (doVerify) {
     const instanceId = instanceFor(tenant);
+    assertInstance(tenant, instanceId);
     const {version, source} = resolvedVersion(tenant);
     log(`[verify] ${tenant} expected=ghost:${version} (${source})`);
     const ok = runCommand(instanceId, [
