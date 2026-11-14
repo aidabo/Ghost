@@ -1,4 +1,6 @@
 {
+    "{{code}} is your sign-in code for {{siteTitle}}": "",
+    "{{code}} is your sign-up code for {{siteTitle}}": "",
     "All the best!": "Ізгі ниетпен!",
     "Complete signup for {{siteTitle}}!": "{{siteTitle}} сайтына тіркелуді аяқтаңыз!",
     "Complete your sign up to {{siteTitle}}!": "{{siteTitle}} сайтына тіркелуді аяқтаңыз!",
@@ -8,6 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "{{siteTitle}} үшін email жаңартуын растаңыз",
     "Confirm your subscription to {{siteTitle}}": "{{siteTitle}} сайтына жазылымды растаңыз",
     "Device:": "",
+    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Қауіпсіздік мақсатында сілтеме күші 24 сағат ішінде жойылады.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -39,5 +42,6 @@
     "You will not be subscribed.": "Сіз үшін жазылым жасамаймыз.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "{{siteTitle}} жазылу үшін бір-ақ қадам қалды — мына сілтеме арқылы email адресіңізді растауыңызды сұраймыз:",
     "You're one tap away from subscribing to {{siteTitle}}!": "{{siteTitle}} жазылу үшін бір-ақ қадам қалды!",
+    "Your code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

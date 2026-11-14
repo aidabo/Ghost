@@ -254,23 +254,27 @@ describe('Password reset code API', function () {
     });
 
     it('limits sending per email even when the IP changes', async function () {
-        let lastStatus = 0;
+        let last;
         for (let i = 0; i < 6; i += 1) {
-            const res = await agent
+            last = await agent
                 .post('authentication/password_reset_code')
                 .header('X-Forwarded-For', nextIp())
                 .body({password_reset_code: [{email: 'send-limit@example.com'}]});
-            lastStatus = res.statusCode;
         }
-        assert.equal(lastStatus, 429);
+        assert.equal(last.statusCode, 429);
+        // 上限の文は 6 桁のコードの文（パスワード再設定の試行の文ではない。#63 の brute.js codeLimiter）
+        assert.match(last.body.errors[0].message, /Too many codes requested/);
     });
 
     it('limits tries per email even when the IP changes, and per IP across emails', async function () {
         let last = 0;
+        let limited;
         for (let i = 0; i < 6; i += 1) {
-            last = (await reset({ref: 'x', code: '000000'})).statusCode;
+            limited = await reset({ref: 'x', code: '000000'});
+            last = limited.statusCode;
         }
         assert.equal(last, 429);
+        assert.match(limited.body.errors[0].message, /Too many tries with the code/);
 
         const ip = nextIp();
         for (let i = 0; i < 6; i += 1) {

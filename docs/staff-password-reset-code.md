@@ -1,7 +1,7 @@
 # スタッフのパスワードを、メールの 6 桁のコードで決め直す（password_reset_code）
 
 **状態:** aidabo/Ghost #62（口）と、その直し（6 桁を「送る」を頼んだときにだけ作る）。画面（front）は aidabo/jibunsee-react の
-`LoginAndInvitesDialog`（計画 `docs/planning/staff-password-reset-code.md` §3・§4、PR C）。会員の 6 桁は `members-signin-code.md`（#63 で入る）。
+`LoginAndInvitesDialog`（計画 `docs/planning/staff-password-reset-code.md` §3・§4、PR C）。会員の 6 桁は [members-signin-code.md](./members-signin-code.md)（#63）。
 
 ## 口
 
@@ -30,7 +30,7 @@
 ## 本番のイメージ
 
 `.docker/prd.Dockerfile` は書いたファイルだけを上書きする。`services/auth` と `web/shared/middleware/brute.js` の COPY は #62 で入った。
-会員のリンクの確かめでこの行を断る `services/members/SingleUseTokenProvider.js` の COPY（`services/members`）は **#63 で入る**ので、この変更（#64）は #63 の後にマージする。
+会員のリンクの確かめでこの行を断る `services/members/SingleUseTokenProvider.js` の COPY（`services/members`）は #63 で入った。ビルドの時に 6 桁のファイルが入っているかを確かめる `RUN` も #63 で入った。
 
 ## 画面と配る順
 

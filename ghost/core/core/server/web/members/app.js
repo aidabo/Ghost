@@ -85,6 +85,16 @@ module.exports = function setupMembersApp() {
 
     membersApp.get('/api/integrity-token', middleware.createIntegrityToken);
 
+    // メールの 6 桁のコードで入る（middleware.verifyOTC）。数えるのは IP ごとと otcRef ごと
+    membersApp.post(
+        '/api/verify-otc',
+        bodyParser.json(),
+        middleware.verifyIntegrityToken,
+        shared.middleware.brute.memberOtcVerifyPerIp,
+        shared.middleware.brute.memberOtcVerifyPerRef,
+        middleware.verifyOTC
+    );
+
     // NOTE: this is wrapped in a function to ensure we always go via the getter
     membersApp.post(
         '/api/send-magic-link',
@@ -94,6 +104,8 @@ module.exports = function setupMembersApp() {
         shared.middleware.brute.membersAuthEnumeration,
         // Prevent brute forcing passwords for the same email address
         shared.middleware.brute.membersAuth,
+        // 6 桁つきで送るのは、メールごとに数える（brute.js memberOtcSendPerEmail）
+        shared.middleware.brute.memberOtcSendPerEmail,
         function lazySendMagicLinkMw(req, res, next) {
             return membersService.api.middleware.sendMagicLink(req, res, next);
         }

@@ -1,4 +1,6 @@
 {
+    "{{code}} is your sign-in code for {{siteTitle}}": "",
+    "{{code}} is your sign-up code for {{siteTitle}}": "",
     "All the best!": "Ό,τι καλύτερο!",
     "Complete signup for {{siteTitle}}!": "Ολοκληρώστε την εγγραφή για το {{siteTitle}}!",
     "Complete your sign up to {{siteTitle}}!": "Ολοκληρώστε την εγγραφή σας στο {{siteTitle}}!",
@@ -8,6 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "Επιβεβαιώστε την ενημέρωση email για το {{siteTitle}}!",
     "Confirm your subscription to {{siteTitle}}": "Επιβεβαιώστε την εγγραφή σας στο {{siteTitle}}",
     "Device:": "",
+    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Για την ασφάλειά σας, ο σύνδεσμος θα λήξει σε 24 ώρες.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -39,5 +42,6 @@
     "You will not be subscribed.": "Δεν θα εγγραφείτε.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "Είστε ένα πάτημα μακριά από την εγγραφή στο {{siteTitle}} — παρακαλούμε επιβεβαιώστε τη διεύθυνση email σας με αυτόν τον σύνδεσμο:",
     "You're one tap away from subscribing to {{siteTitle}}!": "Είστε ένα πάτημα μακριά από την εγγραφή στο {{siteTitle}}!",
+    "Your code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

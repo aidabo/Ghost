@@ -1,4 +1,6 @@
 {
+    "{{code}} is your sign-in code for {{siteTitle}}": "",
+    "{{code}} is your sign-up code for {{siteTitle}}": "",
     "All the best!": "Üdvözlettel,",
     "Complete signup for {{siteTitle}}!": "{{siteTitle}} —\u00a0Erősítsd meg a feliratkozásodat a hírlevélre!",
     "Complete your sign up to {{siteTitle}}!": "{{siteTitle}} — A feliratkozásodat ne felejtsd el megerősíteni",
@@ -8,6 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "{{siteTitle}} — E-mail-cím módosításának megerősítése",
     "Confirm your subscription to {{siteTitle}}": "{{siteTitle}} — Előfizetés jóváhagyása",
     "Device:": "",
+    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Biztonsági okokból a link 24 órán belül érvénytelenné válik.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -39,5 +42,6 @@
     "You will not be subscribed.": "Nem leszel feliratkozva.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "Csak egy kattintásra vagy a feliratkozástól! Kérjük, hagyd jóvá az e-mail-címed az alábbi linkkel:",
     "You're one tap away from subscribing to {{siteTitle}}!": "{{siteTitle}} — Csak egy kattintásra vagy a feliratkozástól!",
+    "Your code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

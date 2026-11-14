@@ -1,4 +1,6 @@
 {
+    "{{code}} is your sign-in code for {{siteTitle}}": "{{code}} は{{siteTitle}}のログインのコードです",
+    "{{code}} is your sign-up code for {{siteTitle}}": "{{code}} は{{siteTitle}}の会員登録のコードです",
     "All the best!": "よろしくお願いします！",
     "Complete signup for {{siteTitle}}!": "{{siteTitle}}の新規登録を完了してください！",
     "Complete your sign up to {{siteTitle}}!": "{{siteTitle}}の新規登録を完了してください。",
@@ -8,6 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "メールを更新して確認してください。",
     "Confirm your subscription to {{siteTitle}}": "{{siteTitle}}の購読を確認",
     "Device:": "",
+    "Enter it on the screen you have open within 10 minutes, or use the link below.": "開いている画面に 10 分以内にこの 6 桁を入れるか、下のリンクを押してください。",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "セキュリティのため、リンクの有効期限は24時間です。",
     "Here's your code to login to {{siteTitle}}": "",
@@ -39,5 +42,6 @@
     "You will not be subscribed.": "購読されません。",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "{{siteTitle}}への購読まであと少しです。このリンクを使用してメールアドレスを確認してください。",
     "You're one tap away from subscribing to {{siteTitle}}!": "{{siteTitle}}への購読まであと少しです。",
+    "Your code: {{code}}": "コード: {{code}}",
     "Your verification code for {{siteTitle}}": ""
 }

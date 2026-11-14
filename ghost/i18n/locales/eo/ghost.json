@@ -1,4 +1,6 @@
 {
+    "{{code}} is your sign-in code for {{siteTitle}}": "",
+    "{{code}} is your sign-up code for {{siteTitle}}": "",
     "All the best!": "Ĉion bonan!",
     "Complete signup for {{siteTitle}}!": "",
     "Complete your sign up to {{siteTitle}}!": "Pletu vian aliĝon al {{siteTitle}}!",
@@ -8,6 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "Konfirmu vian retadreson ĝisdatigon por {{siteTitle}}!",
     "Confirm your subscription to {{siteTitle}}": "Konfirmu vian abonon al {{siteTitle}}",
     "Device:": "",
+    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Por via sekureco, la ligilo eksvalidiĝos post 24 horoj.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -39,5 +42,6 @@
     "You will not be subscribed.": "Vi ne abonitos.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "Vi estas unu premo for de abonado al {{siteTitle}} — bonvolu konfirmi vian retadreson per ĉi tiu ligilo:",
     "You're one tap away from subscribing to {{siteTitle}}!": "",
+    "Your code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }
