@@ -3,7 +3,7 @@ const path = require('path');
 const moment = require('moment');
 const glob = require('glob');
 const {EmailAddressParser} = require('@tryghost/email-addresses');
-const {getFrontLogoUrl} = require('../lib/front-logo');
+const {siteIconOrFrontLogo} = require('../lib/front-logo');
 
 class StaffServiceEmails {
     constructor({logging, models, mailer, settingsHelpers, settingsCache, blogIcon, urlUtils, labs}) {
@@ -178,12 +178,12 @@ class StaffServiceEmails {
     }
 
     /**
-     * メールのロゴ: サイトのアイコン、無ければ front のロゴ（services/lib/front-logo.js）。
+     * メールのロゴ: サイトのアイコン、無ければ front のロゴ（services/lib/front-logo.js の siteIconOrFrontLogo）。
      * どちらも無ければ null（雛形は {{#if siteIconUrl}} でロゴを出さない。今までどおり）
      * @returns {string|null}
      */
     getSiteIconUrl() {
-        return this.blogIcon.getIconUrl({absolute: true, fallbackToDefault: false}) || getFrontLogoUrl() || null;
+        return siteIconOrFrontLogo(this.blogIcon.getIconUrl({absolute: true, fallbackToDefault: false}));
     }
 
     /**
@@ -249,8 +249,8 @@ class StaffServiceEmails {
                 toEmail: to,
                 adminUrl: this.urlUtils.urlFor('admin', true),
                 staffUrl: staffUrl,
-                // ロゴは front のロゴ（無ければ雛形の Ghost のロゴ）。services/lib/front-logo.js
-                frontLogoUrl: getFrontLogoUrl()
+                // ロゴは、ほかのスタッフへの知らせと同じく、サイトのアイコン → front のロゴ（どちらも無ければ雛形の Ghost のロゴ）
+                logoUrl: this.getSiteIconUrl()
             };
 
             const {html, text} = await this.renderEmailTemplate('new-milestone-received', templateData);

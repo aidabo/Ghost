@@ -178,9 +178,9 @@ RUN set -eux; \
     grep -q frontLogoUrl core/server/services/api-version-compatibility/templates/generic-mismatch.html; \
     grep -q getFrontLogoUrl core/server/data/importer/email-template.js; \
     grep -q getFrontLogoUrl core/server/services/members/importer/email-template.js; \
-    grep -q getFrontLogoUrl core/server/services/auth/session/index.js; \
-    grep -q frontLogoUrl core/server/services/staff/StaffServiceEmails.js; \
-    grep -q frontLogoUrl core/server/services/staff/email-templates/new-milestone-received.hbs
+    grep -q siteIconOrFrontLogo core/server/services/auth/session/index.js; \
+    grep -q siteIconOrFrontLogo core/server/services/staff/StaffServiceEmails.js; \
+    grep -q logoUrl core/server/services/staff/email-templates/new-milestone-received.hbs
 
 WORKDIR $GHOST_INSTALL
 VOLUME $GHOST_CONTENT

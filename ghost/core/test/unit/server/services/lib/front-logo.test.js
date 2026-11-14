@@ -2,10 +2,8 @@
 // front の URL（GHOST_FRONT_END_URL、無ければ FRONT_END_URL）が無いときは、今までの Ghost のロゴのまま。
 const assert = require('assert/strict');
 const path = require('path');
-const Handlebars = require('handlebars');
-const fs = require('fs');
 
-const {getFrontLogoUrl} = require('../../../../../core/server/services/lib/front-logo');
+const {getFrontLogoUrl, siteIconOrFrontLogo} = require('../../../../../core/server/services/lib/front-logo');
 const EmailContentGenerator = require('../../../../../core/server/services/lib/EmailContentGenerator');
 const importerTemplate = require('../../../../../core/server/data/importer/email-template');
 const membersImporterTemplate = require('../../../../../core/server/services/members/importer/email-template');
@@ -30,9 +28,11 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
     let saved;
 
     beforeEach(function () {
-        saved = {GHOST_FRONT_END_URL: process.env.GHOST_FRONT_END_URL, FRONT_END_URL: process.env.FRONT_END_URL};
-        delete process.env.GHOST_FRONT_END_URL;
-        delete process.env.FRONT_END_URL;
+        saved = {};
+        for (const key of ['FRONT_END_URL', 'GHOST_FRONT_END_URL', 'MEMBERS_FRONTEND_URL', 'FRONTEND_URL', 'NEXT_PUBLIC_FRONT_URL']) {
+            saved[key] = process.env[key];
+            delete process.env[key];
+        }
     });
 
     afterEach(function () {
@@ -46,9 +46,25 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
     });
 
     describe('getFrontLogoUrl', function () {
-        it('uses GHOST_FRONT_END_URL first, then FRONT_END_URL, without a trailing slash', function () {
-            assert.equal(getFrontLogoUrl({GHOST_FRONT_END_URL: 'https://a.example.com/', FRONT_END_URL: 'https://b.example.com'}), 'https://a.example.com/apple-touch-icon.png');
-            assert.equal(getFrontLogoUrl({FRONT_END_URL: 'https://b.example.com//'}), 'https://b.example.com/apple-touch-icon.png');
+        it('uses FRONT_END_URL first (the same host as the mail links), without a trailing slash', function () {
+            assert.equal(getFrontLogoUrl({GHOST_FRONT_END_URL: 'https://a.example.com/', FRONT_END_URL: 'https://b.example.com//'}), 'https://b.example.com/apple-touch-icon.png');
+        });
+
+        it('then GHOST_FRONT_END_URL, then the members front URL names (as services/members/frontend-url.js)', function () {
+            assert.equal(getFrontLogoUrl({GHOST_FRONT_END_URL: 'https://a.example.com', MEMBERS_FRONTEND_URL: 'https://m.example.com'}), 'https://a.example.com/apple-touch-icon.png');
+            assert.equal(getFrontLogoUrl({MEMBERS_FRONTEND_URL: 'https://m.example.com', FRONTEND_URL: 'https://f.example.com'}), 'https://m.example.com/apple-touch-icon.png');
+            assert.equal(getFrontLogoUrl({FRONTEND_URL: 'https://f.example.com'}), 'https://f.example.com/apple-touch-icon.png');
+            assert.equal(getFrontLogoUrl({NEXT_PUBLIC_FRONT_URL: 'https://n.example.com'}), 'https://n.example.com/apple-touch-icon.png');
+            assert.equal(getFrontLogoUrl({FRONT_END_URL: '  ', GHOST_FRONT_END_URL: 'https://a.example.com'}), 'https://a.example.com/apple-touch-icon.png');
+        });
+
+        it('siteIconOrFrontLogo: the site icon, else the front logo, else the given Ghost logo (2FA, staff notices)', function () {
+            assert.equal(siteIconOrFrontLogo('https://ghost.test/icon.png', 'orb'), 'https://ghost.test/icon.png');
+            assert.equal(siteIconOrFrontLogo(null, 'orb'), 'orb');
+            assert.equal(siteIconOrFrontLogo(null), null);
+            process.env.FRONT_END_URL = FRONT;
+            assert.equal(siteIconOrFrontLogo(null, 'orb'), FRONT_LOGO);
+            assert.equal(siteIconOrFrontLogo('https://ghost.test/icon.png', 'orb'), 'https://ghost.test/icon.png');
         });
 
         it('is null without a usable http(s) URL (the caller keeps the Ghost logo)', function () {
@@ -115,31 +131,54 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
             assert.equal(emails(null).getSiteIconUrl(), null);
         });
 
-        it('the new free signup mail shows the front logo', async function () {
-            process.env.FRONT_END_URL = FRONT;
-            const service = emails(null);
-            const {html} = await service.renderEmailTemplate('new-free-signup', {siteTitle: 'Blog', siteUrl: 'http://ghost.test/', siteIconUrl: service.getSiteIconUrl(), memberData: {name: 'M', email: 'm@example.com'}, toEmail: 'b@example.com', staffUrl: 'http://ghost.test/ghost/#/x'});
-            assert.ok(html.includes(`src="${FRONT_LOGO}"`));
-        });
-    });
-
-    it('the milestone mail uses the front logo, or the Ghost logo without it', function () {
-        const source = fs.readFileSync(path.join(SERVER, 'services/staff/email-templates/new-milestone-received.hbs'), 'utf8');
-        const hbs = Handlebars.create();
-        hbs.registerHelper('date', () => '');
-        // 部分の雛形（styles など）は空に（ここで見るのはロゴだけ）
-        for (const [, name] of source.matchAll(/{{>\s*"?([\w/.-]+)"?/g)) {
-            hbs.registerPartial(name, '');
+        // 本物の notify… を呼び、送るメールの html にロゴが入るかを見る（getSiteIconUrl の受け渡しまで確かめる）
+        function wired(icon) {
+            const sent = [];
+            const service = new StaffServiceEmails({
+                logging: {warn() {}},
+                models: {User: {getEmailAlertUsers: async () => [{email: 'staff@example.com', slug: 'staff'}]}},
+                mailer: {send: async (msg) => {
+                    sent.push(msg);
+                }},
+                settingsHelpers: {getDefaultEmail: () => ({address: 'noreply@ghost.test', name: 'Blog'}), getDefaultEmailDomain: () => 'ghost.test'},
+                settingsCache: {get: key => ({title: 'Blog', accent_color: '#000000', timezone: 'Etc/UTC'}[key])},
+                blogIcon: {getIconUrl: () => icon},
+                urlUtils: {
+                    urlFor: () => 'http://ghost.test/ghost/',
+                    urlJoin: (...parts) => parts.join('/'),
+                    getSiteUrl: () => 'http://ghost.test/'
+                },
+                labs: {isSet: () => false}
+            });
+            return {service, sent};
         }
-        hbs.registerPartial('milestones/100', '');
-        const template = hbs.compile(source);
-        const base = {siteTitle: 'Blog', siteUrl: 'http://ghost.test/', partial: 'milestones/100', toEmail: 'b@example.com', staffUrl: 'http://ghost.test/ghost/#/x'};
 
-        const withFront = template({...base, frontLogoUrl: FRONT_LOGO});
-        assert.ok(withFront.includes(`background="${FRONT_LOGO}"`));
-        assert.ok(withFront.includes(`src="${FRONT_LOGO}"`));
-        assert.doesNotMatch(withFront, ORB);
+        it('the real free signup mail shows the front logo when the site has no icon', async function () {
+            process.env.FRONT_END_URL = FRONT;
+            const {service, sent} = wired(null);
+            await service.notifyFreeMemberSignup({member: {name: 'M', email: 'm@example.com', created_at: new Date()}, attribution: null}, {});
+            assert.equal(sent.length, 1);
+            assert.ok(sent[0].html.includes(`src="${FRONT_LOGO}"`), 'front logo in the sent mail');
+        });
 
-        assert.match(template({...base, frontLogoUrl: null}), ORB);
+        it('the real milestone mail: site icon first, then the front logo, then the Ghost logo', async function () {
+            const milestone = {type: 'members', value: 100, emailSentAt: new Date()};
+            process.env.FRONT_END_URL = FRONT;
+
+            let {service, sent} = wired('https://ghost.test/icon.png');
+            await service.notifyMilestoneReceived({milestone});
+            assert.ok(sent[0].html.includes('src="https://ghost.test/icon.png"'));
+            assert.doesNotMatch(sent[0].html, ORB);
+
+            ({service, sent} = wired(null));
+            await service.notifyMilestoneReceived({milestone});
+            assert.ok(sent[0].html.includes(`src="${FRONT_LOGO}"`));
+            assert.doesNotMatch(sent[0].html, ORB);
+
+            delete process.env.FRONT_END_URL;
+            ({service, sent} = wired(null));
+            await service.notifyMilestoneReceived({milestone});
+            assert.match(sent[0].html, ORB);
+        });
     });
 });
