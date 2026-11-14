@@ -196,6 +196,54 @@ const controller = {
         }
     },
 
+    // スタッフがパスワードを忘れたとき、メールの 6 桁のコードで決め直す（services/auth/password-reset-code.js）。
+    // 登録の無いメールでも同じ応答（どちらも 200）。permissions は今の resetPassword と同じく false（ログイン前の口）
+    generateResetCode: {
+        headers: {
+            cacheInvalidate: false
+        },
+        validation: {
+            docName: 'password_reset_code'
+        },
+        permissions: false,
+        query(frame) {
+            const {email, locale} = frame.data.password_reset_code[0];
+            return Promise.resolve()
+                .then(() => auth.setup.assertSetupCompleted(true)())
+                .then(() => auth.passwordResetCode.requestCode({email, locale}, api.settings, api.mail, {context: {internal: true}}));
+        }
+    },
+
+    resetPasswordWithCode: {
+        headers: {
+            cacheInvalidate: false
+        },
+        validation: {
+            docName: 'password_reset_code',
+            data: {
+                email: {required: true},
+                code: {required: true},
+                newPassword: {required: true},
+                ne2Password: {required: true}
+            }
+        },
+        permissions: false,
+        options: [
+            'ip'
+        ],
+        query(frame) {
+            const data = frame.data.password_reset_code[0];
+            return Promise.resolve()
+                .then(() => auth.setup.assertSetupCompleted(true)())
+                .then(() => auth.passwordResetCode.resetWithCode(data, {context: {internal: true}}))
+                .then((user) => {
+                    // 変え終わったら、ログインの回数の制限を戻す（今の resetPassword と同じ）
+                    web.shared.middleware.api.spamPrevention.userLogin().reset(frame.options.ip, `${data.email}login`);
+                    return user;
+                });
+        }
+    },
+
     acceptInvitation: {
         headers: {
             cacheInvalidate: false

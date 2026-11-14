@@ -1,6 +1,12 @@
 const url = require('url');
 const spamPrevention = require('./api/spam-prevention');
 
+/** 6 桁のコードの口の本文から、数える鍵にするメール（小文字）。無ければ空 */
+function resetCodeEmail(req) {
+    const email = req.body?.password_reset_code?.[0]?.email;
+    return typeof email === 'string' ? email.trim().toLowerCase() : '';
+}
+
 /**
  * We set ignoreIP to false, because we tell brute-knex to use `req.ip`.
  * We can use `req.ip`, because express trust proxy option is enabled.
@@ -47,6 +53,39 @@ module.exports = {
             ignoreIP: false,
             key(_req, _res, _next) {
                 _next(`${_req.body.username}reset`);
+            }
+        })(req, res, next);
+    },
+    /**
+     * パスワードの 6 桁のコード: メールごと（IP によらない）に送る回数を数える
+     */
+    resetCodeSendPerEmail(req, res, next) {
+        return spamPrevention.userReset().getMiddleware({
+            ignoreIP: true,
+            key(_req, _res, _next) {
+                _next(`${resetCodeEmail(_req)}password_reset_code_send`);
+            }
+        })(req, res, next);
+    },
+    /**
+     * パスワードの 6 桁のコード: IP ごとに確かめる回数を数える（たくさんのメールに少しずつ当てる推測を止める）
+     */
+    resetCodeVerifyPerIp(req, res, next) {
+        return spamPrevention.userVerification().getMiddleware({
+            ignoreIP: false,
+            key(_req, _res, _next) {
+                _next('password_reset_code_verify');
+            }
+        })(req, res, next);
+    },
+    /**
+     * パスワードの 6 桁のコード: メール（アカウント）ごとに確かめる回数を数える（IP を変えた推測を止める）
+     */
+    resetCodeVerifyPerEmail(req, res, next) {
+        return spamPrevention.userReset().getMiddleware({
+            ignoreIP: true,
+            key(_req, _res, _next) {
+                _next(`${resetCodeEmail(_req)}password_reset_code_verify`);
             }
         })(req, res, next);
     },

@@ -9,6 +9,10 @@ module.exports = {
         return require('./password_reset');
     },
 
+    get password_reset_code() {
+        return require('./password_reset_code');
+    },
+
     get setup() {
         return require('./setup');
     },
