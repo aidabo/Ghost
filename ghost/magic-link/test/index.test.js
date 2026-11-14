@@ -93,6 +93,55 @@ describe('MagicLink', function () {
         });
     });
 
+    describe('#sendMagicLink with includeOTC', function () {
+        it('passes the 6-digit code to the subject, text and HTML, and returns otcRef', async function () {
+            const tokenProvider = {
+                createWithRef: sandbox.stub().resolves({token: 'TOKEN', ref: 'REF'}),
+                deriveOTC: sandbox.stub().returns('123456'),
+                create: sandbox.stub().rejects(new Error('should not be called'))
+            };
+            const options = {
+                tokenProvider,
+                getSigninURL: sandbox.stub().returns('FAKEURL'),
+                getText: sandbox.stub().returns('SOMETEXT'),
+                getHTML: sandbox.stub().returns('SOMEHTML'),
+                getSubject: sandbox.stub().returns('SOMESUBJECT'),
+                transporter: {
+                    sendMail: sandbox.stub().resolves()
+                }
+            };
+            const service = new MagicLink(options);
+
+            const result = await service.sendMagicLink({email: 'test@example.com', tokenData: {}, type: 'signin', includeOTC: true});
+
+            assert(tokenProvider.deriveOTC.calledOnceWithExactly('REF', 'TOKEN'));
+            assert(options.getSubject.firstCall.calledWithExactly('signin', '123456'));
+            assert(options.getText.firstCall.calledWithExactly('FAKEURL', 'signin', 'test@example.com', '123456'));
+            assert(options.getHTML.firstCall.calledWithExactly('FAKEURL', 'signin', 'test@example.com', '123456'));
+            assert.equal(result.otcRef, 'REF');
+            assert.equal(result.token, 'TOKEN');
+        });
+
+        it('falls back to a plain link when the token provider cannot make a code', async function () {
+            const options = {
+                tokenProvider: new MagicLink.JWTTokenProvider(secret),
+                getSigninURL: sandbox.stub().returns('FAKEURL'),
+                getText: sandbox.stub().returns('SOMETEXT'),
+                getHTML: sandbox.stub().returns('SOMEHTML'),
+                getSubject: sandbox.stub().returns('SOMESUBJECT'),
+                transporter: {
+                    sendMail: sandbox.stub().resolves()
+                }
+            };
+            const service = new MagicLink(options);
+
+            const result = await service.sendMagicLink({email: 'test@example.com', tokenData: {}, type: 'signin', includeOTC: true});
+
+            assert(options.getSubject.firstCall.calledWithExactly('signin'));
+            assert.equal(result.otcRef, undefined);
+        });
+    });
+
     describe('#getDataFromToken', function () {
         it('Returns the user data which from the token that was encoded by #sendMagicLink', async function () {
             const options = {

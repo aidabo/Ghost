@@ -212,6 +212,10 @@ describe('Password reset code API', function () {
                 .header('X-Forwarded-For', `10.0.0.${i + 1}`)
                 .body(body);
             lastStatus = res.statusCode;
+            if (res.statusCode === 429) {
+                // 上限の文は 6 桁のコードの文（パスワード再設定の試行の文ではない）
+                assert.match(res.body.errors[0].message, /Too many tries with the code/);
+            }
         }
         assert.equal(lastStatus, 429);
 

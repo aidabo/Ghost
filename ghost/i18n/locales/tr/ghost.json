@@ -1,4 +1,6 @@
 {
+    "{{code}} is your sign-in code for {{siteTitle}}": "",
+    "{{code}} is your sign-up code for {{siteTitle}}": "",
     "All the best!": "En iyi dileklerimizle!",
     "Complete signup for {{siteTitle}}!": "{{siteTitle}} sitesi için kaydı tamamlayın!",
     "Complete your sign up to {{siteTitle}}!": "{{siteTitle}} sitesine kaydını tamamla!",
@@ -8,6 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "{{siteTitle}} için e-posta güncellemeni onayla!",
     "Confirm your subscription to {{siteTitle}}": "{{siteTitle}} sitesine aboneliğini onayla",
     "Device:": "",
+    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Güvenliğin için link 24 saat sonra geçerliliğini yitirecek.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -39,5 +42,6 @@
     "You will not be subscribed.": "Abone olmayacaksın.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "{{siteTitle}} sitesine abone olmaya bir tık uzaktasın — lütfen e-posta adresini bu linke tıklayarak onayla:",
     "You're one tap away from subscribing to {{siteTitle}}!": "{{siteTitle}} abone olmanıza bir dokunuş kadar yakınsınız!",
+    "Your code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

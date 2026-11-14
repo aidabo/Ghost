@@ -1,4 +1,6 @@
 {
+    "{{code}} is your sign-in code for {{siteTitle}}": "",
+    "{{code}} is your sign-up code for {{siteTitle}}": "",
     "All the best!": "Gjithe te mirat!",
     "Complete signup for {{siteTitle}}!": "Perfundo rregjistrimin per {{siteTitle}}!",
     "Complete your sign up to {{siteTitle}}!": "Perfundo rregjistrimin ne {{siteTitle}}!",
@@ -8,6 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "Konfirmo adresen tende te emailit per {{siteTitle}}!",
     "Confirm your subscription to {{siteTitle}}": "Konfirmo abonimin tend ne {{siteTitle}}",
     "Device:": "",
+    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Per sigurine tende, linku do te skadoje ne 24 ore.  ",
     "Here's your code to login to {{siteTitle}}": "",
@@ -39,5 +42,6 @@
     "You will not be subscribed.": "Ju nuk do te abonoheni",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "Ju jeni nje klikim larg nga abonimi ne  {{siteTitle}}! - ju lutem konfirmoni adresen tuaj te emailit me kete link.",
     "You're one tap away from subscribing to {{siteTitle}}!": "Ju jeni nje klikim larg nga abonimi ne  {{siteTitle}}!",
+    "Your code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

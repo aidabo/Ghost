@@ -52,8 +52,11 @@ COPY --chown=node:node ghost/core/core/server/data/migrations/hooks/init/after.j
 COPY --chown=node:node ghost/core/core/server/data/migrations/hooks/init/index.js ${GHOST_INSTALL}/current/core/server/data/migrations/hooks/init
 COPY --chown=node:node ghost/core/core/server/models ${GHOST_INSTALL}/current/core/server/models
 COPY --chown=node:node ghost/core/core/server/services/mail ${GHOST_INSTALL}/current/core/server/services/mail
-# スタッフのパスワードの 6 桁のコード（services/auth/password-reset-code.js）と、その回数の制限（brute.js）
+# スタッフのパスワードの 6 桁のコード（services/auth/password-reset-code.js）
 COPY --chown=node:node ghost/core/core/server/services/auth ${GHOST_INSTALL}/current/core/server/services/auth
+# 会員の 6 桁のコード（services/members の SingleUseTokenProvider・api・members-ssr・middleware）
+COPY --chown=node:node ghost/core/core/server/services/members ${GHOST_INSTALL}/current/core/server/services/members
+# どちらも回数の制限は brute.js
 COPY --chown=node:node ghost/core/core/server/web/shared/middleware/brute.js ${GHOST_INSTALL}/current/core/server/web/shared/middleware
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeAPI.js ${GHOST_INSTALL}/current/core/server/services/stripe
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeService.js ${GHOST_INSTALL}/current/core/server/services/stripe
@@ -138,6 +141,20 @@ COPY --chown=node:node ghost/members-api/lib/controllers/MemberController.js ${G
 COPY --chown=node:node ghost/members-api/lib/controllers/RouterController.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/controllers/
 COPY --chown=node:node ghost/members-api/lib/repositories/MemberRepository.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/repositories/
 COPY --chown=node:node ghost/members-api/lib/services/PaymentsService.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/services/
+# 会員の 6 桁のコード: includeOTC を渡す members-api.js、6 桁をメールに入れる magic-link、メールの言葉（i18n）
+COPY --chown=node:node ghost/members-api/lib/members-api.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/
+COPY --chown=node:node ghost/magic-link/lib/MagicLink.js ${GHOST_INSTALL}/current/node_modules/@tryghost/magic-link/lib/
+COPY --chown=node:node ghost/i18n/locales ${GHOST_INSTALL}/current/node_modules/@tryghost/i18n/locales
+# 6 桁のコード（スタッフ・会員）のファイルがイメージに入っているか、ビルドの時に確かめる
+# （COPY は書いたものだけを上書きするので、書き忘れると配布先で起動しない。#62・#63 で 2 回起きかけた）
+RUN set -eux; \
+    cd ${GHOST_INSTALL}/current; \
+    test -f core/server/services/auth/password-reset-code.js; \
+    test -f core/server/services/members/SingleUseTokenProvider.js; \
+    grep -q memberOtcVerifyPerRef core/server/web/shared/middleware/brute.js; \
+    grep -q createWithRef node_modules/@tryghost/magic-link/lib/MagicLink.js; \
+    grep -q includeOTC node_modules/@tryghost/members-api/lib/members-api.js; \
+    grep -q includeOTC node_modules/@tryghost/members-api/lib/controllers/RouterController.js
 
 WORKDIR $GHOST_INSTALL
 VOLUME $GHOST_CONTENT

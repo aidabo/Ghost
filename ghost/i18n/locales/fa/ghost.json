@@ -1,4 +1,6 @@
 {
+    "{{code}} is your sign-in code for {{siteTitle}}": "",
+    "{{code}} is your sign-up code for {{siteTitle}}": "",
     "All the best!": "با آرزوی بهترین\u200cها!",
     "Complete signup for {{siteTitle}}!": "عضویت در {{siteTitle}} را تکمیل کنید!",
     "Complete your sign up to {{siteTitle}}!": "عضویت خود را در {{siteTitle}} تکمیل کنید!",
@@ -8,6 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "به\u200cروزرسانی آدرس ایمیل خود را برای {{siteTitle}} تأیید کنید!",
     "Confirm your subscription to {{siteTitle}}": "اشتراک خود را در {{siteTitle}} تأیید کنید",
     "Device:": "",
+    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "به خاطر حفظ امنیت شما، این پیوند بعد از ۲۴ ساعت منقضی می\u200cشود. ",
     "Here's your code to login to {{siteTitle}}": "",
@@ -39,5 +42,6 @@
     "You will not be subscribed.": "شما مشترک نخواهید شد.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "شما در یک قدمی دریافت اشتراک وب\u200cسایت {{siteTitle}} هستید - خواهشمند است آدرس ایمیل خود را از طریق این لینک تأیید کنید:",
     "You're one tap away from subscribing to {{siteTitle}}!": "شما در یک قدمی دریافت اشتراک وب\u200cسایت {{siteTitle}} هستید!",
+    "Your code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

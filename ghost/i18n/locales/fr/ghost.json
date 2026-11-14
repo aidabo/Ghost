@@ -1,4 +1,6 @@
 {
+    "{{code}} is your sign-in code for {{siteTitle}}": "",
+    "{{code}} is your sign-up code for {{siteTitle}}": "",
     "All the best!": "Bien à vous.",
     "Complete signup for {{siteTitle}}!": "Finalisez votre inscription à {{siteTitle}} !",
     "Complete your sign up to {{siteTitle}}!": "Finalisez votre inscription à {{siteTitle}} !",
@@ -8,6 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "Confirmez la mise à jour de votre e-mail pour {{siteTitle}} !",
     "Confirm your subscription to {{siteTitle}}": "Confirmez votre abonnement à {{siteTitle}}",
     "Device:": "",
+    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Pour des raisons de sécurité, le lien expirera dans 24 heures.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -39,5 +42,6 @@
     "You will not be subscribed.": "Vous ne serez pas abonné-e.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "Plus qu’une étape pour vous abonner à {{siteTitle}} — confirmez votre adresse e-mail avec ce lien :",
     "You're one tap away from subscribing to {{siteTitle}}!": "Plus qu’une étape pour vous abonner à {{siteTitle}} !",
+    "Your code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

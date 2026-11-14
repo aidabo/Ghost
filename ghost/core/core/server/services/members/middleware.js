@@ -21,7 +21,8 @@ const settingsHelpers = require('../settings-helpers');
 const messages = {
     missingUuid: 'Missing uuid.',
     invalidUuid: 'Invalid uuid.',
-    invalidKey: 'Invalid key.'
+    invalidKey: 'Invalid key.',
+    invalidOTC: 'The code is wrong or has expired. Please request a new one.'
 };
 
 const getFreeTier = async function getFreeTier() {
@@ -325,6 +326,29 @@ const updateMemberData = async function updateMemberData(req, res) {
     }
 };
 
+/**
+ * メールの 6 桁のコード（OTC）で入る（ログイン・登録）。jibunsee-react docs/planning/staff-password-reset-code.md §8。
+ * 本文 { otc, otcRef }（upstream の Ghost と同じ名前）。合えば Ghost の中で token をセッションに替え、
+ * 会員の cookie を付けて返す。token はブラウザに返さない（アドレスに載せると履歴やログに残るため）。
+ */
+const verifyOTC = async function verifyOTC(req, res, next) {
+    try {
+        const {otc, otcRef} = req.body || {};
+        const token = await membersService.api.tokenProvider.verifyOTC(otcRef, typeof otc === 'string' ? otc : String(otc ?? ''));
+        if (!token) {
+            throw new errors.BadRequestError({
+                message: tpl(messages.invalidOTC),
+                code: 'INVALID_OTC'
+            });
+        }
+        const member = await membersService.ssr.exchangeTokenValueForSession(req, res, token);
+        spamPrevention.membersAuth().reset(req.ip, `${member.email}login`);
+        res.json({success: true});
+    } catch (err) {
+        next(err);
+    }
+};
+
 const createSessionFromMagicLink = async function createSessionFromMagicLink(req, res, next) {
     if (!req.url.includes('token=')) {
         return next();
@@ -429,6 +453,7 @@ module.exports = {
     loadMemberSession,
     authMemberByUuid,
     createSessionFromMagicLink,
+    verifyOTC,
     getIdentityToken,
     getMemberNewsletters,
     getMemberData,
