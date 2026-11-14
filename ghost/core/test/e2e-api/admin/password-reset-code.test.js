@@ -298,6 +298,12 @@ describe('Password reset code API', function () {
     });
 
     it('the send limit follows spam.user_reset after a reset (the send side, too)', async function () {
+        // 先に 1 回送って、今の設定で数えるものを作っておく（この試験だけ回しても、reset で作り直さないと落ちるように）
+        await agent
+            .post('authentication/password_reset_code')
+            .header('X-Forwarded-For', nextIp())
+            .body({password_reset_code: [{email: 'send-warm-up@example.com'}]})
+            .expectStatus(200);
         const key = 'spam:user_reset:freeRetries';
         const before = configUtils.config.get(key);
         configUtils.set(key, 1);
