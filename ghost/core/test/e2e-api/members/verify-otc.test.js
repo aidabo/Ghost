@@ -150,6 +150,16 @@ describe('Members sign in / sign up with a one-time code', function () {
         await verify(secondRef, codeOf(second)).expectStatus(200);
     });
 
+    it('allows a few typos: three wrong codes, then the right one still signs in (same ref, same IP)', async function () {
+        const otcRef = await sendWithOTC('member1@test.com');
+        const code = codeOf(sentEmails(mailReceiver)[0]);
+        const wrong = String((Number(code) + 1) % 1000000).padStart(6, '0');
+        for (let i = 0; i < 3; i += 1) {
+            await verify(otcRef, wrong, '10.7.0.1').expectStatus(400);
+        }
+        await verify(otcRef, code, '10.7.0.1').expectStatus(200);
+    });
+
     it('limits tries per otcRef even when the IP changes', async function () {
         const otcRef = await sendWithOTC('member1@test.com');
         const code = codeOf(sentEmails(mailReceiver)[0]);
