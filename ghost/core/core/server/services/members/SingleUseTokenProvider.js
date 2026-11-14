@@ -5,6 +5,13 @@ const {ValidationError} = require('@tryghost/errors');
 /** 6 桁のコード（OTC）で入れるのは、token を作ってから 10 分まで（リンクの 24 時間より短く） */
 const OTC_VALIDITY = 10 * 60 * 1000;
 
+/**
+ * otcRef の正しい形（token の行の id: 24 文字の小文字の 16 進）。
+ * MySQL は大文字・小文字や後ろの空白が違っても同じ行を引くので、形が違うものは引く前に断る
+ * （回数の制限を ref の書き方を変えてすり抜けさせない。brute.js の memberOtcVerifyPerRef も同じ形で数える）。
+ */
+const OTC_REF_PATTERN = /^[0-9a-f]{24}$/;
+
 class SingleUseTokenProvider {
     /**
      * @param {Object} dependencies
@@ -82,11 +89,11 @@ class SingleUseTokenProvider {
      * @returns {Promise<string|null>}
      */
     async verifyOTC(ref, otc) {
-        if (typeof ref !== 'string' || typeof otc !== 'string' || !/^\d{6}$/.test(otc.trim()) || !this.getOTCSecret?.()) {
+        if (typeof ref !== 'string' || !OTC_REF_PATTERN.test(ref) || typeof otc !== 'string' || !/^\d{6}$/.test(otc.trim()) || !this.getOTCSecret?.()) {
             return null;
         }
         const model = await this.model.findOne({id: ref});
-        if (!model) {
+        if (!model || model.id !== ref) {
             return null;
         }
         if (Date.now() - model.get('created_at').getTime() > OTC_VALIDITY) {
@@ -96,7 +103,8 @@ class SingleUseTokenProvider {
             return null;
         }
         const token = model.get('token');
-        const expected = Buffer.from(this.deriveOTC(ref, token));
+        // 6 桁は、引いた行の本当の id で作って比べる
+        const expected = Buffer.from(this.deriveOTC(model.id, token));
         const given = Buffer.from(otc.trim());
         if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) {
             return null;
@@ -181,3 +189,4 @@ class SingleUseTokenProvider {
 
 module.exports = SingleUseTokenProvider;
 module.exports.OTC_VALIDITY = OTC_VALIDITY;
+module.exports.OTC_REF_PATTERN = OTC_REF_PATTERN;

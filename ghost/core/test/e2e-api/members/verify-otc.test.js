@@ -164,6 +164,30 @@ describe('Members sign in / sign up with a one-time code', function () {
         assert.equal(blocked.statusCode, 429);
     });
 
+    it('refuses an otcRef written differently (upper case, spaces), even with the right code', async function () {
+        const otcRef = await sendWithOTC('member1@test.com');
+        const code = codeOf(sentEmails(mailReceiver)[0]);
+        await verify(otcRef.toUpperCase(), code, '10.3.0.1').expectStatus(400);
+        await verify(`${otcRef} `, code, '10.3.0.2').expectStatus(400);
+        await verify(` ${otcRef}`, code, '10.3.0.3').expectStatus(400);
+        // 正しい書き方なら入れる（上の失敗はこの ref の回数に数えられていない）
+        await verify(otcRef, code, '10.3.0.4').expectStatus(200);
+    });
+
+    it('cannot get around the per-otcRef limit by writing the otcRef differently', async function () {
+        const otcRef = await sendWithOTC('member1@test.com');
+        const code = codeOf(sentEmails(mailReceiver)[0]);
+        const wrong = String((Number(code) + 1) % 1000000).padStart(6, '0');
+        const variants = [otcRef.toUpperCase(), `${otcRef} `, `${otcRef}  `, ` ${otcRef}`, `${otcRef}\t`, otcRef.replace(/[a-f]/, c => c.toUpperCase())];
+        const statuses = [];
+        for (const [i, ref] of variants.entries()) {
+            statuses.push((await verify(ref, wrong, `10.4.0.${i + 1}`)).statusCode);
+        }
+        // 書き方を変えたものは、まとめて 1 つの鍵で数えられ、やがて止まる
+        assert.ok(statuses.every(st => st === 400 || st === 429));
+        assert.equal(statuses[statuses.length - 1], 429);
+    });
+
     it('limits tries per IP across many otcRefs', async function () {
         let last;
         for (let i = 0; i < 6; i += 1) {

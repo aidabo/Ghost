@@ -123,8 +123,11 @@ module.exports = {
         return spamPrevention.userVerification().getMiddleware({
             ignoreIP: true,
             key(_req, _res, _next) {
+                // 正しい形（24 文字の小文字の 16 進）の ref だけをそのまま鍵に。それ以外は 1 つの鍵にまとめる
+                // （書き方を変えた ref で別々に数えさせない。SingleUseTokenProvider.verifyOTC は形の違う ref を断る）
                 const ref = _req.body?.otcRef;
-                _next(`${typeof ref === 'string' ? ref : ''}member_otc_verify`);
+                const key = typeof ref === 'string' && /^[0-9a-f]{24}$/.test(ref) ? ref : 'invalid';
+                _next(`${key}member_otc_verify`);
             }
         })(req, res, next);
     },
