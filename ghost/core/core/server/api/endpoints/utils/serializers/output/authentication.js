@@ -49,6 +49,15 @@ module.exports = {
         };
     },
 
+    verifyInvitationCode(data, apiConfig, frame) {
+        frame.response = {
+            invitation_code: [{
+                // メールのリンクの /signup/ の後ろと同じ値。これで今の登録のページへ進む
+                token: data?.token
+            }]
+        };
+    },
+
     resetPasswordWithCode(data, apiConfig, frame) {
         frame.response = {
             password_reset_code: [{

@@ -3,10 +3,12 @@ const settingsHelpers = require('../settings-helpers');
 const mailService = require('../../services/mail');
 const urlUtils = require('../../../shared/url-utils');
 const Invites = require('./Invites');
+const invitationCode = require('../auth/invitation-code');
 
 module.exports = new Invites({
     settingsCache,
     settingsHelpers,
     mailService,
-    urlUtils
+    urlUtils,
+    invitationCode
 });

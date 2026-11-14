@@ -54,6 +54,8 @@ COPY --chown=node:node ghost/core/core/server/models ${GHOST_INSTALL}/current/co
 COPY --chown=node:node ghost/core/core/server/services/mail ${GHOST_INSTALL}/current/core/server/services/mail
 # スタッフのパスワードの 6 桁のコード（services/auth/password-reset-code.js）
 COPY --chown=node:node ghost/core/core/server/services/auth ${GHOST_INSTALL}/current/core/server/services/auth
+# 「アカウント作成」の招待の 6 桁の認証コード（Invites.add に 6 桁を入れる。services/auth/invitation-code.js と組）
+COPY --chown=node:node ghost/core/core/server/services/invites ${GHOST_INSTALL}/current/core/server/services/invites
 # 会員の 6 桁のコード（services/members の SingleUseTokenProvider・api・members-ssr・middleware）
 COPY --chown=node:node ghost/core/core/server/services/members ${GHOST_INSTALL}/current/core/server/services/members
 # どちらも回数の制限は brute.js と spam-prevention.js（codeAttempts）
@@ -151,6 +153,9 @@ COPY --chown=node:node ghost/i18n/locales ${GHOST_INSTALL}/current/node_modules/
 RUN set -eux; \
     cd ${GHOST_INSTALL}/current; \
     test -f core/server/services/auth/password-reset-code.js; \
+    test -f core/server/services/auth/invitation-code.js; \
+    grep -q invitationCode core/server/services/invites/Invites.js; \
+    grep -q inviteCodeVerifyPerEmail core/server/web/shared/middleware/brute.js; \
     test -f core/server/services/members/SingleUseTokenProvider.js; \
     grep -q memberOtcVerifyPerRef core/server/web/shared/middleware/brute.js; \
     grep -q codeAttempts core/server/web/shared/middleware/api/spam-prevention.js; \
