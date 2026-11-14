@@ -9,6 +9,18 @@ function resetCodeEmail(req) {
     return typeof email === 'string' ? email.trim().toLowerCase() : '';
 }
 
+/** 「アカウント作成」の招待の 6 桁: 頼まれたか（POST /invites/?include_code=true） */
+function wantsInviteCode(req) {
+    const value = req.query?.include_code;
+    return value === true || value === 'true';
+}
+
+/** 招待の数える鍵にするメール（小文字）。送る口は invites[0].email、確かめる口は invitation_code[0].email */
+function inviteCodeEmail(req) {
+    const email = req.body?.invites?.[0]?.email ?? req.body?.invitation_code?.[0]?.email;
+    return typeof email === 'string' ? email.trim().toLowerCase() : '';
+}
+
 /**
  * We set ignoreIP to false, because we tell brute-knex to use `req.ip`.
  * We can use `req.ip`, because express trust proxy option is enabled.
@@ -186,6 +198,57 @@ module.exports = {
                 const ref = _req.body?.otcRef;
                 const key = typeof ref === 'string' && /^[0-9a-f]{24}$/.test(ref) ? ref : 'invalid';
                 _next(`${key}member_otc_verify`);
+            }
+        })(req, res, next);
+    },
+    /**
+     * 「アカウント作成」の招待の 6 桁: 送るのは IP ごとに数える（6 桁を頼まない招待は今までどおり）。
+     * IP は front の /api/invites が渡す利用者の IP（X-Forwarded-For の最後の値だけ。jibunsee-react docs/planning/staff-signup-code.md）
+     */
+    inviteCodeSendPerIp(req, res, next) {
+        if (!wantsInviteCode(req)) {
+            return next();
+        }
+        return spamPrevention.codeAttempts('send').getMiddleware({
+            ignoreIP: false,
+            key(_req, _res, _next) {
+                _next('invite_code_send');
+            }
+        })(req, res, next);
+    },
+    /**
+     * 「アカウント作成」の招待の 6 桁: 送るのはメールごと（IP によらない）にも数える
+     */
+    inviteCodeSendPerEmail(req, res, next) {
+        if (!wantsInviteCode(req)) {
+            return next();
+        }
+        return spamPrevention.codeAttempts('send').getMiddleware({
+            ignoreIP: true,
+            key(_req, _res, _next) {
+                _next(`${inviteCodeEmail(_req)}invite_code_send`);
+            }
+        })(req, res, next);
+    },
+    /**
+     * 「アカウント作成」の招待の 6 桁: IP ごとに確かめる回数を数える（たくさんの招待に少しずつ当てる推測を止める）
+     */
+    inviteCodeVerifyPerIp(req, res, next) {
+        return spamPrevention.codeAttempts('verify').getMiddleware({
+            ignoreIP: false,
+            key(_req, _res, _next) {
+                _next('invite_code_verify');
+            }
+        })(req, res, next);
+    },
+    /**
+     * 「アカウント作成」の招待の 6 桁: メールごとに確かめる回数を数える（IP を変えた推測を止める）
+     */
+    inviteCodeVerifyPerEmail(req, res, next) {
+        return spamPrevention.codeAttempts('verify').getMiddleware({
+            ignoreIP: true,
+            key(_req, _res, _next) {
+                _next(`${inviteCodeEmail(_req)}invite_code_verify`);
             }
         })(req, res, next);
     },

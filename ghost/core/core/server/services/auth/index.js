@@ -21,5 +21,9 @@ module.exports = {
 
     get passwordResetCode() {
         return require('./password-reset-code');
+    },
+
+    get invitationCode() {
+        return require('./invitation-code');
     }
 };

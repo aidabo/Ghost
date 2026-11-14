@@ -1,15 +1,15 @@
 // @ts-check
 const crypto = require('crypto');
 const {ValidationError} = require('@tryghost/errors');
-const {STAFF_RESET_CODE_TYPE} = require('../auth/staff-reset-code-type');
+const {STAFF_CODE_TYPES} = require('../auth/staff-reset-code-type');
 
 /**
- * 同じ tokens の表に、スタッフのパスワードの 6 桁の行（services/auth/password-reset-code.js）もある。
+ * 同じ tokens の表に、スタッフの 6 桁の認証コードの行（パスワードの再設定・アカウント作成の招待）もある。
  * 会員のマジックリンクとしては使わせない
  */
 function isStaffResetCodeRow(model) {
     try {
-        return JSON.parse(model.get('data') || '{}').type === STAFF_RESET_CODE_TYPE;
+        return STAFF_CODE_TYPES.includes(JSON.parse(model.get('data') || '{}').type);
     } catch (err) {
         return false;
     }

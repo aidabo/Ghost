@@ -238,6 +238,24 @@ const controller = {
         }
     },
 
+    // 「アカウント作成」の招待の 6 桁の認証コード（services/auth/invitation-code.js）。
+    // 合えば招待の token（メールのリンクの /signup/ の後ろと同じ値）を返す。登録は今の acceptInvitation。
+    verifyInvitationCode: {
+        headers: {
+            cacheInvalidate: false
+        },
+        validation: {
+            docName: 'invitation_code'
+        },
+        permissions: false,
+        query(frame) {
+            const data = frame.data.invitation_code[0];
+            return Promise.resolve()
+                .then(() => auth.setup.assertSetupCompleted(true)())
+                .then(() => auth.invitationCode.verifyCode(data, {context: {internal: true}}));
+        }
+    },
+
     acceptInvitation: {
         headers: {
             cacheInvalidate: false

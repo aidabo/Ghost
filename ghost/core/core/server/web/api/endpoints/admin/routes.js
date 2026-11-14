@@ -265,6 +265,12 @@ module.exports = function apiRoutes() {
         shared.middleware.brute.resetCodeVerifyPerEmail,
         http(api.authentication.resetPasswordWithCode)
     );
+    // 「アカウント作成」の招待の 6 桁の認証コード（services/auth/invitation-code.js）。合えば招待の token を返す
+    router.post('/authentication/invitation_code',
+        shared.middleware.brute.inviteCodeVerifyPerIp,
+        shared.middleware.brute.inviteCodeVerifyPerEmail,
+        http(api.authentication.verifyInvitationCode)
+    );
     router.post('/authentication/invitation', http(api.authentication.acceptInvitation));
     router.get('/authentication/invitation', http(api.authentication.isInvitation));
     router.post('/authentication/setup', http(api.authentication.setup));
@@ -304,7 +310,13 @@ module.exports = function apiRoutes() {
     // ## Invites
     router.get('/invites', mw.authAdminApi, http(api.invites.browse));
     router.get('/invites/:id', mw.authAdminApi, http(api.invites.read));
-    router.post('/invites', mw.authAdminApi, http(api.invites.add));
+    // include_code=true（「アカウント作成」）のときだけ、6 桁を送る回数を IP ごと・メールごとに数える
+    router.post('/invites',
+        mw.authAdminApi,
+        shared.middleware.brute.inviteCodeSendPerIp,
+        shared.middleware.brute.inviteCodeSendPerEmail,
+        http(api.invites.add)
+    );
     router.del('/invites/:id', mw.authAdminApi, http(api.invites.destroy));
 
     // ## Redirects
