@@ -19,6 +19,8 @@ const FRONT_URL_ENV_NAMES = ['FRONT_END_URL', 'GHOST_FRONT_END_URL', 'MEMBERS_FR
  * @returns {string|null}
  */
 function getFrontLogoUrl(env = process.env) {
+    // 最初に値のある名前だけを使う（その値が http(s) でなくても次の名前には進まない）。
+    // FRONT_END_URL が壊れていればメールのリンクも同じ値で壊れているので、ロゴだけ別のホストにしない
     const name = FRONT_URL_ENV_NAMES.find(key => String(env[key] || '').trim());
     const base = String(name ? env[name] : '').trim().replace(/\/+$/, '');
     if (!/^https?:\/\/[^\s"'<>]+$/i.test(base)) {

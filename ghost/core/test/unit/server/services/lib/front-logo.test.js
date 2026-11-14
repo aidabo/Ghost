@@ -1,5 +1,5 @@
 // メールのロゴを、Ghost の元のロゴ（static.ghost.org の orb）から front のロゴ（<front>/apple-touch-icon.png）に替える。
-// front の URL（GHOST_FRONT_END_URL、無ければ FRONT_END_URL）が無いときは、今までの Ghost のロゴのまま。
+// front の URL（メールのリンクと同じ FRONT_END_URL を先、無ければ GHOST_FRONT_END_URL など）が無いときは、今までの Ghost のロゴのまま。
 const assert = require('assert/strict');
 const path = require('path');
 
