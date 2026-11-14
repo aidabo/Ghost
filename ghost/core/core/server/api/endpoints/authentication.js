@@ -228,19 +228,11 @@ const controller = {
             }
         },
         permissions: false,
-        options: [
-            'ip'
-        ],
         query(frame) {
             const data = frame.data.password_reset_code[0];
             return Promise.resolve()
                 .then(() => auth.setup.assertSetupCompleted(true)())
-                .then(() => auth.passwordResetCode.resetWithCode(data, {context: {internal: true}}))
-                .then((user) => {
-                    // 変え終わったら、ログインの回数の制限を戻す（今の resetPassword と同じ）
-                    web.shared.middleware.api.spamPrevention.userLogin().reset(frame.options.ip, `${data.email}login`);
-                    return user;
-                });
+                .then(() => auth.passwordResetCode.resetWithCode(data, {context: {internal: true}}));
         }
     },
 

@@ -9,8 +9,21 @@ const errors = require('@tryghost/errors');
 const messages = {
     newPasswordsDoNotMatch: 'Your new passwords do not match',
     invalidEmailReceived: 'The server did not receive a valid email',
-    invalidCode: 'The code must be 6 digits'
+    invalidCode: 'The code must be 6 digits',
+    noData: 'No password_reset_code data received',
+    newPasswordRequired: 'A new password is required'
 };
+
+/** 本文の password_reset_code[0]。無い・形が違うときは 400（500 にしない） */
+function firstItem(frame) {
+    const item = frame.data?.password_reset_code?.[0];
+    if (!item || typeof item !== 'object') {
+        throw new errors.BadRequestError({
+            message: tpl(messages.noData)
+        });
+    }
+    return item;
+}
 
 function assertEmail(email) {
     if (typeof email !== 'string' || !validator.isEmail(email)) {
@@ -23,17 +36,24 @@ function assertEmail(email) {
 module.exports = {
     generateResetCode(apiConfig, frame) {
         debug('generateResetCode');
-        assertEmail(frame.data.password_reset_code?.[0]?.email);
+        assertEmail(firstItem(frame).email);
     },
 
     resetPasswordWithCode(apiConfig, frame) {
         debug('resetPasswordWithCode');
-        const data = frame.data.password_reset_code[0];
+        const data = firstItem(frame);
         assertEmail(data.email);
 
         if (typeof data.code !== 'string' || !/^\d{6}$/.test(data.code.trim())) {
             throw new errors.BadRequestError({
                 message: tpl(messages.invalidCode)
+            });
+        }
+
+        // validation.data の required はこのメソッド名では効かないので、ここで確かめる
+        if (typeof data.newPassword !== 'string' || !data.newPassword || typeof data.ne2Password !== 'string') {
+            throw new errors.BadRequestError({
+                message: tpl(messages.newPasswordRequired)
             });
         }
 

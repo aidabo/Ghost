@@ -99,16 +99,15 @@ async function sendCode(data, mailAPI, locale) {
 
 /**
  * コードを送る。登録の無いメールでも同じに終わる（応答の差で登録の有無を推測させない）。
- * メールを送るのは待たない（送るのにかかる時間の差も出さない）。
+ * ユーザーを引く・コードとリンクを作る・メールを送るのは、全部待たずに後ろで行う
+ * （登録があるときだけ余分な DB の処理を待つと、応答の時間の差で登録の有無が分かってしまうため）。
  */
-async function requestCode({email, locale}, settingsAPI, mailAPI, options = {}) {
-    const data = await generateCode(email, settingsAPI, options);
-    if (!data) {
-        return;
-    }
-    sendCode(data, mailAPI, locale).catch((err) => {
-        logging.error(err);
-    });
+function requestCode({email, locale}, settingsAPI, mailAPI, options = {}) {
+    generateCode(email, settingsAPI, options)
+        .then(data => (data ? sendCode(data, mailAPI, locale) : null))
+        .catch((err) => {
+            logging.error(err);
+        });
 }
 
 /**

@@ -63,7 +63,9 @@ describe('Password reset code API', function () {
         assert.ok(sent.text.includes(code));
         assert.ok(sent.text.includes('5 分以内'));
         assert.match(sent.text, /\/reset\/[^/\s]+\//);
-        assert.equal(code, await codeFor(email));
+        // 届いた 6 桁は、今の時間の幅で通るもの（作り直して比べると 5 分の境目で変わりうるので、check で確かめる）
+        const user = await models.User.getByEmail(email);
+        assert.ok(resetCode._totp.check(code, resetCode._codeSecret(user)));
     });
 
     it('answers the same for an unknown email and sends nothing', async function () {
@@ -83,6 +85,57 @@ describe('Password reset code API', function () {
         });
         assert.equal(sentCount(mailReceiver), 1);
         assert.equal(mailReceiver.getSentEmail(0).to, email);
+    });
+
+    it('refuses a body without passwords, or with an empty root item, with 400 (not 500)', async function () {
+        await agent
+            .put('authentication/password_reset_code')
+            .body({password_reset_code: [{email, code: '123456'}]})
+            .expectStatus(400);
+        await agent
+            .put('authentication/password_reset_code')
+            .body({password_reset_code: {}})
+            .expectStatus(400);
+        await agent
+            .put('authentication/password_reset_code')
+            .body({password_reset_code: []})
+            .expectStatus(400);
+    });
+
+    it('limits sending per email even when the IP changes', async function () {
+        let lastStatus = 0;
+        for (let i = 0; i < 6; i += 1) {
+            const res = await agent
+                .post('authentication/password_reset_code')
+                .header('X-Forwarded-For', `10.5.0.${i + 1}`)
+                .body({password_reset_code: [{email: 'send-limit@example.com'}]});
+            lastStatus = res.statusCode;
+        }
+        assert.equal(lastStatus, 429);
+    });
+
+    it('the reset link sent with the code stops working once the code was used', async function () {
+        await agent
+            .post('authentication/password_reset_code')
+            .header('X-Forwarded-For', '10.6.0.1')
+            .body({password_reset_code: [{email}]})
+            .expectStatus(200);
+        await waitForEmails(mailReceiver, 1);
+        const sent = mailReceiver.getSentEmail(0);
+        const code = sent.subject.slice(0, 6);
+        const linkToken = /\/reset\/([^/\s]+)\//.exec(sent.text)[1];
+
+        await agent
+            .put('authentication/password_reset_code')
+            .header('X-Forwarded-For', '10.6.0.2')
+            .body({password_reset_code: [{email, code, newPassword: 'ChangedAgain1234!', ne2Password: 'ChangedAgain1234!'}]})
+            .expectStatus(200);
+
+        await agent
+            .put('authentication/password_reset')
+            .header('X-Forwarded-For', '10.6.0.3')
+            .body({password_reset: [{token: linkToken, newPassword: 'ByOldLink1234!', ne2Password: 'ByOldLink1234!'}]})
+            .expectStatus(400);
     });
 
     it('refuses a body without the root key, and a bad email', async function () {
