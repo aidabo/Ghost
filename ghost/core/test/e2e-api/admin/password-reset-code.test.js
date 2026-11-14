@@ -101,7 +101,7 @@ describe('Password reset code API', function () {
         await waitForEmails(mailReceiver, 1);
         const sent = mailReceiver.getSentEmail(0);
         assert.equal(sent.to, email);
-        assert.match(sent.subject, /^\d{6} はパスワードを決め直すためのコードです$/);
+        assert.match(sent.subject, /^\d{6} はパスワードを決め直すための認証コードです$/);
         const code = sent.subject.slice(0, 6);
         assert.ok(sent.text.includes(code));
         assert.ok(sent.text.includes('10 分以内'));

@@ -35,20 +35,20 @@ const messages = {
 /** メールの言葉（ja / en / zh）。件名の頭に 6 桁（携帯の通知だけで読めるように） */
 const MAIL_TEXT = {
     ja: {
-        subject: code => `${code} はパスワードを決め直すためのコードです`,
-        lead: `開いているログインの画面に、${CODE_MINUTES} 分以内にこの 6 桁を入れてください。`,
+        subject: code => `${code} はパスワードを決め直すための認証コードです`,
+        lead: `開いているログインの画面に、${CODE_MINUTES} 分以内にこの 6 桁の認証コードを入れてください。`,
         link: '画面を閉じてしまったときは、こちらのリンクからも決め直せます（24 時間）:',
         ignore: '心当たりが無ければ、このメールは捨ててください。'
     },
     en: {
-        subject: code => `${code} is your code to reset your password`,
-        lead: `Enter these 6 digits in the sign-in screen you have open, within ${CODE_MINUTES} minutes.`,
+        subject: code => `${code} is your verification code to reset your password`,
+        lead: `Enter this 6-digit verification code in the sign-in screen you have open, within ${CODE_MINUTES} minutes.`,
         link: 'If you closed the screen, you can also reset your password with this link (valid for 24 hours):',
         ignore: 'If you did not ask for this, you can ignore this email.'
     },
     zh: {
         subject: code => `${code} 是重新设置密码的验证码`,
-        lead: `请在 ${CODE_MINUTES} 分钟内，将这 6 位数字输入到已打开的登录画面中。`,
+        lead: `请在 ${CODE_MINUTES} 分钟内，将这 6 位验证码输入到已打开的登录画面中。`,
         link: '如果已经关闭了画面，也可以通过此链接重新设置（24 小时内有效）：',
         ignore: '如果不是您本人操作，请忽略此邮件。'
     }
@@ -128,6 +128,12 @@ function requestCode({email, locale}, settingsAPI, mailAPI, options = {}) {
     const ref = newRef();
     generateCode(email, ref, settingsAPI, options)
         .then(data => (data ? sendCode(data, mailAPI, locale) : null))
+        .then((sent) => {
+            // 送れたかを記録で確かめられるように（メールも 6 桁も書かない。登録の無いメールでは何も書かない）
+            if (sent) {
+                logging.info('[password-reset-code] sent the code mail');
+            }
+        })
         .catch((err) => {
             logging.error(err);
         });

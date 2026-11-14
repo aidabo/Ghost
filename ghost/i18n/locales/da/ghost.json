@@ -1,6 +1,6 @@
 {
-    "{{code}} is your sign-in code for {{siteTitle}}": "",
-    "{{code}} is your sign-up code for {{siteTitle}}": "",
+    "{{code}} is your verification code to sign in to {{siteTitle}}": "",
+    "{{code}} is your verification code to sign up for {{siteTitle}}": "",
     "All the best!": "Alt det bedste!",
     "Complete signup for {{siteTitle}}!": "Gennemfør din oprettelse på {{siteTitle}}!",
     "Complete your sign up to {{siteTitle}}!": "Gennemfør oprettelsen af din konto hos {{siteTitle}}!",
@@ -10,7 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "Bekræft din e-mail opdatering hos {{siteTitle}}!",
     "Confirm your subscription to {{siteTitle}}": "Bekræft dit abonnement hos {{siteTitle}}",
     "Device:": "",
-    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
+    "Enter this verification code on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Af sikkerhedsmæssige årsager, vil linket udløbe om 24 timer.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -42,6 +42,6 @@
     "You will not be subscribed.": "Du bliver ikke tilmeldt noget.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "Du er kun et klik væk fra at abonnere på {{siteTitle}} - bekræft venligst din e-mail med dette link:",
     "You're one tap away from subscribing to {{siteTitle}}!": "Du er kun et klik væk fra at abonnere på {{siteTitle}}!",
-    "Your code: {{code}}": "",
+    "Your verification code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

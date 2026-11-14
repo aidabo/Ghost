@@ -1,6 +1,6 @@
 {
-    "{{code}} is your sign-in code for {{siteTitle}}": "",
-    "{{code}} is your sign-up code for {{siteTitle}}": "",
+    "{{code}} is your verification code to sign in to {{siteTitle}}": "",
+    "{{code}} is your verification code to sign up for {{siteTitle}}": "",
     "All the best!": "Tot snel!",
     "Complete signup for {{siteTitle}}!": "Bevestig je aanmelding voor {{siteTitle}}!",
     "Complete your sign up to {{siteTitle}}!": "Rond je aanmelding af voor {{siteTitle}}!",
@@ -10,7 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "Bevestig je nieuwe e-mailadres voor {{siteTitle}}!",
     "Confirm your subscription to {{siteTitle}}": "Bevestig je abonnement op {{siteTitle}}",
     "Device:": "",
-    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
+    "Enter this verification code on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Voor je veiligheid vervalt de link na 24 uur.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -42,6 +42,6 @@
     "You will not be subscribed.": "Je zult niet worden geabonneerd.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "Je bent één klik verwijderd van een abonnement op {{siteTitle}} — bevestig je e-mailadres met deze link:",
     "You're one tap away from subscribing to {{siteTitle}}!": "Je bent één klik verwijderd van een abonnement op {{siteTitle}}!",
-    "Your code: {{code}}": "",
+    "Your verification code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

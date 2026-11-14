@@ -1,6 +1,6 @@
 {
-    "{{code}} is your sign-in code for {{siteTitle}}": "",
-    "{{code}} is your sign-up code for {{siteTitle}}": "",
+    "{{code}} is your verification code to sign in to {{siteTitle}}": "",
+    "{{code}} is your verification code to sign up for {{siteTitle}}": "",
     "All the best!": "Meal do shlàinte!",
     "Complete signup for {{siteTitle}}!": "Coilean an clàradh ris an làrach-lìn, {{siteTitle}}!",
     "Complete your sign up to {{siteTitle}}!": "Coilean an clàradh agad ris an làrach-lìn, {{siteTitle}}!",
@@ -10,7 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "Dearbhaich gu bheil thu airson am post a chleachdas tu air {{siteTitle}} ùrachadh!",
     "Confirm your subscription to {{siteTitle}}": "Deabhaich gu bheil thu airson fo-sgìobhadh ri ùrachaidhean bho {{siteTitle}}",
     "Device:": "",
-    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
+    "Enter this verification code on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Cha mair an ceangal nas fhaide na 24 uair a thìde.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -42,6 +42,6 @@
     "You will not be subscribed.": "Cha fo-sgrìobh thu.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "Chan eil ach aon cheum ri dhol a-nis gus fo-sgrìobhadh ris an làrach-lìn, {{siteTitle}}, dearbhaich am post-d agad leis a' cheangal seo:",
     "You're one tap away from subscribing to {{siteTitle}}!": "Chan eil ach aon cheum ri dhol a-nis gus fo-sgrìobhadh ris an làrach-lìn, {{siteTitle}}!",
-    "Your code: {{code}}": "",
+    "Your verification code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

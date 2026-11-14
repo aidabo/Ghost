@@ -1,6 +1,6 @@
 {
-    "{{code}} is your sign-in code for {{siteTitle}}": "",
-    "{{code}} is your sign-up code for {{siteTitle}}": "",
+    "{{code}} is your verification code to sign in to {{siteTitle}}": "",
+    "{{code}} is your verification code to sign up for {{siteTitle}}": "",
     "All the best!": "සියලු දේ සාර්ථකත්වයට පත් වේවායි ප්\u200dරාර්ථනා කරන්නෙමු!",
     "Complete signup for {{siteTitle}}!": "{{siteTitle}} වෙත signup වීම සම්පූර්ණ කරන්න",
     "Complete your sign up to {{siteTitle}}!": "{{siteTitle}} වෙත ඔබගේ signup වීම සම්පූර්ණ කරන්න!",
@@ -10,7 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "{{siteTitle}} සඳහා වන ඔබගේ email ලිපිනය update කිරීම තහවුරු කරන්න",
     "Confirm your subscription to {{siteTitle}}": "{{siteTitle}} වෙත ඔබගේ subscription එක තහවුරු කරන්න",
     "Device:": "",
-    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
+    "Enter this verification code on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "ඔබගේ ආරක්ෂාව වෙනුවෙන්, මෙම link එක පැය 24ක කාලයකින් කල් ඉකුත් වනු ඇත.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -42,6 +42,6 @@
     "You will not be subscribed.": "ඔබව subscribe නොවනු ඇත.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "{{siteTitle}} වෙත subscribe වීම සඳහා ඇත්තේ තව එක පියවරක් පමණි - කරුණාකර පහත link එක සමඟින් ඔබගේ email ලිපිනය තහවුරු කරන්න:",
     "You're one tap away from subscribing to {{siteTitle}}!": "{{siteTitle}} වෙත subscribe වීම සඳහා ඇත්තේ තව එක පියවරක් පමණි!",
-    "Your code: {{code}}": "",
+    "Your verification code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

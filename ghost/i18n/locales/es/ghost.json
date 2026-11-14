@@ -1,6 +1,6 @@
 {
-    "{{code}} is your sign-in code for {{siteTitle}}": "",
-    "{{code}} is your sign-up code for {{siteTitle}}": "",
+    "{{code}} is your verification code to sign in to {{siteTitle}}": "",
+    "{{code}} is your verification code to sign up for {{siteTitle}}": "",
     "All the best!": "¡Todo lo mejor para ti!",
     "Complete signup for {{siteTitle}}!": "¡Completa el registro en {{siteTitle}}!",
     "Complete your sign up to {{siteTitle}}!": "¡Completa tu registro en {{siteTitle}}!",
@@ -10,7 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "¡Confirma tu correo electrónico actualizado para {{siteTitle}}!",
     "Confirm your subscription to {{siteTitle}}": "Confirma tu suscripción a {{siteTitle}}",
     "Device:": "",
-    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
+    "Enter this verification code on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Por tu seguridad, el enlace expirará en 24 horas.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -42,6 +42,6 @@
     "You will not be subscribed.": "No serás suscrito.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "Estás muy cerca para suscribirte a {{siteTitle}} — por favor confirma tu correo electrónico dando click a este enlace:",
     "You're one tap away from subscribing to {{siteTitle}}!": "¡Estás muy cerca para suscribirte a {{siteTitle}}!",
-    "Your code: {{code}}": "",
+    "Your verification code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }
