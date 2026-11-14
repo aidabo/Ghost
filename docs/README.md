@@ -13,6 +13,7 @@ These remain at repo root:
 ## Custom social API docs
 
 - [operations-docker-admin-build.md](./operations-docker-admin-build.md) — 本番DockerでのAdmin bundle反映方法と継続課題
+- [staff-password-reset-code.md](./staff-password-reset-code.md) — スタッフのパスワードをメールの 6 桁のコードで決め直す（`password_reset_code`、ref と組、tokens の表、回数の制限）
 - [members-signin-code.md](./members-signin-code.md) — 会員のログイン・登録をメールの 6 桁のコードで（`includeOTC`・`/members/api/verify-otc`、回数の制限、本番イメージの COPY）
 
 - [social-api/README.md](./social-api/README.md)

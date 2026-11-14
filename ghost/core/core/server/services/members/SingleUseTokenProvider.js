@@ -1,6 +1,19 @@
 // @ts-check
 const crypto = require('crypto');
 const {ValidationError} = require('@tryghost/errors');
+const {STAFF_RESET_CODE_TYPE} = require('../auth/staff-reset-code-type');
+
+/**
+ * 同じ tokens の表に、スタッフのパスワードの 6 桁の行（services/auth/password-reset-code.js）もある。
+ * 会員のマジックリンクとしては使わせない
+ */
+function isStaffResetCodeRow(model) {
+    try {
+        return JSON.parse(model.get('data') || '{}').type === STAFF_RESET_CODE_TYPE;
+    } catch (err) {
+        return false;
+    }
+}
 
 /** 6 桁のコード（OTC）で入れるのは、token を作ってから 10 分まで（リンクの 24 時間より短く） */
 const OTC_VALIDITY = 10 * 60 * 1000;
@@ -155,6 +168,12 @@ class SingleUseTokenProvider {
         if (model.get('used_count') >= this.maxUsageCount) {
             throw new ValidationError({
                 message: 'Token expired'
+            });
+        }
+
+        if (isStaffResetCodeRow(model)) {
+            throw new ValidationError({
+                message: 'Invalid token provided'
             });
         }
 

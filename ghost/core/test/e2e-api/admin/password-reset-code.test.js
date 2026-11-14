@@ -1,9 +1,19 @@
 // スタッフがパスワードを忘れたとき、メールの 6 桁のコードで決め直す口
 // （services/auth/password-reset-code.js、jibunsee-react docs/planning/staff-password-reset-code.md §3）
+// 6 桁は「送る」を頼んだときにだけ作り、tokens の表に hash で残す。送る口が返す ref と組で使う。
 const assert = require('assert/strict');
-const {agentProvider, fixtureManager, mockManager} = require('../../utils/e2e-framework');
+const {agentProvider, fixtureManager, mockManager, dbUtils} = require('../../utils/e2e-framework');
 const models = require('../../../core/server/models');
 const resetCode = require('../../../core/server/services/auth/password-reset-code');
+const SingleUseTokenProvider = require('../../../core/server/services/members/SingleUseTokenProvider');
+
+const PASSWORDS = {newPassword: 'ChangedByCode1234!', ne2Password: 'ChangedByCode1234!'};
+
+let ipCounter = 0;
+function nextIp() {
+    ipCounter += 1;
+    return `10.8.${Math.floor(ipCounter / 250)}.${(ipCounter % 250) + 1}`;
+}
 
 function sentCount(mailReceiver) {
     let n = 0;
@@ -13,24 +23,59 @@ function sentCount(mailReceiver) {
     return n;
 }
 
+function sleep(ms) {
+    return new Promise((r) => {
+        setTimeout(r, ms);
+    });
+}
+
 /** 送る口のメールは待たずに送るので、届くまで少し待つ */
 async function waitForEmails(mailReceiver, count) {
     for (let i = 0; i < 50 && sentCount(mailReceiver) < count; i += 1) {
-        await new Promise((r) => {
-            setTimeout(r, 20);
-        });
+        await sleep(20);
     }
 }
 
-async function codeFor(email) {
-    const user = await models.User.getByEmail(email);
-    return resetCode._totp.generate(resetCode._codeSecret(user));
+/** 後ろで行が作られるのを待つ */
+async function waitForRow(ref) {
+    for (let i = 0; i < 50; i += 1) {
+        const row = await models.SingleUseToken.findOne({token: ref});
+        if (row) {
+            return row;
+        }
+        await sleep(20);
+    }
+    return null;
 }
 
 describe('Password reset code API', function () {
     let agent;
     let mailReceiver;
     let email;
+
+    async function request(to, locale) {
+        const res = await agent
+            .post('authentication/password_reset_code')
+            .header('X-Forwarded-For', nextIp())
+            .body({password_reset_code: [{email: to, ...(locale ? {locale} : {})}]})
+            .expectStatus(200);
+        return res.body.password_reset_code[0].ref;
+    }
+
+    /** 送って、届いたメールの 6 桁と ref を返す */
+    async function requestAndRead(to) {
+        const ref = await request(to || email);
+        await waitForEmails(mailReceiver, 1);
+        const sent = mailReceiver.getSentEmail(0);
+        return {ref, code: sent.subject.slice(0, 6), sent};
+    }
+
+    function reset(body, ip) {
+        return agent
+            .put('authentication/password_reset_code')
+            .header('X-Forwarded-For', ip || nextIp())
+            .body({password_reset_code: [{email, ...PASSWORDS, ...body}]});
+    }
 
     before(async function () {
         agent = await agentProvider.getAdminAPIAgent();
@@ -39,21 +84,19 @@ describe('Password reset code API', function () {
         email = owner.get('email');
     });
 
-    beforeEach(function () {
+    beforeEach(async function () {
         mailReceiver = mockManager.mockMail();
+        await dbUtils.truncate('brute');
     });
 
-    afterEach(async function () {
+    afterEach(function () {
         mockManager.restore();
-        // 回数の制限を、試験ごとに戻す
-        await models.Base.knex('brute').del();
     });
 
-    it('sends a 6-digit code (in the subject) and the reset link to a known staff email', async function () {
-        await agent
-            .post('authentication/password_reset_code')
-            .body({password_reset_code: [{email, locale: 'ja'}]})
-            .expectStatus(200);
+    it('sends a random 6-digit code (first in the subject) and the reset link, and returns a ref', async function () {
+        const ref = await request(email, 'ja');
+        assert.equal(typeof ref, 'string');
+        assert.ok(ref.length >= 24);
 
         await waitForEmails(mailReceiver, 1);
         const sent = mailReceiver.getSentEmail(0);
@@ -61,187 +104,182 @@ describe('Password reset code API', function () {
         assert.match(sent.subject, /^\d{6} はパスワードを決め直すためのコードです$/);
         const code = sent.subject.slice(0, 6);
         assert.ok(sent.text.includes(code));
-        assert.ok(sent.text.includes('5 分以内'));
+        assert.ok(sent.text.includes('10 分以内'));
         assert.match(sent.text, /\/reset\/[^/\s]+\//);
-        // 届いた 6 桁は、今の時間の幅で通るもの（作り直して比べると 5 分の境目で変わりうるので、check で確かめる）
-        const user = await models.User.getByEmail(email);
-        assert.ok(resetCode._totp.check(code, resetCode._codeSecret(user)));
+
+        // 6 桁そのものは保存しない（hash だけ）
+        const row = await waitForRow(ref);
+        assert.ok(row);
+        assert.ok(!row.get('data').includes(code));
+        assert.equal(JSON.parse(row.get('data')).type, resetCode.TOKEN_TYPE);
     });
 
-    it('answers the same for an unknown email and sends nothing', async function () {
-        const known = await agent
-            .post('authentication/password_reset_code')
-            .body({password_reset_code: [{email}]})
-            .expectStatus(200);
-        const unknown = await agent
-            .post('authentication/password_reset_code')
-            .body({password_reset_code: [{email: 'nobody-here@example.com'}]})
-            .expectStatus(200);
-        assert.deepEqual(unknown.body, known.body);
+    it('answers the same for an unknown email (a ref of the same shape), sends nothing and makes no row', async function () {
+        const known = await request(email);
+        const unknown = await request('nobody-here@example.com');
+        assert.equal(typeof unknown, 'string');
+        assert.equal(unknown.length, known.length);
 
         await waitForEmails(mailReceiver, 1);
-        await new Promise((r) => {
-            setTimeout(r, 200);
-        });
+        await sleep(200);
         assert.equal(sentCount(mailReceiver), 1);
         assert.equal(mailReceiver.getSentEmail(0).to, email);
+        assert.equal(await models.SingleUseToken.findOne({token: unknown}), null);
     });
 
-    it('refuses a body without passwords, or with an empty root item, with 400 (not 500)', async function () {
-        await agent
-            .put('authentication/password_reset_code')
-            .body({password_reset_code: [{email, code: '123456'}]})
-            .expectStatus(400);
-        await agent
-            .put('authentication/password_reset_code')
-            .body({password_reset_code: {}})
-            .expectStatus(400);
-        await agent
-            .put('authentication/password_reset_code')
-            .body({password_reset_code: []})
-            .expectStatus(400);
+    it('without a request there is nothing to guess: any code with a made-up ref is refused', async function () {
+        await reset({ref: 'made-up-ref-made-up-ref-made-up', code: '123456'}).expectStatus(400);
     });
 
-    it('limits sending per email even when the IP changes', async function () {
-        let lastStatus = 0;
-        for (let i = 0; i < 6; i += 1) {
-            const res = await agent
-                .post('authentication/password_reset_code')
-                .header('X-Forwarded-For', `10.5.0.${i + 1}`)
-                .body({password_reset_code: [{email: 'send-limit@example.com'}]});
-            lastStatus = res.statusCode;
-        }
-        assert.equal(lastStatus, 429);
-    });
-
-    it('the reset link sent with the code stops working once the code was used', async function () {
-        await agent
-            .post('authentication/password_reset_code')
-            .header('X-Forwarded-For', '10.6.0.1')
-            .body({password_reset_code: [{email}]})
-            .expectStatus(200);
-        await waitForEmails(mailReceiver, 1);
-        const sent = mailReceiver.getSentEmail(0);
-        const code = sent.subject.slice(0, 6);
+    it('changes the password with the code from the email; the same code (and the old link) cannot be used again', async function () {
+        const {ref, code, sent} = await requestAndRead();
         const linkToken = /\/reset\/([^/\s]+)\//.exec(sent.text)[1];
+        const before = await models.User.getByEmail(email);
 
-        await agent
-            .put('authentication/password_reset_code')
-            .header('X-Forwarded-For', '10.6.0.2')
-            .body({password_reset_code: [{email, code, newPassword: 'ChangedAgain1234!', ne2Password: 'ChangedAgain1234!'}]})
-            .expectStatus(200);
+        await reset({ref, code}).expectStatus(200);
 
+        const after = await models.User.getByEmail(email);
+        assert.notEqual(after.get('password'), before.get('password'));
+        assert.equal(after.get('status'), 'active');
+        const correct = await models.User.isPasswordCorrect({plainPassword: PASSWORDS.newPassword, hashedPassword: after.get('password')}).then(() => true, () => false);
+        assert.equal(correct, true);
+        // 行は消える
+        assert.equal(await models.SingleUseToken.findOne({token: ref}), null);
+
+        await reset({ref, code, newPassword: 'Again1234567!', ne2Password: 'Again1234567!'}).expectStatus(400);
         await agent
             .put('authentication/password_reset')
-            .header('X-Forwarded-For', '10.6.0.3')
+            .header('X-Forwarded-For', nextIp())
             .body({password_reset: [{token: linkToken, newPassword: 'ByOldLink1234!', ne2Password: 'ByOldLink1234!'}]})
             .expectStatus(400);
     });
 
-    it('refuses a body without the root key, and a bad email', async function () {
+    it('once the password was changed with the link sent together, the code no longer works', async function () {
+        const {ref, code, sent} = await requestAndRead();
+        const linkToken = /\/reset\/([^/\s]+)\//.exec(sent.text)[1];
+        await agent
+            .put('authentication/password_reset')
+            .header('X-Forwarded-For', nextIp())
+            .body({password_reset: [{token: linkToken, newPassword: 'ByLinkFirst1234!', ne2Password: 'ByLinkFirst1234!'}]})
+            .expectStatus(200);
+        await reset({ref, code}).expectStatus(400);
+    });
+
+    it('a member magic-link token, or a row with broken data, used as the ref is refused', async function () {
+        const memberRow = await models.SingleUseToken.add({data: JSON.stringify({email, type: 'signin'})});
+        await reset({ref: memberRow.get('token'), code: '123456'}).expectStatus(400);
+        const broken = await models.SingleUseToken.add({data: '{not json'});
+        await reset({ref: broken.get('token'), code: '123456'}).expectStatus(400);
+    });
+
+    it('a wrong code and a made-up ref fail with the same message', async function () {
+        const {ref, code} = await requestAndRead();
+        const wrong = String((Number(code) + 1) % 1000000).padStart(6, '0');
+        const a = await reset({ref, code: wrong}).expectStatus(400);
+        const b = await reset({ref: 'made-up-ref-made-up-ref-made-up', code}).expectStatus(400);
+        const c = await reset({ref, code, email: 'someone-else@example.com'}).expectStatus(400);
+        assert.equal(a.body.errors[0].message, b.body.errors[0].message);
+        assert.equal(a.body.errors[0].message, c.body.errors[0].message);
+    });
+
+    it('a wrong code counts; after 5 wrong codes the right one is refused too', async function () {
+        const {ref, code} = await requestAndRead();
+        const wrong = String((Number(code) + 1) % 1000000).padStart(6, '0');
+        for (let i = 0; i < resetCode.MAX_FAILURES; i += 1) {
+            // brute の制限ではなく、行の間違えの数で止まることを見るので、毎回 brute を空にして IP も変える
+            await dbUtils.truncate('brute');
+            await reset({ref, code: wrong}).expectStatus(400);
+        }
+        const row = await models.SingleUseToken.findOne({token: ref});
+        assert.equal(row.get('used_count'), resetCode.MAX_FAILURES);
+        await dbUtils.truncate('brute');
+        await reset({ref, code}).expectStatus(400);
+    });
+
+    it('a few typos are fine: two wrong codes, then the right one changes the password', async function () {
+        const {ref, code} = await requestAndRead();
+        const wrong = String((Number(code) + 1) % 1000000).padStart(6, '0');
+        const ip = nextIp();
+        await reset({ref, code: wrong}, ip).expectStatus(400);
+        await reset({ref, code: wrong}, ip).expectStatus(400);
+        await reset({ref, code, newPassword: 'AfterTypos1234!', ne2Password: 'AfterTypos1234!'}, ip).expectStatus(200);
+    });
+
+    it('refuses the code after 10 minutes', async function () {
+        const {ref, code} = await requestAndRead();
+        const row = await models.SingleUseToken.findOne({token: ref});
+        await models.SingleUseToken.edit(
+            {created_at: new Date(Date.now() - resetCode.CODE_VALIDITY - 60 * 1000)},
+            {id: row.id}
+        );
+        await reset({ref, code}).expectStatus(400);
+    });
+
+    it('refuses a ref sent to someone else, even with their right code', async function () {
+        const {ref, code} = await requestAndRead();
+        await reset({ref, code, email: 'someone-else@example.com'}).expectStatus(400);
+    });
+
+    it('a staff reset row cannot be used as a member magic link', async function () {
+        const {ref} = await requestAndRead();
+        await waitForRow(ref);
+        const provider = new SingleUseTokenProvider({
+            SingleUseTokenModel: models.SingleUseToken,
+            validityPeriod: 24 * 60 * 60 * 1000,
+            validityPeriodAfterUsage: 10 * 60 * 1000,
+            maxUsageCount: 3
+        });
+        await assert.rejects(provider.validate(ref), /Invalid token/);
+    });
+
+    it('refuses bodies without the ref, passwords, or a root item with 400 (not 500)', async function () {
+        await reset({ref: undefined, code: '123456'}).expectStatus(400);
+        await agent
+            .put('authentication/password_reset_code')
+            .header('X-Forwarded-For', nextIp())
+            .body({password_reset_code: [{email, ref: 'x', code: '123456'}]})
+            .expectStatus(400);
+        await agent
+            .put('authentication/password_reset_code')
+            .header('X-Forwarded-For', nextIp())
+            .body({password_reset_code: {}})
+            .expectStatus(400);
+        await reset({ref: 'x', code: '12ab'}).expectStatus(400);
+        await reset({ref: 'x', code: '123456', ne2Password: 'Different1234!'}).expectStatus(422);
         await agent
             .post('authentication/password_reset_code')
+            .header('X-Forwarded-For', nextIp())
             .body({email})
             .expectStatus(400);
-        await agent
-            .post('authentication/password_reset_code')
-            .body({password_reset_code: [{email: 'not-an-email'}]})
-            .expectStatus(400);
     });
 
-    it('refuses a wrong code, an unknown email, and a code that is not 6 digits, the same way', async function () {
-        const wrong = await agent
-            .put('authentication/password_reset_code')
-            .body({password_reset_code: [{email, code: '000000', newPassword: 'NewPassword1234!', ne2Password: 'NewPassword1234!'}]})
-            .expectStatus(400);
-        const unknown = await agent
-            .put('authentication/password_reset_code')
-            .body({password_reset_code: [{email: 'nobody-here@example.com', code: '123456', newPassword: 'NewPassword1234!', ne2Password: 'NewPassword1234!'}]})
-            .expectStatus(400);
-        assert.equal(wrong.body.errors[0].message, unknown.body.errors[0].message);
-
-        await agent
-            .put('authentication/password_reset_code')
-            .body({password_reset_code: [{email, code: '12ab', newPassword: 'NewPassword1234!', ne2Password: 'NewPassword1234!'}]})
-            .expectStatus(400);
-        await agent
-            .put('authentication/password_reset_code')
-            .body({password_reset_code: [{email, code: await codeFor(email), newPassword: 'NewPassword1234!', ne2Password: 'Different1234!'}]})
-            .expectStatus(422);
-    });
-
-    it('changes the password with the right code; the same code (and the old link) cannot be used again', async function () {
-        const code = await codeFor(email);
-        const before = await models.User.getByEmail(email);
-        const oldHash = before.get('password');
-
-        await agent
-            .put('authentication/password_reset_code')
-            .body({password_reset_code: [{email, code, newPassword: 'ChangedByCode1234!', ne2Password: 'ChangedByCode1234!'}]})
-            .expectStatus(200);
-
-        const after = await models.User.getByEmail(email);
-        assert.notEqual(after.get('password'), oldHash);
-        assert.equal(after.get('status'), 'active');
-        assert.equal(await models.User.isPasswordCorrect({plainPassword: 'ChangedByCode1234!', hashedPassword: after.get('password')}).then(() => true, () => false), true);
-
-        // パスワードが変わったので、同じコードはもう通らない
-        await agent
-            .put('authentication/password_reset_code')
-            .body({password_reset_code: [{email, code, newPassword: 'Again1234567!', ne2Password: 'Again1234567!'}]})
-            .expectStatus(400);
-    });
-
-    it('accepts the code from the previous 5-minute step, but not older ones', async function () {
-        const user = await models.User.getByEmail(email);
-        const secret = resetCode._codeSecret(user);
-        const now = Date.now();
-        const totp = resetCode._totp;
-        const at = epoch => totp.clone({epoch}).generate(secret);
-        assert.ok(totp.check(at(now - 300 * 1000), secret), 'one step back is still valid');
-        assert.ok(!totp.check(at(now - 600 * 1000), secret), 'two steps back is expired');
-        assert.ok(!totp.check(at(now + 300 * 1000), secret), 'a future step is not valid');
-    });
-
-    it('limits tries per email even when the IP changes', async function () {
-        const body = {password_reset_code: [{email, code: '000000', newPassword: 'NewPassword1234!', ne2Password: 'NewPassword1234!'}]};
-        let lastStatus = 0;
+    it('limits sending per email even when the IP changes', async function () {
+        let last;
         for (let i = 0; i < 6; i += 1) {
-            const res = await agent
-                .put('authentication/password_reset_code')
-                .header('X-Forwarded-For', `10.0.0.${i + 1}`)
-                .body(body);
-            lastStatus = res.statusCode;
-            if (res.statusCode === 429) {
-                // 上限の文は 6 桁のコードの文（パスワード再設定の試行の文ではない）
-                assert.match(res.body.errors[0].message, /Too many tries with the code/);
-            }
+            last = await agent
+                .post('authentication/password_reset_code')
+                .header('X-Forwarded-For', nextIp())
+                .body({password_reset_code: [{email: 'send-limit@example.com'}]});
         }
-        assert.equal(lastStatus, 429);
-
-        // 同じメールは、新しい IP からでも止まる（メールごとの制限）
-        const sameEmail = await agent
-            .put('authentication/password_reset_code')
-            .header('X-Forwarded-For', '10.0.1.1')
-            .body(body);
-        assert.equal(sameEmail.statusCode, 429);
-        // 別のメールは、新しい IP なら止まらない（IP ごとの制限には当たっていない）
-        const otherEmail = await agent
-            .put('authentication/password_reset_code')
-            .header('X-Forwarded-For', '10.0.1.2')
-            .body({password_reset_code: [{...body.password_reset_code[0], email: 'someone-else@example.com'}]});
-        assert.equal(otherEmail.statusCode, 400);
+        assert.equal(last.statusCode, 429);
+        // 上限の文は 6 桁のコードの文（パスワード再設定の試行の文ではない。#63 の brute.js codeLimiter）
+        assert.match(last.body.errors[0].message, /Too many codes requested/);
     });
 
-    it('limits tries per IP across many emails', async function () {
-        let lastStatus = 0;
+    it('limits tries per email even when the IP changes, and per IP across emails', async function () {
+        let last = 0;
+        let limited;
         for (let i = 0; i < 6; i += 1) {
-            const res = await agent
-                .put('authentication/password_reset_code')
-                .header('X-Forwarded-For', '10.0.2.1')
-                .body({password_reset_code: [{email: `guess${i}@example.com`, code: '000000', newPassword: 'NewPassword1234!', ne2Password: 'NewPassword1234!'}]});
-            lastStatus = res.statusCode;
+            limited = await reset({ref: 'x', code: '000000'});
+            last = limited.statusCode;
         }
-        assert.equal(lastStatus, 429);
+        assert.equal(last, 429);
+        assert.match(limited.body.errors[0].message, /Too many tries with the code/);
+
+        const ip = nextIp();
+        for (let i = 0; i < 6; i += 1) {
+            last = (await reset({ref: 'x', code: '000000', email: `guess${i}@example.com`}, ip)).statusCode;
+        }
+        assert.equal(last, 429);
     });
 });

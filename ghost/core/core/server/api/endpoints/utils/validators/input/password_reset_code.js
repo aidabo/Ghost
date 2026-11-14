@@ -11,7 +11,8 @@ const messages = {
     invalidEmailReceived: 'The server did not receive a valid email',
     invalidCode: 'The code must be 6 digits',
     noData: 'No password_reset_code data received',
-    newPasswordRequired: 'A new password is required'
+    newPasswordRequired: 'A new password is required',
+    refRequired: 'The code reference (ref) from the request is required'
 };
 
 /** 本文の password_reset_code[0]。無い・形が違うときは 400（500 にしない） */
@@ -43,6 +44,12 @@ module.exports = {
         debug('resetPasswordWithCode');
         const data = firstItem(frame);
         assertEmail(data.email);
+
+        if (typeof data.ref !== 'string' || !data.ref) {
+            throw new errors.BadRequestError({
+                message: tpl(messages.refRequired)
+            });
+        }
 
         if (typeof data.code !== 'string' || !/^\d{6}$/.test(data.code.trim())) {
             throw new errors.BadRequestError({
