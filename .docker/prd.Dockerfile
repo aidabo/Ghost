@@ -52,8 +52,11 @@ COPY --chown=node:node ghost/core/core/server/data/migrations/hooks/init/after.j
 COPY --chown=node:node ghost/core/core/server/data/migrations/hooks/init/index.js ${GHOST_INSTALL}/current/core/server/data/migrations/hooks/init
 COPY --chown=node:node ghost/core/core/server/models ${GHOST_INSTALL}/current/core/server/models
 COPY --chown=node:node ghost/core/core/server/services/mail ${GHOST_INSTALL}/current/core/server/services/mail
-# 会員の 6 桁のコード（services/members の SingleUseTokenProvider・api・members-ssr・middleware）と、その回数の制限（brute.js）
+# スタッフのパスワードの 6 桁のコード（services/auth/password-reset-code.js）
+COPY --chown=node:node ghost/core/core/server/services/auth ${GHOST_INSTALL}/current/core/server/services/auth
+# 会員の 6 桁のコード（services/members の SingleUseTokenProvider・api・members-ssr・middleware）
 COPY --chown=node:node ghost/core/core/server/services/members ${GHOST_INSTALL}/current/core/server/services/members
+# どちらも回数の制限は brute.js
 COPY --chown=node:node ghost/core/core/server/web/shared/middleware/brute.js ${GHOST_INSTALL}/current/core/server/web/shared/middleware
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeAPI.js ${GHOST_INSTALL}/current/core/server/services/stripe
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeService.js ${GHOST_INSTALL}/current/core/server/services/stripe
