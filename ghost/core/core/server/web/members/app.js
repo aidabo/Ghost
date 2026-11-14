@@ -104,6 +104,8 @@ module.exports = function setupMembersApp() {
         shared.middleware.brute.membersAuthEnumeration,
         // Prevent brute forcing passwords for the same email address
         shared.middleware.brute.membersAuth,
+        // 6 桁つきで送るのは、メールごとに数える（brute.js memberOtcSendPerEmail）
+        shared.middleware.brute.memberOtcSendPerEmail,
         function lazySendMagicLinkMw(req, res, next) {
             return membersService.api.middleware.sendMagicLink(req, res, next);
         }

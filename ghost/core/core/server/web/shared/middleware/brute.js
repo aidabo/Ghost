@@ -106,6 +106,23 @@ module.exports = {
     },
 
     /**
+     * 会員の 6 桁のコード: 6 桁つきで送るのは、メールごと（IP によらない）に数える
+     * （送り直すたびに ref ごとの推測の回数が戻るので、送る回数で全体を抑える）。6 桁を頼まない送信は今までどおり
+     */
+    memberOtcSendPerEmail(req, res, next) {
+        const includeOTC = req.body?.includeOTC === true || req.body?.includeOTC === 'true';
+        if (!includeOTC) {
+            return next();
+        }
+        return spamPrevention.userReset().getMiddleware({
+            ignoreIP: true,
+            key(_req, _res, _next) {
+                const email = typeof _req.body?.email === 'string' ? _req.body.email.trim().toLowerCase() : '';
+                _next(`${email}member_otc_send`);
+            }
+        })(req, res, next);
+    },
+    /**
      * 会員の 6 桁のコード: IP ごとに確かめる回数を数える（たくさんの otcRef に少しずつ当てる推測を止める）
      */
     memberOtcVerifyPerIp(req, res, next) {

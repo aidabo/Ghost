@@ -84,6 +84,11 @@ class SingleUseTokenProvider {
      * ref の token が「作ってから 10 分以内」「まだ一度も使われていない」で、6 桁が合えば、その token を返す。
      * 合わなければ null（どこが違うかは言わない）。token はこの後 Ghost の中でセッションに替える（ブラウザには返さない）。
      *
+     * 「まだ一度も使われていない」なので、メールのリンクを先に開かれた token（メールのリンクを自動で開く
+     * 安全確認の仕組みも含む）では 6 桁は通らない。そのときはリンクで入る。
+     * 合ったときは used_count を 0 → 1 に一度で替え（同じ 6 桁を同時に送っても通るのは 1 つだけ）、
+     * その後のセッションへの替え（validate）は「使い始めて 10 分以内」として通る。
+     *
      * @param {string} ref
      * @param {string} otc
      * @returns {Promise<string|null>}
@@ -107,6 +112,14 @@ class SingleUseTokenProvider {
         const expected = Buffer.from(this.deriveOTC(model.id, token));
         const given = Buffer.from(otc.trim());
         if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) {
+            return null;
+        }
+        // まだ使われていないときだけ、使ったことにする（同時に来た 2 つめ以降は 0 行で null）
+        const now = new Date();
+        const claimed = await this.model.forge().query()
+            .where({id: model.id, used_count: 0})
+            .update({used_count: 1, first_used_at: now, updated_at: now});
+        if (!claimed) {
             return null;
         }
         return token;

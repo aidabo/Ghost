@@ -1,13 +1,19 @@
 // 会員のログイン・登録を、メールの 6 桁のコード（OTC）で
 // （jibunsee-react docs/planning/staff-password-reset-code.md §8）
 const assert = require('assert/strict');
-const {agentProvider, mockManager, fixtureManager} = require('../../utils/e2e-framework');
+const {agentProvider, mockManager, fixtureManager, dbUtils} = require('../../utils/e2e-framework');
 const settingsCache = require('../../../core/shared/settings-cache');
 const models = require('../../../core/server/models');
 const spamPrevention = require('../../../core/server/web/shared/middleware/api/spam-prevention');
 const {OTC_VALIDITY} = require('../../../core/server/services/members/SingleUseTokenProvider');
 
 let membersAgent;
+// 試験ごと・呼ぶごとに別の IP（IP ごとの回数の制限を、ほかの試験と分ける）
+let ipCounter = 0;
+function nextIp() {
+    ipCounter += 1;
+    return `10.9.${Math.floor(ipCounter / 250)}.${(ipCounter % 250) + 1}`;
+}
 
 function sentEmails(mailReceiver) {
     const list = [];
@@ -27,17 +33,16 @@ function tokenOf(mail) {
 
 async function sendWithOTC(email, emailType = 'signin') {
     const res = await membersAgent.post('/api/send-magic-link')
+        .header('X-Forwarded-For', nextIp())
         .body({email, emailType, includeOTC: true})
         .expectStatus(201);
     return res.body.otc_ref;
 }
 
 function verify(otcRef, otc, ip) {
-    let req = membersAgent.post('/api/verify-otc').body({otcRef, otc});
-    if (ip) {
-        req = req.header('X-Forwarded-For', ip);
-    }
-    return req;
+    return membersAgent.post('/api/verify-otc')
+        .header('X-Forwarded-For', ip || nextIp())
+        .body({otcRef, otc});
 }
 
 describe('Members sign in / sign up with a one-time code', function () {
@@ -49,9 +54,11 @@ describe('Members sign in / sign up with a one-time code', function () {
         await fixtureManager.init('members');
     });
 
-    beforeEach(function () {
+    beforeEach(async function () {
         mailReceiver = mockManager.mockMail();
         spamPrevention.reset();
+        // 回数の記録（brute の表）も試験ごとに空に（spamPrevention.reset は表を消さない。signin.test.js と同じ）
+        await dbUtils.truncate('brute');
         settingsCache.set('members_signup_access', {value: 'all'});
     });
 
@@ -196,6 +203,42 @@ describe('Members sign in / sign up with a one-time code', function () {
         // 書き方を変えたものは、まとめて 1 つの鍵で数えられ、やがて止まる
         assert.ok(statuses.every(st => st === 400 || st === 429));
         assert.equal(statuses[statuses.length - 1], 429);
+    });
+
+    it('the same right code sent twice at the same time signs in only once', async function () {
+        const otcRef = await sendWithOTC('member1@test.com');
+        const code = codeOf(sentEmails(mailReceiver)[0]);
+        const results = await Promise.all([verify(otcRef, code), verify(otcRef, code), verify(otcRef, code)]);
+        // 通るのは 1 つだけ。残りは失敗（400。同じ鍵の回数の記録が同時に書かれると、今の brute-knex は
+        // MySQL のデッドロックで 500 を返すことがあるが、どちらにしてもセッションは作られない）
+        const statuses = results.map(r => r.statusCode);
+        assert.equal(statuses.filter(st => st === 200).length, 1);
+        assert.ok(statuses.filter(st => st !== 200).every(st => st === 400 || st === 500));
+    });
+
+    it('verifyOTC marks the token used at once: a second check of the same code gets nothing, even together', async function () {
+        const provider = require('../../../core/server/services/members').api.tokenProvider;
+        const {token, ref} = await provider.createWithRef({email: 'member1@test.com', type: 'signin'});
+        const otc = provider.deriveOTC(ref, token);
+        const together = await Promise.all([provider.verifyOTC(ref, otc), provider.verifyOTC(ref, otc)]);
+        assert.equal(together.filter(Boolean).length, 1);
+        assert.equal(await provider.verifyOTC(ref, otc), null);
+    });
+
+    it('limits sending with a code per email, even when the IP changes (sending without a code is unchanged)', async function () {
+        const email = 'member2@test.com';
+        const statuses = [];
+        for (let i = 0; i < 6; i += 1) {
+            const res = await membersAgent.post('/api/send-magic-link')
+                .header('X-Forwarded-For', nextIp())
+                .body({email, emailType: 'signin', includeOTC: true});
+            statuses.push(res.statusCode);
+        }
+        assert.equal(statuses[statuses.length - 1], 429);
+        await membersAgent.post('/api/send-magic-link')
+            .header('X-Forwarded-For', nextIp())
+            .body({email, emailType: 'signin'})
+            .expectStatus(201);
     });
 
     it('limits tries per IP across many otcRefs', async function () {
