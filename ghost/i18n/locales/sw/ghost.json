@@ -1,6 +1,6 @@
 {
-    "{{code}} is your sign-in code for {{siteTitle}}": "",
-    "{{code}} is your sign-up code for {{siteTitle}}": "",
+    "{{code}} is your verification code to sign in to {{siteTitle}}": "",
+    "{{code}} is your verification code to sign up for {{siteTitle}}": "",
     "All the best!": "Kila la kheri!",
     "Complete signup for {{siteTitle}}!": "Kamilisha usajili kwa {{siteTitle}}!",
     "Complete your sign up to {{siteTitle}}!": "Kamilisha usajili wako kwa {{siteTitle}}!",
@@ -10,7 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "Thibitisha masasisho ya barua pepe yako kwa {{siteTitle}}!",
     "Confirm your subscription to {{siteTitle}}": "Thibitisha usajili wako kwa {{siteTitle}}",
     "Device:": "",
-    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
+    "Enter this verification code on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Kwa usalama wako, kiungo hiki kitaisha muda baada ya saa 24.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -42,6 +42,6 @@
     "You will not be subscribed.": "Hutajiandikisha.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "Uko umbali wa mguso mmoja tu kujiunga na {{siteTitle}} — tafadhali thibitisha anwani yako ya barua pepe na kiungo hiki:",
     "You're one tap away from subscribing to {{siteTitle}}!": "Uko umbali wa mguso mmoja tu kujiunga na {{siteTitle}}!",
-    "Your code: {{code}}": "",
+    "Your verification code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

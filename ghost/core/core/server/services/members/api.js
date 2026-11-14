@@ -57,12 +57,12 @@ function trimLeadingWhitespace(strings, ...values) {
 function otcSubject(type, otc, siteTitle) {
     const vars = {code: otc, siteTitle, interpolation: {escapeValue: false}};
     return type === 'signin'
-        ? t('{{code}} is your sign-in code for {{siteTitle}}', vars)
-        : t('{{code}} is your sign-up code for {{siteTitle}}', vars);
+        ? t('{{code}} is your verification code to sign in to {{siteTitle}}', vars)
+        : t('{{code}} is your verification code to sign up for {{siteTitle}}', vars);
 }
 
 function otcText(otc) {
-    return `${t('Your code: {{code}}', {code: otc, interpolation: {escapeValue: false}})}\n${t('Enter it on the screen you have open within 10 minutes, or use the link below.')}`;
+    return `${t('Your verification code: {{code}}', {code: otc, interpolation: {escapeValue: false}})}\n${t('Enter this verification code on the screen you have open within 10 minutes, or use the link below.')}`;
 }
 
 function escapeHtml(text) {
@@ -70,7 +70,7 @@ function escapeHtml(text) {
 }
 
 function addOtcToHtml(html, otc) {
-    const block = `<p style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 16px; color: #3A464C; margin: 0 0 8px;">${escapeHtml(t('Enter it on the screen you have open within 10 minutes, or use the link below.'))}</p>`
+    const block = `<p style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 16px; color: #3A464C; margin: 0 0 8px;">${escapeHtml(t('Enter this verification code on the screen you have open within 10 minutes, or use the link below.'))}</p>`
         + `<p data-otc style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #15212A; margin: 0 0 16px;">${escapeHtml(otc)}</p>`;
     // 今の「リンクは 24 時間で切れます」の段落の前に入れる。見つからなければ本文の頭（<body> の後）に
     const marker = t('For your security, the link will expire in 24 hours time.');

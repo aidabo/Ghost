@@ -16,7 +16,7 @@
 
 - **6 桁:** 使い捨て token（`tokens` の表の行）から `HMAC-SHA256(members_email_auth_secret, "<行の id>:<token>")` を 10 進の 6 桁に。**保存しない**（表は増やさない）。
   `members_email_auth_secret` を回すと、出ている 6 桁は全部使えなくなる。
-- **メール:** 件名の頭に 6 桁（`{{code}} is your sign-in code for {{siteTitle}}`、登録は sign-up。i18n の ja・zh に訳あり）、本文に 6 桁と「10 分以内に」。リンクも今どおり入る。
+- **メール:** 件名の頭に 6 桁の認証コード（`{{code}} is your verification code to sign in to {{siteTitle}}`、登録は `… to sign up for …`。ja「{{code}} は{{siteTitle}}のログインの認証コードです」・zh「… 的登录验证码」）、本文に認証コードと「10 分以内に」。リンクも今どおり入る。呼び名は「認証コード」・「验证码」・「verification code」にそろえる。
 - **token はブラウザに返さない。** upstream は `redirectUrl`（token 入り）を返すが、ここでは Ghost の中で token をセッションに替えて cookie を付ける（履歴やログに token を残さない）。登録なら、今のリンクと同じく会員を作る。
 - **6 桁で入れる条件:** token を作ってから **10 分以内**（リンクは 24 時間）、かつ **まだ一度も使われていない**（`used_count` が 0）。合ったときに `used_count` を 0 → 1 に一度で替える（同じ 6 桁を同時に送っても通るのは 1 つ）。
   - **注意:** メールのリンクを自動で開く仕組み（会社のメールの安全確認など）が先にリンクを開くと、その token は「使われた」になり、6 桁は通らない。そのときはリンクで入る。

@@ -1,6 +1,6 @@
 {
-    "{{code}} is your sign-in code for {{siteTitle}}": "",
-    "{{code}} is your sign-up code for {{siteTitle}}": "",
+    "{{code}} is your verification code to sign in to {{siteTitle}}": "",
+    "{{code}} is your verification code to sign up for {{siteTitle}}": "",
     "All the best!": "Всього найкращого!",
     "Complete signup for {{siteTitle}}!": "Завершіть реєстрацію для {{siteTitle}}!",
     "Complete your sign up to {{siteTitle}}!": "Завершіть вашу реєстрацію для {{siteTitle}}!",
@@ -10,7 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "Підтвердь оновлення вашої електронної пошти для {{siteTitle}}!",
     "Confirm your subscription to {{siteTitle}}": "Підтвердь вашу підписку на {{siteTitle}}",
     "Device:": "",
-    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
+    "Enter this verification code on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "Для вашої безпеки, посилання буде дійсним протягом 24 годин.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -42,6 +42,6 @@
     "You will not be subscribed.": "Тебе не буде підписано.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "Ви за один крок до підписки на {{siteTitle}} — будь ласка, підтвердь свою електронну пошту за допомогою цього посилання:",
     "You're one tap away from subscribing to {{siteTitle}}!": "Ви за один крок до підписки на {{siteTitle}}!",
-    "Your code: {{code}}": "",
+    "Your verification code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

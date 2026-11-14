@@ -73,7 +73,7 @@ describe('Members sign in / sign up with a one-time code', function () {
         const [mail] = sentEmails(mailReceiver);
         const code = codeOf(mail);
         assert.match(code, /^\d{6}$/);
-        assert.ok(mail.text.includes(`Your code: ${code}`));
+        assert.ok(mail.text.includes(`Your verification code: ${code}`));
         assert.ok(tokenOf(mail), 'the link is still in the email');
         assert.ok(mail.html.includes(code));
         // 応答に 6 桁も token も入れない
@@ -108,7 +108,7 @@ describe('Members sign in / sign up with a one-time code', function () {
         const email = 'new-by-code@test.com';
         const otcRef = await sendWithOTC(email, 'signup');
         const [mail] = sentEmails(mailReceiver);
-        assert.match(mail.subject, /^\d{6} is your sign-up code for /);
+        assert.match(mail.subject, /^\d{6} is your verification code to sign up for /);
 
         await verify(otcRef, codeOf(mail)).expectStatus(200);
         const member = await models.Member.findOne({email});
