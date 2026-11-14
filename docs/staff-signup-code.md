@@ -33,6 +33,7 @@ IP は `req.ip`（`trust proxy`）。front の `/api/invites` は Next のサー
 `ghost/core/test/e2e-api/admin/invitation-code.test.js`（MySQL）:
 
 ```sh
+cd ghost/core
 NODE_ENV=testing-mysql database__connection__password=ghost database__connection__database=ghost_testing_otc \
   yarn test:base --timeout=900000 test/e2e-api/admin/invitation-code.test.js
 ```

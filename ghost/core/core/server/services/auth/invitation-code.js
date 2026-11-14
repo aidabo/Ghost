@@ -129,7 +129,9 @@ async function verifyCode({email, ref, code}, options = {}) {
     if (data.type !== TOKEN_TYPE || !fresh || row.get('used_count') >= MAX_FAILURES || !data.invite_id) {
         throw invalid();
     }
-    const invite = await models.Invite.findOne({id: data.invite_id}, options);
+    // 登録の口（services/invitations/accept.js）と同じく、送った（status: sent）招待だけ。
+    // メールを送る前・status を sent にする前に確かめても、6 桁を使い切らずに失敗させる
+    const invite = await models.Invite.findOne({id: data.invite_id, status: 'sent'}, options);
     const inviteOk = Boolean(invite)
         && String(invite.get('email') || '').trim().toLowerCase() === email.trim().toLowerCase()
         && Number(invite.get('expires')) > Date.now();

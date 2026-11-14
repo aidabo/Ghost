@@ -139,7 +139,8 @@ describe('Invitation code API', function () {
         for (const res of [b, c, d, e]) {
             assert.equal(res.body.errors[0].message, a.body.errors[0].message);
         }
-        // 間違えたあとでも、残りの回数のうちなら正しい 6 桁は通る
+        // 間違えたあとでも、残りの回数のうちなら正しい 6 桁は通る（メールごとの上限とは分けて見るので、数えた分を空に）
+        await dbUtils.truncate('brute');
         await verify({email, ref: created.code_ref, code}).expectStatus(200);
     });
 
@@ -166,6 +167,13 @@ describe('Invitation code API', function () {
             await verify({email, ref: created.code_ref, code: wrong}).expectStatus(400);
         }
         await dbUtils.truncate('brute');
+        await verify({email, ref: created.code_ref, code}).expectStatus(400);
+    });
+
+    it('an invite that is not sent yet is refused (the same rule as signing up)', async function () {
+        const email = nextEmail();
+        const {invite: created, code} = await invite(email);
+        await models.Invite.edit({status: 'pending'}, {id: created.id});
         await verify({email, ref: created.code_ref, code}).expectStatus(400);
     });
 
@@ -209,8 +217,6 @@ describe('Invitation code API', function () {
     });
 
     it('if the mail cannot be sent, the code row is removed', async function () {
-        mockManager.restore();
-        mockManager.mockMail();
         const mailService = require('../../../core/server/services/mail');
         const send = sinon.stub(mailService.GhostMailer.prototype, 'send').rejects(new Error('smtp down'));
         try {
