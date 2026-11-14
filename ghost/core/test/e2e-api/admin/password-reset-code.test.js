@@ -171,15 +171,19 @@ describe('Password reset code API', function () {
 
     it('after asking twice, the first code still works with its own ref (and not with the second ref)', async function () {
         const first = await requestAndRead();
-        const secondRef = await request(email);
-        await waitForEmails(mailReceiver, 2);
-        await waitForRow(secondRef);
-        assert.notEqual(secondRef, first.ref);
-        // 前の 6 桁を新しい ref で使っても通らない（ref と組。偶然同じ 6 桁なら試せないので飛ばす）
-        const secondCode = mailReceiver.getSentEmail(1).subject.slice(0, 6);
-        if (secondCode !== first.code) {
-            await reset({ref: secondRef, code: first.code}).expectStatus(400);
+        // 偶然同じ 6 桁になったら（100 万分の 1）、違う 6 桁になるまで送り直す。毎回「ref と組」を確かめるため
+        let secondRef;
+        let secondCode = first.code;
+        for (let sent = 1; secondCode === first.code; sent += 1) {
+            assert.ok(sent <= 3, 'got the same 6 digits three times in a row');
+            secondRef = await request(email);
+            await waitForEmails(mailReceiver, sent + 1);
+            await waitForRow(secondRef);
+            secondCode = mailReceiver.getSentEmail(sent).subject.slice(0, 6);
         }
+        assert.notEqual(secondRef, first.ref);
+        // 前の 6 桁を新しい ref で使っても通らない（ref と組）
+        await reset({ref: secondRef, code: first.code}).expectStatus(400);
         await reset({ref: first.ref, code: first.code, newPassword: 'FirstCode1234!', ne2Password: 'FirstCode1234!'}).expectStatus(200);
     });
 
@@ -274,7 +278,11 @@ describe('Password reset code API', function () {
     it('the code limits follow the spam settings after a reset (settings changed in a test take effect)', async function () {
         // 先に 1 回使って、今の設定で数えるものを作っておく（reset で作り直さないと、新しい設定が効かない）
         await reset({ref: 'x', code: '000000', email: 'warm-up@example.com'}).expectStatus(400);
-        configUtils.set('spam:user_verification:freeRetries', 1);
+        // configUtils.restore() は設定全体を読み込んだ時の形に戻す（startGhost が決めた paths:contentPath も戻る）ので、
+        // 変えたキーだけ元の値に戻す
+        const key = 'spam:user_verification:freeRetries';
+        const before = configUtils.config.get(key);
+        configUtils.set(key, 1);
         await resetRateLimits();
         await dbUtils.truncate('brute');
         try {
@@ -284,8 +292,33 @@ describe('Password reset code API', function () {
             }
             assert.equal(statuses[2], 429);
         } finally {
-            await configUtils.restore();
+            configUtils.set(key, before);
             await resetRateLimits();
+        }
+    });
+
+    it('the send limit follows spam.user_reset after a reset (the send side, too)', async function () {
+        const key = 'spam:user_reset:freeRetries';
+        const before = configUtils.config.get(key);
+        configUtils.set(key, 1);
+        await resetRateLimits();
+        await dbUtils.truncate('brute');
+        try {
+            const statuses = [];
+            for (let i = 0; i < 3; i += 1) {
+                // IP を毎回変える: 数えているのはメールごとの上限
+                const res = await agent
+                    .post('authentication/password_reset_code')
+                    .header('X-Forwarded-For', nextIp())
+                    .body({password_reset_code: [{email: 'send-settings@example.com'}]});
+                statuses.push(res.statusCode);
+            }
+            assert.deepEqual(statuses.slice(0, 2), [200, 200]);
+            assert.equal(statuses[2], 429);
+        } finally {
+            configUtils.set(key, before);
+            await resetRateLimits();
+            await dbUtils.truncate('brute');
         }
     });
 

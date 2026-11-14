@@ -345,10 +345,14 @@ const userVerification = function userVerification() {
 /**
  * 6 桁のコードの回数の制限。数は今の設定を使う（送る = spam.user_reset、確かめる = spam.user_verification。
  * 新しい設定は足さない）。上限を超えたときの文だけ 6 桁のコードの文にする（パスワード再設定の文にしない）。
- * reset() で作り直すので、試験で設定を変えても効く。
+ * reset() で作り直すので、試験で設定を変えても効く（reset() を呼ぶのは試験だけ。本番で設定を変えたら再起動）。
  * @param {'send'|'verify'} kind
  */
 const codeAttempts = function codeAttempts(kind) {
+    // 書き間違えた kind を黙って 'verify' として扱うと、別の上限・別の文で数えてしまう
+    if (kind !== 'send' && kind !== 'verify') {
+        throw new errors.IncorrectUsageError({message: `codeAttempts: unknown kind "${kind}" (use 'send' or 'verify')`});
+    }
     const ExpressBrute = require('express-brute');
     const BruteKnex = require('brute-knex');
     const db = require('../../../../data/db');
