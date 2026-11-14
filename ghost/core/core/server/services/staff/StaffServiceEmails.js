@@ -3,6 +3,7 @@ const path = require('path');
 const moment = require('moment');
 const glob = require('glob');
 const {EmailAddressParser} = require('@tryghost/email-addresses');
+const {getFrontLogoUrl} = require('../lib/front-logo');
 
 class StaffServiceEmails {
     constructor({logging, models, mailer, settingsHelpers, settingsCache, blogIcon, urlUtils, labs}) {
@@ -45,7 +46,7 @@ class StaffServiceEmails {
                 attributionUrl: attribution?.url || '',
                 referrerSource: attribution?.referrerSource,
                 siteTitle: this.settingsCache.get('title'),
-                siteIconUrl: this.blogIcon.getIconUrl({absolute: true, fallbackToDefault: false}),
+                siteIconUrl: this.getSiteIconUrl(),
                 siteUrl: this.urlUtils.getSiteUrl(),
                 siteDomain: this.siteDomain,
                 accentColor: this.settingsCache.get('accent_color'),
@@ -105,7 +106,7 @@ class StaffServiceEmails {
                 offerData,
                 subscriptionData,
                 siteTitle: this.settingsCache.get('title'),
-                siteIconUrl: this.blogIcon.getIconUrl({absolute: true, fallbackToDefault: false}),
+                siteIconUrl: this.getSiteIconUrl(),
                 siteUrl: this.urlUtils.getSiteUrl(),
                 siteDomain: this.siteDomain,
                 accentColor: this.settingsCache.get('accent_color'),
@@ -156,7 +157,7 @@ class StaffServiceEmails {
                 tierData,
                 subscriptionData,
                 siteTitle: this.settingsCache.get('title'),
-                siteIconUrl: this.blogIcon.getIconUrl({absolute: true, fallbackToDefault: false}),
+                siteIconUrl: this.getSiteIconUrl(),
                 siteUrl: this.urlUtils.getSiteUrl(),
                 siteDomain: this.siteDomain,
                 accentColor: this.settingsCache.get('accent_color'),
@@ -177,6 +178,15 @@ class StaffServiceEmails {
     }
 
     /**
+     * メールのロゴ: サイトのアイコン、無ければ front のロゴ（services/lib/front-logo.js）。
+     * どちらも無ければ null（雛形は {{#if siteIconUrl}} でロゴを出さない。今までどおり）
+     * @returns {string|null}
+     */
+    getSiteIconUrl() {
+        return this.blogIcon.getIconUrl({absolute: true, fallbackToDefault: false}) || getFrontLogoUrl() || null;
+    }
+
+    /**
      * @param {object} recipient
      * @param {string} recipient.email
      * @param {string} recipient.slug
@@ -186,7 +196,7 @@ class StaffServiceEmails {
 
         return {
             siteTitle: this.settingsCache.get('title'),
-            siteIconUrl: this.blogIcon.getIconUrl({absolute: true, fallbackToDefault: false}),
+            siteIconUrl: this.getSiteIconUrl(),
             siteUrl: this.urlUtils.getSiteUrl(),
             siteDomain: this.siteDomain,
             accentColor: this.settingsCache.get('accent_color'),
@@ -238,7 +248,9 @@ class StaffServiceEmails {
                 partial: `milestones/${milestone.value}`,
                 toEmail: to,
                 adminUrl: this.urlUtils.urlFor('admin', true),
-                staffUrl: staffUrl
+                staffUrl: staffUrl,
+                // ロゴは front のロゴ（無ければ雛形の Ghost のロゴ）。services/lib/front-logo.js
+                frontLogoUrl: getFrontLogoUrl()
             };
 
             const {html, text} = await this.renderEmailTemplate('new-milestone-received', templateData);
@@ -287,7 +299,7 @@ class StaffServiceEmails {
             const templateData = {
                 siteTitle: this.settingsCache.get('title'),
                 siteUrl: this.urlUtils.getSiteUrl(),
-                siteIconUrl: this.blogIcon.getIconUrl({absolute: true, fallbackToDefault: false}),
+                siteIconUrl: this.getSiteIconUrl(),
                 siteDomain: this.siteDomain,
                 fromEmail: this.fromEmailAddress,
                 toEmail: to,
