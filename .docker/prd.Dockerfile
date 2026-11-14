@@ -52,6 +52,9 @@ COPY --chown=node:node ghost/core/core/server/data/migrations/hooks/init/after.j
 COPY --chown=node:node ghost/core/core/server/data/migrations/hooks/init/index.js ${GHOST_INSTALL}/current/core/server/data/migrations/hooks/init
 COPY --chown=node:node ghost/core/core/server/models ${GHOST_INSTALL}/current/core/server/models
 COPY --chown=node:node ghost/core/core/server/services/mail ${GHOST_INSTALL}/current/core/server/services/mail
+# スタッフのパスワードの 6 桁のコード（services/auth/password-reset-code.js）と、その回数の制限（brute.js）
+COPY --chown=node:node ghost/core/core/server/services/auth ${GHOST_INSTALL}/current/core/server/services/auth
+COPY --chown=node:node ghost/core/core/server/web/shared/middleware/brute.js ${GHOST_INSTALL}/current/core/server/web/shared/middleware
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeAPI.js ${GHOST_INSTALL}/current/core/server/services/stripe
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeService.js ${GHOST_INSTALL}/current/core/server/services/stripe
 COPY --chown=node:node ghost/core/core/server/services/stripe/WebhookController.js ${GHOST_INSTALL}/current/core/server/services/stripe

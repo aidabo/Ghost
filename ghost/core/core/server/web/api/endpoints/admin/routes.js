@@ -254,6 +254,17 @@ module.exports = function apiRoutes() {
         http(api.authentication.generateResetToken)
     );
     router.put('/authentication/password_reset', shared.middleware.brute.globalBlock, http(api.authentication.resetPassword));
+    // 6 桁のコードで決め直す（services/auth/password-reset-code.js）。送るのは IP ごと・メールごとに、確かめるのも IP ごと・メールごとに数える
+    router.post('/authentication/password_reset_code',
+        shared.middleware.brute.globalReset,
+        shared.middleware.brute.resetCodeSendPerEmail,
+        http(api.authentication.generateResetCode)
+    );
+    router.put('/authentication/password_reset_code',
+        shared.middleware.brute.resetCodeVerifyPerIp,
+        shared.middleware.brute.resetCodeVerifyPerEmail,
+        http(api.authentication.resetPasswordWithCode)
+    );
     router.post('/authentication/invitation', http(api.authentication.acceptInvitation));
     router.get('/authentication/invitation', http(api.authentication.isInvitation));
     router.post('/authentication/setup', http(api.authentication.setup));

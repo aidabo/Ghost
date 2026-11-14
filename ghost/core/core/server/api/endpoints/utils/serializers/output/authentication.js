@@ -39,6 +39,22 @@ module.exports = {
         };
     },
 
+    generateResetCode(data, apiConfig, frame) {
+        frame.response = {
+            password_reset_code: [{
+                message: tpl(messages.checkEmailForInstructions)
+            }]
+        };
+    },
+
+    resetPasswordWithCode(data, apiConfig, frame) {
+        frame.response = {
+            password_reset_code: [{
+                message: tpl(messages.passwordChanged)
+            }]
+        };
+    },
+
     resetPassword(data, apiConfig, frame) {
         frame.response = {
             password_reset: [{

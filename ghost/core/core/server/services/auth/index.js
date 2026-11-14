@@ -17,5 +17,9 @@ module.exports = {
 
     get passwordreset() {
         return require('./passwordreset');
+    },
+
+    get passwordResetCode() {
+        return require('./password-reset-code');
     }
 };
