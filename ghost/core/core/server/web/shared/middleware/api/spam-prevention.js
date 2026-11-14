@@ -21,6 +21,8 @@ const messages = {
         context: 'Too many login attempts.'
     },
     tooManyAttempts: 'Too many attempts.',
+    tooManyCodesRequested: 'Too many codes requested for this email. Please wait a while and try again.',
+    tooManyCodeTries: 'Too many tries with the code. Please wait a while and try again.',
     webmentionsBlock: 'Too many mention attempts',
     emailPreviewBlock: 'Only 10 test emails can be sent per hour'
 };
@@ -50,6 +52,8 @@ let sendVerificationCodeInstance;
 let userVerificationInstance;
 let contentApiKeyInstance;
 let emailPreviewBlockInstance;
+// 6 桁のコード（スタッフのパスワード・会員のログイン）の送る・確かめるの制限（brute.js の resetCode* / memberOtc*）
+let codeAttemptsInstances = {};
 
 const spamConfigKeys = ['freeRetries', 'minWait', 'maxWait', 'lifetime'];
 
@@ -338,6 +342,40 @@ const userVerification = function userVerification() {
     return userVerificationInstance;
 };
 
+/**
+ * 6 桁のコードの回数の制限。数は今の設定を使う（送る = spam.user_reset、確かめる = spam.user_verification。
+ * 新しい設定は足さない）。上限を超えたときの文だけ 6 桁のコードの文にする（パスワード再設定の文にしない）。
+ * reset() で作り直すので、試験で設定を変えても効く。
+ * @param {'send'|'verify'} kind
+ */
+const codeAttempts = function codeAttempts(kind) {
+    const ExpressBrute = require('express-brute');
+    const BruteKnex = require('brute-knex');
+    const db = require('../../../../data/db');
+
+    store = store || new BruteKnex({
+        tablename: 'brute',
+        createTable: false,
+        knex: db.knex
+    });
+
+    if (!codeAttemptsInstances[kind]) {
+        const settings = kind === 'send' ? spamUserReset : spamUserVerification;
+        const message = kind === 'send' ? messages.tooManyCodesRequested : messages.tooManyCodeTries;
+        codeAttemptsInstances[kind] = new ExpressBrute(store,
+            extend({
+                attachResetToRequest: false,
+                failCallback(req, res, next) {
+                    return next(new errors.TooManyRequestsError({message}));
+                },
+                handleStoreError: handleStoreError
+            }, pick(settings, spamConfigKeys))
+        );
+    }
+
+    return codeAttemptsInstances[kind];
+};
+
 const sendVerificationCode = function sendVerificationCode() {
     const ExpressBrute = require('express-brute');
     const BruteKnex = require('brute-knex');
@@ -437,6 +475,7 @@ module.exports = {
     contentApiKey: contentApiKey,
     webmentionsBlock: webmentionsBlock,
     emailPreviewBlock: emailPreviewBlock,
+    codeAttempts: codeAttempts,
     reset: () => {
         store = undefined;
         memoryStore = undefined;
@@ -450,6 +489,7 @@ module.exports = {
         sendVerificationCodeInstance = undefined;
         userVerificationInstance = undefined;
         contentApiKeyInstance = undefined;
+        codeAttemptsInstances = {};
 
         spam = config.get('spam') || {};
         spamPrivateBlock = spam.private_block || {};

@@ -33,9 +33,18 @@
 
 今の `membersAuth`・`membersAuthEnumeration`（送る口）もそのまま。
 
+6 桁の送る・確かめるの制限は `api/spam-prevention.js` の `codeAttempts('send' | 'verify')`（スタッフの 6 桁も同じもの）。
+数は今の設定（送る = `spam.user_reset`、確かめる = `spam.user_verification`）を使い、新しい設定は足さない。`spamPrevention.reset()` で作り直すので、設定を変えた後も効く。
+上限を超えたときの 429 の文:
+
+| | 文 |
+|---|---|
+| 送る | `Too many codes requested for this email. Please wait a while and try again.` |
+| 確かめる | `Too many tries with the code. Please wait a while and try again.` |
+
 ## 本番のイメージ
 
-`.docker/prd.Dockerfile` は書いたファイルだけを上書きする。この機能のために `services/members`・`web/shared/middleware/brute.js` と、
+`.docker/prd.Dockerfile` は書いたファイルだけを上書きする。この機能のために `services/members`・`web/shared/middleware/brute.js`・`web/shared/middleware/api/spam-prevention.js` と、
 node_modules の `@tryghost/members-api/lib/members-api.js`・`@tryghost/magic-link/lib/MagicLink.js`・`@tryghost/i18n/locales` を COPY している。
 配布の前に `yarn docker:next:build` で起動まで確かめる。
 
@@ -45,5 +54,6 @@ node_modules の `@tryghost/members-api/lib/members-api.js`・`@tryghost/magic-l
 ```
 cd ghost/core
 NODE_ENV=testing-mysql database__connection__password=ghost database__connection__database=ghost_testing_otc \
-  yarn test:base --timeout=900000 test/e2e-api/members/verify-otc.test.js
+  yarn test:base --timeout=900000 test/e2e-api/members/verify-otc.test.js test/e2e-api/admin/password-reset-code.test.js
 ```
+（2 つ目はスタッフの 6 桁。[staff-password-reset-code.md](./staff-password-reset-code.md)）
