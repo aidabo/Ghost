@@ -2,6 +2,8 @@
 // （services/auth/password-reset-code.js、jibunsee-react docs/planning/staff-password-reset-code.md §3）
 // 6 桁は「送る」を頼んだときにだけ作り、tokens の表に hash で残す。送る口が返す ref と組で使う。
 const assert = require('assert/strict');
+const sinon = require('sinon');
+const logging = require('@tryghost/logging');
 const {agentProvider, fixtureManager, mockManager, dbUtils, configUtils, resetRateLimits} = require('../../utils/e2e-framework');
 const models = require('../../../core/server/models');
 const resetCode = require('../../../core/server/services/auth/password-reset-code');
@@ -125,6 +127,20 @@ describe('Password reset code API', function () {
         assert.equal(sentCount(mailReceiver), 1);
         assert.equal(mailReceiver.getSentEmail(0).to, email);
         assert.equal(await models.SingleUseToken.findOne({token: unknown}), null);
+    });
+
+    it('writes one info line when the code mail was sent, and nothing for an unknown email (no email or code in it)', async function () {
+        const info = sinon.spy(logging, 'info');
+        try {
+            await request('nobody-logged@example.com');
+            await request(email);
+            await waitForEmails(mailReceiver, 1);
+            await sleep(200);
+            const lines = info.getCalls().map(call => String(call.args[0])).filter(line => line.includes('[password-reset-code]'));
+            assert.deepEqual(lines, ['[password-reset-code] sent the code mail']);
+        } finally {
+            info.restore();
+        }
     });
 
     it('without a request there is nothing to guess: any code with a made-up ref is refused', async function () {
