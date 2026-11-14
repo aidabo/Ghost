@@ -1,4 +1,6 @@
 {
+    "{{code}} is your sign-in code for {{siteTitle}}": "",
+    "{{code}} is your sign-up code for {{siteTitle}}": "",
     "All the best!": "모든 것이 잘 되기를 바라요!",
     "Complete signup for {{siteTitle}}!": "{{siteTitle}} 가입을 완료해 주세요!",
     "Complete your sign up to {{siteTitle}}!": "회원님의 {{siteTitle}} 가입을 완료해 주세요!",
@@ -8,6 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "{{siteTitle}}의 이메일 업데이트를 확인해 주세요!",
     "Confirm your subscription to {{siteTitle}}": "{{siteTitle}}의 구독을 확인해 주세요.",
     "Device:": "",
+    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "보안을 위해 링크는 24시간 후에 만료돼요.",
     "Here's your code to login to {{siteTitle}}": "",
@@ -39,5 +42,6 @@
     "You will not be subscribed.": "구독되지 않을 것이에요.",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "탭하시면 {{siteTitle}} 구독이 완료돼요! 이 링크를 사용하여 이메일 주소를 확인해 주세요.",
     "You're one tap away from subscribing to {{siteTitle}}!": "탭하시면 {{siteTitle}} 구독이 완료돼요!",
+    "Your code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

@@ -494,6 +494,8 @@ module.exports = class RouterController {
     async sendMagicLink(req, res) {
         const {email, honeypot, autoRedirect} = req.body;
         let {emailType, redirect} = req.body;
+        // 6 桁のコードも送るか（upstream の Ghost と同じ名前。jibunsee-react docs/planning/staff-password-reset-code.md §8）
+        const includeOTC = req.body.includeOTC === true || req.body.includeOTC === 'true';
 
         let referrer = req.get('referer');
         if (autoRedirect === false){
@@ -540,10 +542,17 @@ module.exports = class RouterController {
         }
 
         try {
+            let sent;
             if (emailType === 'signup' || emailType === 'subscribe') {
-                await this._handleSignup(req, referrer);
+                sent = await this._handleSignup(req, referrer, includeOTC);
             } else {
-                await this._handleSignin(req, referrer);
+                sent = await this._handleSignin(req, referrer, includeOTC);
+            }
+
+            if (includeOTC) {
+                // 6 桁と組で使う ref だけを返す（6 桁も token も返さない）
+                res.writeHead(201, {'Content-Type': 'application/json'});
+                return res.end(JSON.stringify(sent?.otcRef ? {otc_ref: sent.otcRef} : {}));
             }
 
             res.writeHead(201);
@@ -561,7 +570,7 @@ module.exports = class RouterController {
         }
     }
 
-    async _handleSignup(req, referrer = null) {
+    async _handleSignup(req, referrer = null, includeOTC = false) {
         if (!this._allowSelfSignup()) {
             if (this._settingsCache.get('members_signup_access') === 'paid') {
                 throw new errors.BadRequestError({
@@ -592,10 +601,10 @@ module.exports = class RouterController {
             attribution: await this._memberAttributionService.getAttribution(req.body.urlHistory)
         };
 
-        return await this._sendEmailWithMagicLink({email, tokenData, requestedType: emailType, referrer});
+        return await this._sendEmailWithMagicLink({email, tokenData, requestedType: emailType, referrer, includeOTC});
     }
 
-    async _handleSignin(req, referrer = null) {
+    async _handleSignin(req, referrer = null, includeOTC = false) {
         const {email, emailType} = req.body;
 
         const member = await this._memberRepository.get({email});
@@ -607,7 +616,7 @@ module.exports = class RouterController {
         }
 
         const tokenData = {};
-        return await this._sendEmailWithMagicLink({email, tokenData, requestedType: emailType, referrer});
+        return await this._sendEmailWithMagicLink({email, tokenData, requestedType: emailType, referrer, includeOTC});
     }
 
     async _validateNewsletters(req) {

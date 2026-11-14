@@ -234,6 +234,20 @@ class MembersSSR {
         }
 
         const token = Array.isArray(query.token) ? query.token[0] : query.token;
+        return this.exchangeTokenValueForSession(req, res, token);
+    }
+
+    /**
+     * @method exchangeTokenValueForSession
+     * token の値そのものをセッションに替える（exchangeTokenForSession の中身。6 桁のコードの口が、
+     * ブラウザに token を返さずに Ghost の中で呼ぶ。jibunsee-react docs/planning/staff-password-reset-code.md §8）
+     * @param {Request} req
+     * @param {Response} res
+     * @param {string} token
+     *
+     * @returns {Promise<Member>} The member the session was created for
+     */
+    async exchangeTokenValueForSession(req, res, token) {
         const member = await this._getMemberDataFromToken(token);
 
         if (!member) {

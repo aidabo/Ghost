@@ -106,6 +106,29 @@ module.exports = {
     },
 
     /**
+     * 会員の 6 桁のコード: IP ごとに確かめる回数を数える（たくさんの otcRef に少しずつ当てる推測を止める）
+     */
+    memberOtcVerifyPerIp(req, res, next) {
+        return spamPrevention.userVerification().getMiddleware({
+            ignoreIP: false,
+            key(_req, _res, _next) {
+                _next('member_otc_verify');
+            }
+        })(req, res, next);
+    },
+    /**
+     * 会員の 6 桁のコード: otcRef（送ったメール 1 通）ごとに確かめる回数を数える（IP を変えた推測を止める）
+     */
+    memberOtcVerifyPerRef(req, res, next) {
+        return spamPrevention.userVerification().getMiddleware({
+            ignoreIP: true,
+            key(_req, _res, _next) {
+                const ref = _req.body?.otcRef;
+                _next(`${typeof ref === 'string' ? ref : ''}member_otc_verify`);
+            }
+        })(req, res, next);
+    },
+    /**
      * Block too many password guesses for the same email address
      */
     membersAuth(req, res, next) {

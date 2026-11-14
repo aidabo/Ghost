@@ -1,4 +1,6 @@
 {
+    "{{code}} is your sign-in code for {{siteTitle}}": "",
+    "{{code}} is your sign-up code for {{siteTitle}}": "",
     "All the best!": "শুভেচ্ছা!",
     "Complete signup for {{siteTitle}}!": "{{siteTitle}} এর জন্য সাইন আপ সম্পূর্ণ করুন!",
     "Complete your sign up to {{siteTitle}}!": "{{siteTitle}} এ আপনার সাইন আপ সম্পূর্ণ করুন!",
@@ -8,6 +10,7 @@
     "Confirm your email update for {{siteTitle}}!": "{{siteTitle}} এর জন্য আপনার ইমেল আপডেট নিশ্চিত করুন!",
     "Confirm your subscription to {{siteTitle}}": "{{siteTitle}} এর সাবস্ক্রিপশন নিশ্চিত করুন",
     "Device:": "",
+    "Enter it on the screen you have open within 10 minutes, or use the link below.": "",
     "For security verification, enter the code below to sign in to {{siteTitle}}:": "",
     "For your security, the link will expire in 24 hours time.": "আপনার নিরাপত্তার জন্য, লিঙ্কটি ২৪ ঘণ্টার মধ্যে মেয়াদোত্তীর্ণ হবে।",
     "Here's your code to login to {{siteTitle}}": "",
@@ -39,5 +42,6 @@
     "You will not be subscribed.": "আপনি সাবস্ক্রাইব হবেন না।",
     "You're one tap away from subscribing to {{siteTitle}} — please confirm your email address with this link:": "আপনি {{siteTitle}} এ সাবস্ক্রাইব করতে এক ট্যাপ দূরে রয়েছেন — অনুগ্রহ করে এই লিঙ্ক দিয়ে আপনার ইমেল ঠিকানা নিশ্চিত করুন:",
     "You're one tap away from subscribing to {{siteTitle}}!": "আপনি {{siteTitle}} এ সাবস্ক্রাইব করতে এক ট্যাপ দূরে রয়েছেন!",
+    "Your code: {{code}}": "",
     "Your verification code for {{siteTitle}}": ""
 }

@@ -56,7 +56,8 @@ class MagicLink {
      * @param {TokenData} options.tokenData - The data for token
      * @param {string} [options.type='signin'] - The type to be passed to the url and content generator functions
      * @param {string} [options.referrer=null] - The referrer of the request, if exists. The member will be redirected back to this URL after signin.
-     * @returns {Promise<{token: Token, info: SentMessageInfo}>}
+     * @param {boolean} [options.includeOTC=false] - メールに 6 桁のコードも書き、その ref を返す（token provider が createWithRef を持つとき）
+     * @returns {Promise<{token: Token, info: SentMessageInfo, otcRef?: string}>}
      */
     async sendMagicLink(options) {
         this.sentry?.captureMessage?.(`[Magic Link] Generating magic link`, {extra: options});
@@ -67,20 +68,31 @@ class MagicLink {
             });
         }
 
-        const token = await this.tokenProvider.create(options.tokenData);
+        const withOTC = Boolean(options.includeOTC) && typeof this.tokenProvider.createWithRef === 'function';
+        let token;
+        let otcRef;
+        let otc;
+        if (withOTC) {
+            ({token, ref: otcRef} = await this.tokenProvider.createWithRef(options.tokenData));
+            otc = this.tokenProvider.deriveOTC(otcRef, token);
+        } else {
+            token = await this.tokenProvider.create(options.tokenData);
+        }
 
         const type = options.type || 'signin';
 
         const url = this.getSigninURL(token, type, options.referrer);
 
+        // コードが無いときは今までと同じ引数で呼ぶ（6 桁は在るときだけ足す）
+        const extra = otc ? [otc] : [];
         const info = await this.transporter.sendMail({
             to: options.email,
-            subject: this.getSubject(type),
-            text: this.getText(url, type, options.email),
-            html: this.getHTML(url, type, options.email)
+            subject: this.getSubject(type, ...extra),
+            text: this.getText(url, type, options.email, ...extra),
+            html: this.getHTML(url, type, options.email, ...extra)
         });
 
-        return {token, info};
+        return otcRef ? {token, info, otcRef} : {token, info};
     }
 
     /**

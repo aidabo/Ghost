@@ -1,5 +1,9 @@
 // @ts-check
+const crypto = require('crypto');
 const {ValidationError} = require('@tryghost/errors');
+
+/** 6 桁のコード（OTC）で入れるのは、token を作ってから 10 分まで（リンクの 24 時間より短く） */
+const OTC_VALIDITY = 10 * 60 * 1000;
 
 class SingleUseTokenProvider {
     /**
@@ -8,9 +12,11 @@ class SingleUseTokenProvider {
      * @param {number} dependencies.validityPeriod - How long a token is valid for from it's creation in milliseconds.
      * @param {number} dependencies.validityPeriodAfterUsage - How long a token is valid after first usage, in milliseconds.
      * @param {number} dependencies.maxUsageCount - How many times a token can be used.
+     * @param {() => (string|undefined)} [dependencies.getOTCSecret] - 6 桁のコードを作る秘密（members_email_auth_secret）
      */
-    constructor({SingleUseTokenModel, validityPeriod, validityPeriodAfterUsage, maxUsageCount}) {
+    constructor({SingleUseTokenModel, validityPeriod, validityPeriodAfterUsage, maxUsageCount, getOTCSecret}) {
         this.model = SingleUseTokenModel;
+        this.getOTCSecret = getOTCSecret;
         this.validityPeriod = validityPeriod;
         this.validityPeriodAfterUsage = validityPeriodAfterUsage;
         this.maxUsageCount = maxUsageCount;
@@ -31,6 +37,71 @@ class SingleUseTokenProvider {
         });
 
         return model.get('token');
+    }
+
+    /**
+     * @method createWithRef
+     * create と同じに token を作り、6 桁のコードを引くための ref（その行の id）も返す
+     * （jibunsee-react docs/planning/staff-password-reset-code.md §8）。
+     *
+     * @param {Object<string, any>} data
+     * @returns {Promise<{token: string, ref: string}>}
+     */
+    async createWithRef(data) {
+        const model = await this.model.add({
+            data: JSON.stringify(data)
+        });
+
+        return {token: model.get('token'), ref: model.id};
+    }
+
+    /**
+     * @method deriveOTC
+     * token から 6 桁を作る（保存しない）。HMAC-SHA256(members_email_auth_secret, `${ref}:${token}`) を 10 進の 6 桁に。
+     *
+     * @param {string} ref
+     * @param {string} token
+     * @returns {string}
+     */
+    deriveOTC(ref, token) {
+        const secret = this.getOTCSecret?.();
+        if (!secret || !ref || !token) {
+            throw new ValidationError({message: 'OTC secret not configured'});
+        }
+        const digest = crypto.createHmac('sha256', secret).update(`${ref}:${token}`).digest();
+        return String(digest.readUInt32BE(0) % 1000000).padStart(6, '0');
+    }
+
+    /**
+     * @method verifyOTC
+     * ref の token が「作ってから 10 分以内」「まだ一度も使われていない」で、6 桁が合えば、その token を返す。
+     * 合わなければ null（どこが違うかは言わない）。token はこの後 Ghost の中でセッションに替える（ブラウザには返さない）。
+     *
+     * @param {string} ref
+     * @param {string} otc
+     * @returns {Promise<string|null>}
+     */
+    async verifyOTC(ref, otc) {
+        if (typeof ref !== 'string' || typeof otc !== 'string' || !/^\d{6}$/.test(otc.trim()) || !this.getOTCSecret?.()) {
+            return null;
+        }
+        const model = await this.model.findOne({id: ref});
+        if (!model) {
+            return null;
+        }
+        if (Date.now() - model.get('created_at').getTime() > OTC_VALIDITY) {
+            return null;
+        }
+        if (model.get('used_count') > 0) {
+            return null;
+        }
+        const token = model.get('token');
+        const expected = Buffer.from(this.deriveOTC(ref, token));
+        const given = Buffer.from(otc.trim());
+        if (expected.length !== given.length || !crypto.timingSafeEqual(expected, given)) {
+            return null;
+        }
+        return token;
     }
 
     /**
@@ -109,3 +180,4 @@ class SingleUseTokenProvider {
 }
 
 module.exports = SingleUseTokenProvider;
+module.exports.OTC_VALIDITY = OTC_VALIDITY;
