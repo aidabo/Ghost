@@ -179,6 +179,8 @@ describe('Members sign in / sign up with a one-time code', function () {
         // 正しいコードでも、この otcRef は止まっている
         const blocked = await verify(otcRef, code, '10.1.1.1');
         assert.equal(blocked.statusCode, 429);
+        // 上限の文は 6 桁のコードの文（パスワード再設定の文ではない）
+        assert.match(blocked.body.errors[0].message, /Too many tries with the code/);
     });
 
     it('refuses an otcRef written differently (upper case, spaces), even with the right code', async function () {
@@ -235,6 +237,10 @@ describe('Members sign in / sign up with a one-time code', function () {
             statuses.push(res.statusCode);
         }
         assert.equal(statuses[statuses.length - 1], 429);
+        const limited = await membersAgent.post('/api/send-magic-link')
+            .header('X-Forwarded-For', nextIp())
+            .body({email, emailType: 'signin', includeOTC: true});
+        assert.match(limited.body.errors[0].message, /Too many codes requested/);
         await membersAgent.post('/api/send-magic-link')
             .header('X-Forwarded-For', nextIp())
             .body({email, emailType: 'signin'})
