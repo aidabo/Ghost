@@ -34,7 +34,12 @@
 今の `membersAuth`・`membersAuthEnumeration`（送る口）もそのまま。
 
 6 桁の送る・確かめるの制限は `api/spam-prevention.js` の `codeAttempts('send' | 'verify')`（スタッフの 6 桁も同じもの）。
-数は今の設定（送る = `spam.user_reset`、確かめる = `spam.user_verification`）を使い、新しい設定は足さない。`spamPrevention.reset()` で作り直すので、設定を変えた後も効く。
+数は今の設定（送る = `spam.user_reset`、確かめる = `spam.user_verification`）を使い、新しい設定は足さない。
+
+- **設定は共有**: `spam.user_reset` は今のリンクでのパスワード再設定の制限と、`spam.user_verification` はスタッフの新しい端末の確認（メールの確認コード）の制限と同じ値を使う。さらにスタッフの 6 桁と会員の 6 桁の両方がこれを使う。どちらかの値を変えると、これら全部の回数が変わる。
+- **設定を変えたら再起動**: `spamPrevention.reset()` は設定を読み直して作り直すが、呼ぶのは試験だけ。本番で `spam.*` を変えたときは Ghost を再起動して効かせる。
+- `codeAttempts` に `'send'`・`'verify'` 以外を渡すと例外（書き間違えを別の上限で黙って数えない）。
+
 上限を超えたときの 429 の文:
 
 | | 文 |
