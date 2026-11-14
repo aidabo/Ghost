@@ -42,7 +42,9 @@ module.exports = {
     generateResetCode(data, apiConfig, frame) {
         frame.response = {
             password_reset_code: [{
-                message: tpl(messages.checkEmailForInstructions)
+                message: tpl(messages.checkEmailForInstructions),
+                // 6 桁と組で送り返す目印（6 桁そのものではない）
+                ref: data?.ref
             }]
         };
     },

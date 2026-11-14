@@ -1,6 +1,18 @@
 // @ts-check
 const {ValidationError} = require('@tryghost/errors');
 
+/**
+ * 同じ tokens の表に、スタッフのパスワードの 6 桁の行（services/auth/password-reset-code.js）もある。
+ * 会員のマジックリンクとしては使わせない
+ */
+function isStaffResetCodeRow(model) {
+    try {
+        return JSON.parse(model.get('data') || '{}').type === 'staff_reset_code';
+    } catch (err) {
+        return false;
+    }
+}
+
 class SingleUseTokenProvider {
     /**
      * @param {Object} dependencies
@@ -63,6 +75,12 @@ class SingleUseTokenProvider {
         if (model.get('used_count') >= this.maxUsageCount) {
             throw new ValidationError({
                 message: 'Token expired'
+            });
+        }
+
+        if (isStaffResetCodeRow(model)) {
+            throw new ValidationError({
+                message: 'Invalid token provided'
             });
         }
 

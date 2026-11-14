@@ -210,6 +210,7 @@ const controller = {
             const {email, locale} = frame.data.password_reset_code[0];
             return Promise.resolve()
                 .then(() => auth.setup.assertSetupCompleted(true)())
+                // 送ったときの目印（ref）を返す。登録の無いメールでも同じ形で返る
                 .then(() => auth.passwordResetCode.requestCode({email, locale}, api.settings, api.mail, {context: {internal: true}}));
         }
     },
@@ -222,6 +223,7 @@ const controller = {
             docName: 'password_reset_code',
             data: {
                 email: {required: true},
+                ref: {required: true},
                 code: {required: true},
                 newPassword: {required: true},
                 ne2Password: {required: true}
