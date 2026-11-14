@@ -1,5 +1,6 @@
 // @ts-check
 const {ValidationError} = require('@tryghost/errors');
+const {STAFF_RESET_CODE_TYPE} = require('../auth/staff-reset-code-type');
 
 /**
  * 同じ tokens の表に、スタッフのパスワードの 6 桁の行（services/auth/password-reset-code.js）もある。
@@ -7,7 +8,7 @@ const {ValidationError} = require('@tryghost/errors');
  */
 function isStaffResetCodeRow(model) {
     try {
-        return JSON.parse(model.get('data') || '{}').type === 'staff_reset_code';
+        return JSON.parse(model.get('data') || '{}').type === STAFF_RESET_CODE_TYPE;
     } catch (err) {
         return false;
     }

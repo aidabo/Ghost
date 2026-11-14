@@ -154,6 +154,34 @@ describe('Password reset code API', function () {
             .expectStatus(400);
     });
 
+    it('once the password was changed with the link sent together, the code no longer works', async function () {
+        const {ref, code, sent} = await requestAndRead();
+        const linkToken = /\/reset\/([^/\s]+)\//.exec(sent.text)[1];
+        await agent
+            .put('authentication/password_reset')
+            .header('X-Forwarded-For', nextIp())
+            .body({password_reset: [{token: linkToken, newPassword: 'ByLinkFirst1234!', ne2Password: 'ByLinkFirst1234!'}]})
+            .expectStatus(200);
+        await reset({ref, code}).expectStatus(400);
+    });
+
+    it('a member magic-link token, or a row with broken data, used as the ref is refused', async function () {
+        const memberRow = await models.SingleUseToken.add({data: JSON.stringify({email, type: 'signin'})});
+        await reset({ref: memberRow.get('token'), code: '123456'}).expectStatus(400);
+        const broken = await models.SingleUseToken.add({data: '{not json'});
+        await reset({ref: broken.get('token'), code: '123456'}).expectStatus(400);
+    });
+
+    it('a wrong code and a made-up ref fail with the same message', async function () {
+        const {ref, code} = await requestAndRead();
+        const wrong = String((Number(code) + 1) % 1000000).padStart(6, '0');
+        const a = await reset({ref, code: wrong}).expectStatus(400);
+        const b = await reset({ref: 'made-up-ref-made-up-ref-made-up', code}).expectStatus(400);
+        const c = await reset({ref, code, email: 'someone-else@example.com'}).expectStatus(400);
+        assert.equal(a.body.errors[0].message, b.body.errors[0].message);
+        assert.equal(a.body.errors[0].message, c.body.errors[0].message);
+    });
+
     it('a wrong code counts; after 5 wrong codes the right one is refused too', async function () {
         const {ref, code} = await requestAndRead();
         const wrong = String((Number(code) + 1) % 1000000).padStart(6, '0');

@@ -5,7 +5,8 @@
 //   いつでも当てに行けた（本人にメールが届かないまま、黙って推測を続けられた）。
 // - 6 桁そのものは保存しない。今の tokens の表（会員のマジックリンクと同じ表。表は増やさない）に、
 //   token = ref（送る口が返す目印）、data = { type: 'staff_reset_code', user_id, code_hash } の行を作る。
-//   code_hash = HMAC-SHA256(admin_session_secret, `${ref}:${6 桁}`)。古い行は Ghost の clean-tokens の job が消す。
+//   code_hash = HMAC-SHA256(admin_session_secret, `${ref}:${パスワードの hash}:${6 桁}`)。パスワードの hash を入れるので、
+//   一緒に送ったリンクで先にパスワードを変えると、6 桁はもう合わない。古い行は Ghost の clean-tokens の job が消す。
 // - 使えるのは作ってから 10 分・間違えは 5 回まで（used_count で数える）。合ったら行を消す（1 回きり）。
 // - 登録の無いメールでも、送る口は同じ形の ref を同じ時間で返す（行もメールも作らないだけ）。
 const crypto = require('crypto');
@@ -19,13 +20,13 @@ const logging = require('@tryghost/logging');
 const passwordreset = require('./passwordreset');
 
 /** tokens の表の行の種類（会員のマジックリンクの行と分ける。SingleUseTokenProvider.validate はこの行を断る） */
-const TOKEN_TYPE = 'staff_reset_code';
+const {STAFF_RESET_CODE_TYPE: TOKEN_TYPE} = require('./staff-reset-code-type');
 /** 使えるのは作ってから 10 分 */
 const CODE_VALIDITY = 10 * 60 * 1000;
 /** 間違えは 5 回まで */
 const MAX_FAILURES = 5;
-/** メールに書く「この時間のうちに入れてください」の分 */
-const CODE_MINUTES = 10;
+/** メールに書く「この時間のうちに入れてください」の分（有効時間から決める。片方だけ変えてずれないように） */
+const CODE_MINUTES = CODE_VALIDITY / 60000;
 
 const messages = {
     invalidCode: 'The code is wrong or has expired. Please request a new one.'
@@ -58,8 +59,8 @@ function mailLocale(locale) {
     return MAIL_TEXT[lang] ? lang : 'en';
 }
 
-function codeHash(ref, code) {
-    return crypto.createHmac('sha256', settingsCache.get('admin_session_secret')).update(`${ref}:${code}`).digest('hex');
+function codeHash(ref, passwordHash, code) {
+    return crypto.createHmac('sha256', settingsCache.get('admin_session_secret')).update(`${ref}:${passwordHash}:${code}`).digest('hex');
 }
 
 function newRef() {
@@ -88,7 +89,7 @@ async function generateCode(email, ref, settingsAPI, options = {}) {
     const code = newCode();
     await models.SingleUseToken.add({
         token: ref,
-        data: JSON.stringify({type: TOKEN_TYPE, user_id: user.id, code_hash: codeHash(ref, code)})
+        data: JSON.stringify({type: TOKEN_TYPE, user_id: user.id, code_hash: codeHash(ref, user.get('password'), code)})
     }, options);
     const {resetToken} = await passwordreset.generateToken(email, settingsAPI, options.transacting);
     const adminUrl = urlUtils.urlFor('admin', true);
@@ -158,7 +159,8 @@ async function resetWithCode({email, ref, code, newPassword}, options = {}) {
     }
     const user = await models.User.getByEmail(email, options);
     const expected = Buffer.from(String(data.code_hash || ''));
-    const given = Buffer.from(codeHash(ref, code.trim()));
+    // 今のパスワードの hash で作る（リンクで先に変えていれば合わない）
+    const given = Buffer.from(codeHash(ref, user ? user.get('password') : '', code.trim()));
     const match = Boolean(user) && user.id === data.user_id
         && expected.length === given.length && crypto.timingSafeEqual(expected, given);
     if (!match) {
