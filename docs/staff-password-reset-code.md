@@ -15,7 +15,7 @@
   `code_hash` = `HMAC-SHA256(admin_session_secret, "<ref>:<パスワードの hash>:<6 桁>")`。古い行は Ghost の `clean-tokens` の job が 24 時間で消す。
 - 使えるのは**作ってから 10 分**、間違えは**5 回まで**（行の `used_count` で数える）。合ったら**行を消す**（同じ 6 桁はもう使えない）。メールの人と行の人が違えば断る。
 - メールには 6 桁（件名の頭）と今の再設定リンク（24 時間）の両方。**どちらかでパスワードを変えると、もう片方も使えない**（リンクも 6 桁の hash もパスワードの hash を含むので、変わると合わない。6 桁で変えたときは行も消す）。
-- 新しく「送る」を頼むと、別の `ref` と 6 桁になる。前の 6 桁も 10 分のうちは使える（届くのは同じメールボックスだけ）。画面は、最後に送ったときの `ref` を使う。
+- 新しく「送る」を頼むと、別の `ref` と 6 桁になる。前の 6 桁も 10 分のうちは**その時の `ref` と組でなら**使える（新しい `ref` とは組めない。届くのは同じメールボックスだけ）。画面は、最後に送ったときの `ref` を使う。
 - 種類（`staff_reset_code`）は `services/auth/staff-reset-code-type.js` の 1 か所に置き、会員の確かめもそれを読む。
 - 会員のマジックリンクの確かめ（`SingleUseTokenProvider.validate`）は、`type: 'staff_reset_code'` の行を断る。
 - 送る口の応答は、ユーザーを引く・行を作る・送るを全部待たずに返す（登録の有無で応答の時間が変わらない）。
@@ -26,6 +26,8 @@
 |---|---|
 | 送る | IP ごと（`globalReset`）、メールごと（IP によらない `resetCodeSendPerEmail`） |
 | 確かめる | IP ごと（`resetCodeVerifyPerIp`）、メールごと（IP によらない `resetCodeVerifyPerEmail`） |
+
+メールごとの送る・確かめるは、会員の 6 桁と同じ `spamPrevention.codeAttempts`（上限の文は 6 桁専用。[members-signin-code.md](./members-signin-code.md) の表）。
 
 ## 本番のイメージ
 

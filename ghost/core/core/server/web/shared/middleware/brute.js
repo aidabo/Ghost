@@ -1,45 +1,7 @@
 const url = require('url');
 const spamPrevention = require('./api/spam-prevention');
 
-/**
- * 6 桁のコード（スタッフのパスワード・会員のログイン）の回数の制限。
- * spamPrevention の userReset / userVerification を流用すると、上限を超えたときの文が
- * 「パスワード再設定の試行が多すぎます」になって合わないので、同じ数の設定で文だけ違う専用のものを持つ。
- * 設定（spam.user_reset・spam.user_verification）は今のものを読む（新しい設定は足さない）。
- */
-const codeLimiters = {};
-function codeLimiter(kind) {
-    if (!codeLimiters[kind]) {
-        const ExpressBrute = require('express-brute');
-        const BruteKnex = require('brute-knex');
-        const errors = require('@tryghost/errors');
-        const logging = require('@tryghost/logging');
-        const db = require('../../../data/db');
-        const config = require('../../../../shared/config');
-        const spam = config.get('spam') || {};
-        const settings = (kind === 'send' ? spam.user_reset : spam.user_verification) || {};
-        const message = kind === 'send'
-            ? 'Too many codes requested for this email. Please wait a while and try again.'
-            : 'Too many tries with the code. Please wait a while and try again.';
-        codeLimiters[kind] = new ExpressBrute(new BruteKnex({tablename: 'brute', createTable: false, knex: db.knex}), {
-            freeRetries: settings.freeRetries,
-            minWait: settings.minWait,
-            maxWait: settings.maxWait,
-            lifetime: settings.lifetime,
-            attachResetToRequest: false,
-            failCallback(_req, _res, next) {
-                return next(new errors.TooManyRequestsError({message}));
-            },
-            handleStoreError(err) {
-                logging.error(err);
-                if (err.next) {
-                    err.next(new errors.InternalServerError({message: 'Unknown error', err: err.parent || err}));
-                }
-            }
-        });
-    }
-    return codeLimiters[kind];
-}
+// 6 桁のコードの回数の制限は spamPrevention.codeAttempts（文は 6 桁専用、reset() で作り直す）
 
 /** 6 桁のコードの口の本文から、数える鍵にするメール（小文字）。無ければ空 */
 function resetCodeEmail(req) {
@@ -100,7 +62,7 @@ module.exports = {
      * パスワードの 6 桁のコード: メールごと（IP によらない）に送る回数を数える
      */
     resetCodeSendPerEmail(req, res, next) {
-        return codeLimiter('send').getMiddleware({
+        return spamPrevention.codeAttempts('send').getMiddleware({
             ignoreIP: true,
             key(_req, _res, _next) {
                 _next(`${resetCodeEmail(_req)}password_reset_code_send`);
@@ -111,7 +73,7 @@ module.exports = {
      * パスワードの 6 桁のコード: IP ごとに確かめる回数を数える（たくさんのメールに少しずつ当てる推測を止める）
      */
     resetCodeVerifyPerIp(req, res, next) {
-        return codeLimiter('verify').getMiddleware({
+        return spamPrevention.codeAttempts('verify').getMiddleware({
             ignoreIP: false,
             key(_req, _res, _next) {
                 _next('password_reset_code_verify');
@@ -122,7 +84,7 @@ module.exports = {
      * パスワードの 6 桁のコード: メール（アカウント）ごとに確かめる回数を数える（IP を変えた推測を止める）
      */
     resetCodeVerifyPerEmail(req, res, next) {
-        return codeLimiter('verify').getMiddleware({
+        return spamPrevention.codeAttempts('verify').getMiddleware({
             ignoreIP: true,
             key(_req, _res, _next) {
                 _next(`${resetCodeEmail(_req)}password_reset_code_verify`);
@@ -193,7 +155,7 @@ module.exports = {
         if (!includeOTC) {
             return next();
         }
-        return codeLimiter('send').getMiddleware({
+        return spamPrevention.codeAttempts('send').getMiddleware({
             ignoreIP: true,
             key(_req, _res, _next) {
                 const email = typeof _req.body?.email === 'string' ? _req.body.email.trim().toLowerCase() : '';
@@ -205,7 +167,7 @@ module.exports = {
      * 会員の 6 桁のコード: IP ごとに確かめる回数を数える（たくさんの otcRef に少しずつ当てる推測を止める）
      */
     memberOtcVerifyPerIp(req, res, next) {
-        return codeLimiter('verify').getMiddleware({
+        return spamPrevention.codeAttempts('verify').getMiddleware({
             ignoreIP: false,
             key(_req, _res, _next) {
                 _next('member_otc_verify');
@@ -216,7 +178,7 @@ module.exports = {
      * 会員の 6 桁のコード: otcRef（送ったメール 1 通）ごとに確かめる回数を数える（IP を変えた推測を止める）
      */
     memberOtcVerifyPerRef(req, res, next) {
-        return codeLimiter('verify').getMiddleware({
+        return spamPrevention.codeAttempts('verify').getMiddleware({
             ignoreIP: true,
             key(_req, _res, _next) {
                 // 正しい形（24 文字の小文字の 16 進）の ref だけをそのまま鍵に。それ以外は 1 つの鍵にまとめる

@@ -56,8 +56,9 @@ COPY --chown=node:node ghost/core/core/server/services/mail ${GHOST_INSTALL}/cur
 COPY --chown=node:node ghost/core/core/server/services/auth ${GHOST_INSTALL}/current/core/server/services/auth
 # 会員の 6 桁のコード（services/members の SingleUseTokenProvider・api・members-ssr・middleware）
 COPY --chown=node:node ghost/core/core/server/services/members ${GHOST_INSTALL}/current/core/server/services/members
-# どちらも回数の制限は brute.js
+# どちらも回数の制限は brute.js と spam-prevention.js（codeAttempts）
 COPY --chown=node:node ghost/core/core/server/web/shared/middleware/brute.js ${GHOST_INSTALL}/current/core/server/web/shared/middleware
+COPY --chown=node:node ghost/core/core/server/web/shared/middleware/api/spam-prevention.js ${GHOST_INSTALL}/current/core/server/web/shared/middleware/api
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeAPI.js ${GHOST_INSTALL}/current/core/server/services/stripe
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeService.js ${GHOST_INSTALL}/current/core/server/services/stripe
 COPY --chown=node:node ghost/core/core/server/services/stripe/WebhookController.js ${GHOST_INSTALL}/current/core/server/services/stripe
@@ -152,6 +153,7 @@ RUN set -eux; \
     test -f core/server/services/auth/password-reset-code.js; \
     test -f core/server/services/members/SingleUseTokenProvider.js; \
     grep -q memberOtcVerifyPerRef core/server/web/shared/middleware/brute.js; \
+    grep -q codeAttempts core/server/web/shared/middleware/api/spam-prevention.js; \
     grep -q createWithRef node_modules/@tryghost/magic-link/lib/MagicLink.js; \
     grep -q includeOTC node_modules/@tryghost/members-api/lib/members-api.js; \
     grep -q includeOTC node_modules/@tryghost/members-api/lib/controllers/RouterController.js

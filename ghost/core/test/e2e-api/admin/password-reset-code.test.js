@@ -2,7 +2,7 @@
 // （services/auth/password-reset-code.js、jibunsee-react docs/planning/staff-password-reset-code.md §3）
 // 6 桁は「送る」を頼んだときにだけ作り、tokens の表に hash で残す。送る口が返す ref と組で使う。
 const assert = require('assert/strict');
-const {agentProvider, fixtureManager, mockManager, dbUtils} = require('../../utils/e2e-framework');
+const {agentProvider, fixtureManager, mockManager, dbUtils, configUtils, resetRateLimits} = require('../../utils/e2e-framework');
 const models = require('../../../core/server/models');
 const resetCode = require('../../../core/server/services/auth/password-reset-code');
 const SingleUseTokenProvider = require('../../../core/server/services/members/SingleUseTokenProvider');
@@ -163,6 +163,24 @@ describe('Password reset code API', function () {
             .body({password_reset: [{token: linkToken, newPassword: 'ByLinkFirst1234!', ne2Password: 'ByLinkFirst1234!'}]})
             .expectStatus(200);
         await reset({ref, code}).expectStatus(400);
+        // 断った理由は「6 桁（今のパスワードの hash）が合わない」: 行は残り、間違えの数が 1 つ増える
+        const row = await models.SingleUseToken.findOne({token: ref});
+        assert.ok(row);
+        assert.equal(row.get('used_count'), 1);
+    });
+
+    it('after asking twice, the first code still works with its own ref (and not with the second ref)', async function () {
+        const first = await requestAndRead();
+        const secondRef = await request(email);
+        await waitForEmails(mailReceiver, 2);
+        await waitForRow(secondRef);
+        assert.notEqual(secondRef, first.ref);
+        // 前の 6 桁を新しい ref で使っても通らない（ref と組。偶然同じ 6 桁なら試せないので飛ばす）
+        const secondCode = mailReceiver.getSentEmail(1).subject.slice(0, 6);
+        if (secondCode !== first.code) {
+            await reset({ref: secondRef, code: first.code}).expectStatus(400);
+        }
+        await reset({ref: first.ref, code: first.code, newPassword: 'FirstCode1234!', ne2Password: 'FirstCode1234!'}).expectStatus(200);
     });
 
     it('a member magic-link token, or a row with broken data, used as the ref is refused', async function () {
@@ -251,6 +269,24 @@ describe('Password reset code API', function () {
             .header('X-Forwarded-For', nextIp())
             .body({email})
             .expectStatus(400);
+    });
+
+    it('the code limits follow the spam settings after a reset (settings changed in a test take effect)', async function () {
+        // 先に 1 回使って、今の設定で数えるものを作っておく（reset で作り直さないと、新しい設定が効かない）
+        await reset({ref: 'x', code: '000000', email: 'warm-up@example.com'}).expectStatus(400);
+        configUtils.set('spam:user_verification:freeRetries', 1);
+        await resetRateLimits();
+        await dbUtils.truncate('brute');
+        try {
+            const statuses = [];
+            for (let i = 0; i < 3; i += 1) {
+                statuses.push((await reset({ref: 'x', code: '000000', email: 'reset-settings@example.com'})).statusCode);
+            }
+            assert.equal(statuses[2], 429);
+        } finally {
+            await configUtils.restore();
+            await resetRateLimits();
+        }
     });
 
     it('limits sending per email even when the IP changes', async function () {
