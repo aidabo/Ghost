@@ -123,6 +123,14 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
                 assert.doesNotMatch(html, ORB);
             });
 
+            it('with TENANT, shows that tenant\'s image directly (no redirect)', async function () {
+                process.env.FRONT_END_URL = FRONT;
+                process.env.TENANT = 'janabiz';
+                const {html} = await render();
+                assert.ok(html.includes(`<img src="${FRONT}/brand/mars-times/apple-touch-icon.png"`), 'tenant logo');
+                assert.ok(!html.includes(FRONT_LOGO));
+            });
+
             it('keeps the Ghost logo when the front URL is not set', async function () {
                 const {html} = await render();
                 assert.match(html, ORB);

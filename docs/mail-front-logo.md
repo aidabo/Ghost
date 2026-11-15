@@ -35,8 +35,11 @@ Ghost が送るメールに入っている **Ghost の元のロゴ**（`static.g
 コードの予備は「設定が無い」ときだけ）:
 
 ```bash
-# 転送なしで画像が返ること（-L を付けない。200 と image/ を見る）
-curl -fsSI "$FRONT_END_URL/brand/mars-times/apple-touch-icon.png" | grep -iE '^(HTTP/|content-type: image/)'
+# 転送なしで画像が返ること（-L を付けない。3xx も curl -f では成功になるので、status が 200 かを見る）
+for p in /brand/60-think/apple-touch-icon-180.png /brand/think-estate/apple-touch-icon.png /brand/mars-times/apple-touch-icon.png; do
+  printf '%s ' "$p"
+  curl -sS -I -o /dev/null -w '%{http_code} %{content_type}\n' "$FRONT_END_URL$p"   # 200 image/png であること
+done
 ```
 
 ## 替えたメール
