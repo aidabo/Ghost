@@ -84,18 +84,8 @@ SocialGroupMember = ghostBookshelf.Model.extend({
             throw new errors.NotFoundError({message: `Role with ID ${roleId} not found.`});
         }
 
-        if (model.get('id')) {
-            this.validateMemberPermission(groupId, userId);
-        }
-    },
-
-    async validateMemberPermission(groupId, userId) {
-        const allowed = await SocialGroupMember.canManageGroupMembers(groupId, userId);
-        if (!allowed) {
-            throw new errors.NoPermissionError({
-                message: 'You do not have permission to modify group members'
-            });
-        }
+        // 誰が足す・変えるかの確かめは API（api/endpoints/social-group-members.js の assertCanManageGroup）で、頼んだ人について行う。
+        // ここで前にしていた確かめは await されず、しかも頼んだ人ではなく一員本人を見ていたので外した
     },
     
     enforcedFilters: function enforcedFilters(options) {
@@ -147,16 +137,6 @@ SocialGroupMember = ghostBookshelf.Model.extend({
         return filter;
     }
 }, {
-
-    validateDestroyMemberPermission: async function validateDestroyMemberPermission(groupId, userId) {
-        // @ts-ignore
-        const allowed = await this.canManageGroupMembers(groupId, userId);
-        if (!allowed) {
-            throw new errors.NoPermissionError({
-                message: 'You do not have permission to modify group members'
-            });
-        }
-    },
 
     canManageGroupMembers: async function canManageGroupMembers(groupId, userId) {
         logging.info('canManageGroupMembers:', groupId, userId);

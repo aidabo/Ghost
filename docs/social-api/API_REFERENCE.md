@@ -145,6 +145,11 @@ All routes below are based on `custom-routes.js`.
   - `api.socialGroupMembers`
 - permission object:
   - `socialgroupmember`
+- who may write: `POST`・`PUT`・`DELETE` are for the group's Social Group Owner / Admin, the group's creator and site Administrators only
+  (`canManageGroupMembers`). `POST` checks the `group_id` in the body (the group must exist and be active); `PUT`・`DELETE` check the
+  **stored row's** group, never a `group_id` in the body. A request without a signed-in user is refused (custom API keys with
+  `socialgroupmember` permissions get 403; the front adds members with the browser's Ghost session).
+  `PUT` cannot change `group_id` or `user_id` (remove and add instead).
 - routes:
   - `GET /social/members`
   - `GET /social/members/:id`
