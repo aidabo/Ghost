@@ -1,6 +1,6 @@
 // 家族・グループの招待（jibunsee-react docs/planning/invite-links.md の D3・D4・D10）。
 // - 招く: 招待に group_id を付けられるのは、そのグループの持ち主・管理者だけ（一員を足すときと同じ canManageGroupMembers）
-// - 登録: 招待に group_id があれば、登録した人をそのグループの一員（Social Group Member）にする
+// - 登録: 招待は消さずに accepted として残す（accept.js）。グループへは、招いた人が招待の画面の履歴から 1 回押して足す
 // - 読む: token で 1 件だけ、種類・グループ名・招いた人の名前を返す（メールアドレス・id は返さない）
 const errors = require('@tryghost/errors');
 const tpl = require('@tryghost/tpl');
@@ -13,7 +13,6 @@ const messages = {
     inviteNotFound: 'Invite not found.'
 };
 
-const MEMBER_ROLE = 'Social Group Member';
 const internal = {context: {internal: true}};
 
 /** 招待の種類: グループが無ければ user、family のグループなら family、ほかは group */
@@ -59,29 +58,6 @@ async function assertCanInviteToGroup(groupId, userId, {named = false} = {}) {
 }
 
 /**
- * 登録した人を、招待のグループの一員にする（group_id が無い・グループが無いときは何もしない）。
- * @param {object} invite Invite の model
- * @param {object} user 登録した User の model
- * @param {object} [options]
- */
-async function joinInvitedGroup(invite, user, options = internal) {
-    const groupId = invite.get('group_id');
-    if (!groupId) {
-        return null;
-    }
-    const group = await models.SocialGroup.findOne({id: groupId}, options);
-    const role = await models.Role.findOne({name: MEMBER_ROLE}, options);
-    if (!group || group.get('status') !== 'active' || !role) {
-        return null;
-    }
-    const existing = await models.SocialGroupMember.findOne({group_id: groupId, user_id: user.id}, options);
-    if (existing) {
-        return existing;
-    }
-    return models.SocialGroupMember.add({group_id: groupId, user_id: user.id, role_id: role.id, status: 'active'}, options);
-}
-
-/**
  * token（メールのリンクの値。base64 のまま）で招待を 1 件読む。返すのは画面に要るものだけ。
  * 無い・期限切れ・使い済みは同じ NotFound（どれか言わない）。
  * @param {string} token
@@ -103,7 +79,7 @@ async function invitationInfo(token) {
         groupId ? models.SocialGroup.findOne({id: groupId}, internal) : null,
         models.User.findOne({id: invite.get('created_by')}, internal)
     ]);
-    // 止まった（active でない）グループには登録しても入らない（joinInvitedGroup）ので、一般ユーザーの招待として答える
+    // 止まった（active でない）グループには足せないので、一般ユーザーの招待として答える
     const group = found && found.get('status') === 'active' ? found : null;
     return {
         kind: kindOf(group),
@@ -150,4 +126,4 @@ async function resolveInviter(frame) {
     return inviter;
 }
 
-module.exports = {assertCanInviteToGroup, joinInvitedGroup, invitationInfo, kindOf, inviterOf, resolveInviter};
+module.exports = {assertCanInviteToGroup, invitationInfo, kindOf, inviterOf, resolveInviter};

@@ -105,28 +105,6 @@ describe('Group invites', function () {
         });
     });
 
-    describe('joinInvitedGroup (after signing up)', function () {
-        it('adds the new user to the invite\'s group as a Social Group Member', async function () {
-            sinon.stub(models.SocialGroup, 'findOne').resolves(fakeModel({id: 'g1', status: 'active'}));
-            sinon.stub(models.Role, 'findOne').resolves(fakeModel({id: 'r-member'}));
-            sinon.stub(models.SocialGroupMember, 'findOne').resolves(null);
-            const add = sinon.stub(models.SocialGroupMember, 'add').resolves({id: 'm1'});
-            await groupInvite.joinInvitedGroup(fakeModel({group_id: 'g1'}), {id: 'u-new'});
-            assert.ok(add.calledOnce);
-            assert.deepEqual(add.firstCall.args[0], {group_id: 'g1', user_id: 'u-new', role_id: 'r-member', status: 'active'});
-        });
-
-        it('does nothing for a user invite (no group), and does not add twice', async function () {
-            const add = sinon.stub(models.SocialGroupMember, 'add');
-            assert.equal(await groupInvite.joinInvitedGroup(fakeModel({group_id: null}), {id: 'u'}), null);
-            sinon.stub(models.SocialGroup, 'findOne').resolves(fakeModel({id: 'g1', status: 'active'}));
-            sinon.stub(models.Role, 'findOne').resolves(fakeModel({id: 'r-member'}));
-            sinon.stub(models.SocialGroupMember, 'findOne').resolves({id: 'already'});
-            assert.deepEqual(await groupInvite.joinInvitedGroup(fakeModel({group_id: 'g1'}), {id: 'u'}), {id: 'already'});
-            assert.ok(add.notCalled);
-        });
-    });
-
     describe('invitationInfo (read one invite by its token)', function () {
         const token = security.url.encodeBase64('cmF3dG9rZW4+Lw==');
 

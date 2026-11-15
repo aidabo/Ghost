@@ -173,7 +173,7 @@ RUN set -eux; \
     grep -q invitationCode core/server/services/invites/Invites.js; \
     grep -q inviteCodeVerifyPerEmail core/server/web/shared/middleware/brute.js; \
     grep -q inviteInfoPerIp core/server/web/shared/middleware/brute.js; \
-    grep -q joinInvitedGroup core/server/services/invitations/accept.js; \
+    grep -q "status: 'accepted'" core/server/services/invitations/accept.js; \
     test -f core/server/services/invitations/group-invite.js; \
     test -f core/server/data/migrations/versions/5.116/2026-11-15-00-00-00-add-invites-group-id.js; \
     grep -q 'group_id: {type' core/server/data/schema/schema.js; \

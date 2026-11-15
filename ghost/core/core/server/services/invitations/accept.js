@@ -2,7 +2,6 @@ const errors = require('@tryghost/errors');
 const tpl = require('@tryghost/tpl');
 const models = require('../../models');
 const security = require('@tryghost/security');
-const {joinInvitedGroup} = require('./group-invite');
 
 const messages = {
     inviteNotFound: 'Invite not found.',
@@ -38,17 +37,17 @@ async function accept(invitation) {
         });
     }
 
-    const newUser = await models.User.add({
+    await models.User.add({
         email: data.email,
         name: data.name,
         password: data.password,
         roles: [invite.toJSON().role_id]
     }, options);
 
-    // 家族・グループの招待なら、そのグループの一員にする（jibunsee-react docs/planning/invite-links.md の D4）
-    await joinInvitedGroup(invite, newUser, options);
-
-    return invite.destroy(options);
+    // 招待は消さずに「登録済み」（accepted）として残す。招いた人の招待の画面の履歴に出し、
+    // 家族・グループの招待ならそこから 1 回押してグループに足す（jibunsee-react docs/planning/invite-links.md）。
+    // token はもう使えない（受ける・読む口は status: 'sent' だけを見る）
+    return models.Invite.edit({status: 'accepted'}, {...options, id: invite.id});
 }
 
 module.exports = accept;

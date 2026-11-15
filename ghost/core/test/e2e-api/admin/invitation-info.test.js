@@ -2,6 +2,7 @@
 // 種類・グループ名・招いた人の名前だけを返す。メールアドレス・id は返さない。無い token は同じ 404
 const assert = require('assert/strict');
 const {agentProvider, fixtureManager, mockManager, dbUtils} = require('../../utils/e2e-framework');
+const models = require('../../../core/server/models');
 
 let ipCounter = 0;
 function nextIp() {
@@ -45,6 +46,27 @@ describe('Invitation info API', function () {
         assert.equal(info.group_name, null);
         assert.equal(typeof info.invited_by, 'string');
         assert.ok(!JSON.stringify(res.body).includes('info-user@example.com'), 'no email');
+    });
+
+    it('after signing up, the invite stays as accepted (for the history) and its token cannot be used again', async function () {
+        const email = 'info-accept@example.com';
+        await agent.post('invites/').header('X-Forwarded-For', nextIp())
+            .body({invites: [{email, role_id: authorRoleId}]}).expectStatus(201);
+        const token = /\/signup\/([^/\s"]+)\//.exec(mailReceiver.getSentEmail(0).text)[1];
+
+        await agent.post('authentication/invitation/')
+            .body({invitation: [{token, email, name: 'New Person', password: 'Tq7#vLm2!pWz9xRe'}]})
+            .expectStatus(200);
+
+        const invite = await models.Invite.findOne({email}, {context: {internal: true}});
+        assert.ok(invite, 'the invite row is kept');
+        assert.equal(invite.get('status'), 'accepted');
+        assert.ok(await models.User.findOne({email}), 'the user was created');
+
+        // もう読めない・もう一度は受けられない
+        await agent.get(`authentication/invitation_info/?token=${encodeURIComponent(token)}`).header('X-Forwarded-For', nextIp()).expectStatus(404);
+        const again = await agent.get(`authentication/invitation/?email=${encodeURIComponent(email)}`).expectStatus(200);
+        assert.equal(again.body.invitation[0].valid, false);
     });
 
     it('an unknown token and a missing token are refused', async function () {
