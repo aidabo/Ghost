@@ -1,10 +1,9 @@
 const security = require('@tryghost/security');
 const tpl = require('@tryghost/tpl');
 const logging = require('@tryghost/logging');
+const {inviteMailCopy} = require('./invite-mail-copy');
 
 const messages = {
-    invitedByName: '{invitedByName} has invited you to join {blogName}',
-    invitedByNoName: 'You have been invited to join {blogName}',
     errorSendingEmail: {
         error: 'Error sending email: {message}',
         help: 'Please check your email settings and resend the invitation.'
@@ -65,6 +64,8 @@ class Invites {
                         resetLink: this.urlUtils.urlJoin(adminUrl, 'signup', security.url.encodeBase64(invite.get('token')), '/'),
                         recipientEmail: invite.get('email')
                     };
+                    // 画面の言葉の文（招く人の画面の locale。無ければサイトの言葉。jibunsee-react docs/planning/mail-i18n.md）
+                    emailData.copy = inviteMailCopy({locale: code.locale, ...emailData});
 
                     return this.mailService.utils.generateContent({data: emailData, template: 'invite-user'});
                 } else {
@@ -74,18 +75,14 @@ class Invites {
                         resetLink: this.urlUtils.urlJoin(adminUrl, 'signup', security.url.encodeBase64(invite.get('token')), '/'),
                         recipientEmail: invite.get('email')
                     };
+                    emailData.copy = inviteMailCopy({locale: code.locale, blogName: emailData.blogName});
 
                     return this.mailService.utils.generateContent({data: emailData, template: 'invite-user-by-api-key'});
                 }
             })
             .then((emailContent) => {
                 let mail = {
-                    subject: emailData.invitedByName ? tpl(messages.invitedByName, {
-                        invitedByName: emailData.invitedByName,
-                        blogName: emailData.blogName
-                    }) : tpl(messages.invitedByNoName, {
-                        blogName: emailData.blogName
-                    }),
+                    subject: emailData.copy.subject,
                     html: emailContent.html,
                     text: emailContent.text
                 };

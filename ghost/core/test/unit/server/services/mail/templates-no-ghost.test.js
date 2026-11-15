@@ -4,6 +4,8 @@
 const assert = require('assert/strict');
 const path = require('path');
 const EmailContentGenerator = require('../../../../../core/server/services/lib/EmailContentGenerator');
+const {FRONT_URL_ENV_NAMES} = require('../../../../../core/server/services/lib/front-logo');
+const {inviteMailCopy} = require('../../../../../core/server/services/invites/invite-mail-copy');
 
 const generator = new EmailContentGenerator({
     getSiteTitle: () => 'Mars Times',
@@ -13,11 +15,11 @@ const generator = new EmailContentGenerator({
 
 // ロゴは front の画像にする（下で FRONT_END_URL を固定）。ロゴの最後の予備（static.ghost.org の画像）が出ないので、
 // リンク（href と text 版の [URL]）に ghost.org が戻ったら検出できる。html の src（画像）だけは文ではないので除く
-const visibleText = body => body.replace(/src="[^"]*"/g, '');
+const withoutImageSrc = body => body.replace(/src="[^"]*"/g, '');
 const FRONT = 'https://front.test';
 
 // 手元の env に左右されないよう、front の URL の env を全部外してから FRONT_END_URL だけ固定する
-const FRONT_URL_ENV = ['FRONT_END_URL', 'GHOST_FRONT_END_URL', 'MEMBERS_FRONTEND_URL', 'FRONTEND_URL', 'NEXT_PUBLIC_FRONT_URL', 'TENANT'];
+const FRONT_URL_ENV = [...FRONT_URL_ENV_NAMES, 'TENANT'];
 
 describe('Staff mails do not mention Ghost', function () {
     let saved;
@@ -42,13 +44,13 @@ describe('Staff mails do not mention Ghost', function () {
     });
 
     for (const [template, data, expected] of [
-        ['invite-user', {blogName: 'Mars Times', invitedByName: 'Aki', invitedByEmail: 'aki@example.com', recipientEmail: 'b@example.com', resetLink: 'http://ghost.test/ghost/signup/x/'}, ['Aki has invited you to join', 'Mars Times']],
-        ['invite-user-by-api-key', {blogName: 'Mars Times', recipientEmail: 'b@example.com', resetLink: 'http://ghost.test/ghost/signup/x/'}, ['You\'ve been invited to join', 'as a staff user.']],
+        ['invite-user', {blogName: 'Mars Times', invitedByName: 'Aki', invitedByEmail: 'aki@example.com', recipientEmail: 'b@example.com', resetLink: 'http://ghost.test/ghost/signup/x/', copy: inviteMailCopy({locale: 'en', blogName: 'Mars Times', invitedByName: 'Aki', invitedByEmail: 'aki@example.com'})}, ['Aki has invited you to join Mars Times.', 'This email was sent from ']],
+        ['invite-user-by-api-key', {blogName: 'Mars Times', recipientEmail: 'b@example.com', resetLink: 'http://ghost.test/ghost/signup/x/', copy: inviteMailCopy({locale: 'en', blogName: 'Mars Times'})}, ['You\'ve been invited to join Mars Times as a staff user.', 'This email was sent from ']],
         ['reset-password', {recipientEmail: 'b@example.com', resetUrl: 'http://ghost.test/ghost/reset/x/'}, ['<title>Mars Times</title>']]
     ]) {
         it(`${template}.html`, async function () {
             const {html, text} = await generator.getContent({template, data});
-            for (const body of [visibleText(html), text]) {
+            for (const body of [withoutImageSrc(html), text]) {
                 assert.doesNotMatch(body, /Ghost|ghost\.org/, `${template}: no Ghost in the mail`);
             }
             for (const part of expected) {
