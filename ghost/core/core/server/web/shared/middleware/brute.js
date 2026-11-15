@@ -233,6 +233,17 @@ module.exports = {
     /**
      * 「アカウント作成」の招待の 6 桁: IP ごとに確かめる回数を数える（たくさんの招待に少しずつ当てる推測を止める）
      */
+    /**
+     * 招待を受けるページが token で招待を読む: IP ごとに回数を数える（token の推測を止める）
+     */
+    inviteInfoPerIp(req, res, next) {
+        return spamPrevention.codeAttempts('verify').getMiddleware({
+            ignoreIP: false,
+            key(_req, _res, _next) {
+                _next('invite_info');
+            }
+        })(req, res, next);
+    },
     inviteCodeVerifyPerIp(req, res, next) {
         return spamPrevention.codeAttempts('verify').getMiddleware({
             ignoreIP: false,

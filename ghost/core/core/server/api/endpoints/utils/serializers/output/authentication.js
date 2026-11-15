@@ -84,6 +84,17 @@ module.exports = {
         };
     },
 
+    // 招待を受けるページ用: 決めた 3 つだけ（メールアドレス・id は出さない）
+    invitationInfo(data, apiConfig, frame) {
+        frame.response = {
+            invitation_info: [{
+                kind: data?.kind,
+                group_name: data?.group_name ?? null,
+                invited_by: data?.invited_by ?? null
+            }]
+        };
+    },
+
     isInvitation(data, apiConfig, frame) {
         debug('acceptInvitation');
 

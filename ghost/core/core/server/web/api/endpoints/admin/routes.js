@@ -272,6 +272,11 @@ module.exports = function apiRoutes() {
         http(api.authentication.verifyInvitationCode)
     );
     router.post('/authentication/invitation', http(api.authentication.acceptInvitation));
+    // 招待を受けるページが token で 1 件読む（種類・グループ名・招いた人の名前だけ）。IP ごとに回数を数える
+    router.get('/authentication/invitation_info',
+        shared.middleware.brute.inviteInfoPerIp,
+        http(api.authentication.invitationInfo)
+    );
     router.get('/authentication/invitation', http(api.authentication.isInvitation));
     router.post('/authentication/setup', http(api.authentication.setup));
     router.put('/authentication/setup', mw.authAdminApi, http(api.authentication.updateSetup));

@@ -72,6 +72,8 @@ COPY --chown=node:node ghost/core/core/server/services/staff/StaffServiceEmails.
 COPY --chown=node:node ghost/core/core/server/services/staff/email-templates/new-milestone-received.hbs ${GHOST_INSTALL}/current/core/server/services/staff/email-templates/
 # どちらも回数の制限は brute.js と spam-prevention.js（codeAttempts）
 COPY --chown=node:node ghost/core/core/server/web/shared/middleware/brute.js ${GHOST_INSTALL}/current/core/server/web/shared/middleware
+# 家族・グループの招待（招待の group_id・登録したらそのグループへ・token で 1 件読む。jibunsee-react docs/planning/invite-links.md）
+COPY --chown=node:node ghost/core/core/server/services/invitations ${GHOST_INSTALL}/current/core/server/services/invitations
 COPY --chown=node:node ghost/core/core/server/web/shared/middleware/api/spam-prevention.js ${GHOST_INSTALL}/current/core/server/web/shared/middleware/api
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeAPI.js ${GHOST_INSTALL}/current/core/server/services/stripe
 COPY --chown=node:node ghost/core/core/server/services/stripe/StripeService.js ${GHOST_INSTALL}/current/core/server/services/stripe
@@ -170,6 +172,11 @@ RUN set -eux; \
     test -f core/server/services/auth/invitation-code.js; \
     grep -q invitationCode core/server/services/invites/Invites.js; \
     grep -q inviteCodeVerifyPerEmail core/server/web/shared/middleware/brute.js; \
+    grep -q inviteInfoPerIp core/server/web/shared/middleware/brute.js; \
+    grep -q joinInvitedGroup core/server/services/invitations/accept.js; \
+    test -f core/server/services/invitations/group-invite.js; \
+    test -f core/server/data/migrations/versions/5.116/2026-11-15-00-00-00-add-invites-group-id.js; \
+    grep -q 'group_id: {type' core/server/data/schema/schema.js; \
     test -f core/server/services/members/SingleUseTokenProvider.js; \
     grep -q memberOtcVerifyPerRef core/server/web/shared/middleware/brute.js; \
     grep -q codeAttempts core/server/web/shared/middleware/api/spam-prevention.js; \
