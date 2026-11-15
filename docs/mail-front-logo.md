@@ -13,6 +13,7 @@ Ghost が送るメールに入っている **Ghost の元のロゴ**（`static.g
 | 3 | `<front>/apple-touch-icon-180.png` | `TENANT` が無い。front の `public` 直下の共通の画像 |
 | 4 | 今までの Ghost のロゴ | 1 が無く、front の URL も無い（試験のとき・設定し忘れのときに壊れない） |
 
+- **ロゴのためにメールが送れなくなることは無い**: `getFrontLogoUrl()` は例外を投げない（設定 `my_config` が壊れている・読めない、env が無い・おかしい、どれも 4 か次の順になるだけ）。`TENANT` が無くてもエラーにならない。
 - front の URL は、**メールのリンクと同じ `FRONT_END_URL` を先に**見る（同じメールのリンクとロゴの行き先がそろう）。無ければ `GHOST_FRONT_END_URL`、
   `MEMBERS_FRONTEND_URL`・`FRONTEND_URL`・`NEXT_PUBLIC_FRONT_URL`（`services/members/frontend-url.js` と同じ並び）の順。最初に値のある名前だけを使う。
 - **本番で設定するもの**（front の `scripts/tenant/deploy-app.mjs` がホストの `env-prd.sh` に書き、`tenants/<テナント>/deploy/backend/docker-compose.yml` がコンテナに渡す）:

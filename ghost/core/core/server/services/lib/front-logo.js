@@ -70,12 +70,7 @@ function readMyConfig() {
     }
 }
 
-/**
- * @param {NodeJS.ProcessEnv} [env]
- * @param {string|object|null} [myConfig] Ghost の設定 my_config（省略すると設定のキャッシュから読む）
- * @returns {string|null}
- */
-function getFrontLogoUrl(env = process.env, myConfig = readMyConfig()) {
+function resolveFrontLogoUrl(env, myConfig) {
     const chosen = chosenLogoUrl(myConfig);
     if (chosen) {
         return chosen;
@@ -88,6 +83,21 @@ function getFrontLogoUrl(env = process.env, myConfig = readMyConfig()) {
         return null;
     }
     return `${base}${frontLogoPath(env)}`;
+}
+
+/**
+ * メールのロゴの URL。無いときは null（呼ぶ側は今までの Ghost のロゴにする）。
+ * ロゴのためにメールが送れなくならないよう、ここでは決して例外を投げない（設定が壊れていても、何かが失敗しても null）。
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {string|object|null} [myConfig] Ghost の設定 my_config（省略すると設定のキャッシュから読む）
+ * @returns {string|null}
+ */
+function getFrontLogoUrl(env = process.env, myConfig) {
+    try {
+        return resolveFrontLogoUrl(env || {}, myConfig === undefined ? readMyConfig() : myConfig);
+    } catch (e) {
+        return null;
+    }
 }
 
 /**

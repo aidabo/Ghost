@@ -119,6 +119,20 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
             assert.equal(getFrontLogoUrl({FRONT_END_URL: FRONT}, JSON.stringify({favicon: {imageUrl: 'https://cdn.example.com/favicon.ico'}})), FRONT_LOGO);
         });
 
+        it('never throws, so a mail is always sent (a broken setting or env gives null = the Ghost logo)', function () {
+            const throwing = new Proxy({}, {get() {
+                throw new Error('boom');
+            }});
+            assert.equal(getFrontLogoUrl(throwing, null), null);
+            assert.equal(getFrontLogoUrl(null, null), null);
+            assert.equal(getFrontLogoUrl({FRONT_END_URL: FRONT}, {logo: throwing}), null);
+            settingsCache.get.callsFake(() => {
+                throw new Error('settings not ready');
+            });
+            assert.equal(getFrontLogoUrl({FRONT_END_URL: FRONT, TENANT: 'janabiz'}), `${FRONT}/brand/janabiz/apple-touch-icon.png`);
+            assert.equal(siteIconOrFrontLogo(null, 'orb'), 'orb');
+        });
+
         it('is null without a usable http(s) URL (the caller keeps the Ghost logo)', function () {
             assert.equal(getFrontLogoUrl({}), null);
             assert.equal(getFrontLogoUrl({FRONT_END_URL: '  '}), null);
@@ -161,6 +175,17 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
                 assert.ok(html.includes(`<img src="${CHOSEN}"`), 'chosen logo');
                 assert.ok(!html.includes('/brand/'));
                 assert.doesNotMatch(html, ORB);
+            });
+
+            it('is still made, with the Ghost logo, when reading the logo setting fails', async function () {
+                process.env.FRONT_END_URL = FRONT;
+                settingsCache.get.callsFake((key) => {
+                    if (key === 'my_config') {
+                        throw new Error('settings not ready');
+                    }
+                });
+                const {html} = await render();
+                assert.ok(html.includes(`<img src="${FRONT_LOGO}"`), 'front logo');
             });
 
             it('keeps the Ghost logo when the front URL is not set', async function () {
