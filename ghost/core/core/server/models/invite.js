@@ -24,6 +24,18 @@ Invite = ghostBookshelf.Model.extend({
 
         delete attrs.token;
         return attrs;
+    },
+
+    /**
+     * 一覧の既定: まだ受けていない招待（pending・sent）だけ。登録済み（accepted）は残してあるが
+     * （招いた人の招待の画面の履歴用。jibunsee-react docs/planning/invite-links.md）、Ghost の管理画面の「招待中」には出さない。
+     * 履歴を読む側（front）は filter に status を書いて明示的に頼む（書いた filter が既定より勝つ）
+     */
+    defaultFilters: function defaultFilters(options) {
+        if (options && options.context && options.context.internal) {
+            return null;
+        }
+        return 'status:[pending,sent]';
     }
 }, {
     orderDefaultOptions: function orderDefaultOptions() {

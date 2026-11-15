@@ -67,6 +67,19 @@ describe('Invitation info API', function () {
         await agent.get(`authentication/invitation_info/?token=${encodeURIComponent(token)}`).header('X-Forwarded-For', nextIp()).expectStatus(404);
         const again = await agent.get(`authentication/invitation/?email=${encodeURIComponent(email)}`).expectStatus(200);
         assert.equal(again.body.invitation[0].valid, false);
+
+        // 一覧の既定には出ない（Ghost の管理画面の「招待中」）。status を書いて頼めば出る（招いた人の履歴）
+        const plain = await agent.get('invites/').expectStatus(200);
+        assert.ok(!plain.body.invites.some(i => i.email === email), 'not in the default list');
+        const history = await agent.get(`invites/?filter=${encodeURIComponent('status:[pending,sent,accepted]')}`).expectStatus(200);
+        const row = history.body.invites.find(i => i.email === email);
+        assert.equal(row && row.status, 'accepted');
+        assert.equal(row.token, undefined, 'no token in the list');
+
+        // 同じ token でもう一度受けることはできない
+        await agent.post('authentication/invitation/')
+            .body({invitation: [{token, email, name: 'Again', password: 'Tq7#vLm2!pWz9xRe'}]})
+            .expectStatus(404);
     });
 
     it('an unknown token and a missing token are refused', async function () {

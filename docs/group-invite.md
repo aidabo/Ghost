@@ -28,6 +28,12 @@
   招いた人の招待の画面（front の `/dashboard?tab=invite`）の履歴に「登録済み」と出し、家族・グループの招待なら「グループに追加」を
   1 回押して足す（一員の API `POST /social/members/`。足せるのはグループの持ち主・管理者）。自動ではグループに入れない（ユーザーの決定 2026-11-15）。
 - 受ける口・読む口・6 桁の口は `status: 'sent'` だけを見るので、登録済みの招待の token はもう使えない。
+- **履歴の読み方**: front のサーバーが連携の鍵で `GET /ghost/api/admin/invites/?filter=status:[pending,sent,accepted]+created_by:'<招いた人の id>'` を呼ぶ
+  （連携の鍵の許可に `invites: GET` を足した。front の `/api/invites/mine` は、ブラウザのセッションで確かめた人の招待だけに絞る）。
+  返す欄は `status`・`created_by`・`group_id`・`email`・`expires`・`created_at`（token は返さない）。
+- **一覧の既定は pending・sent だけ**（`Invite.defaultFilters`）。登録済み（accepted）は Ghost の管理画面の「招待中」には出ない（Resend で既存のユーザーに招待を送り直さないように）。
+  `status` を書いた filter を渡したときだけ accepted も返る。
+- **「グループに追加」**: front がブラウザのセッションで `POST /social/members/` `{socialgroupmembers: [{group_id, user_id, role_id: <Social Group Member の id>, status: 'active'}]}`。`role_id` は必須。
 - 同じメールアドレスに招待し直すと、前の招待の行は消えて新しく作られる（今までどおり）。
 
 ## 招待を受けるページが token で 1 件読む口
