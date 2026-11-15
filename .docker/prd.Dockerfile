@@ -184,6 +184,9 @@ RUN set -eux; \
     test -f core/server/services/lib/front-logo.js; \
     grep -q my_config core/server/services/lib/front-logo.js; \
     grep -q frontLogoUrl core/server/services/lib/EmailContentGenerator.js; \
+    grep -q toFrontUrl core/server/services/lib/EmailContentGenerator.js; \
+    grep -q 'toFront(resetLink)' core/server/services/mail/templates/invite-user.html; \
+    if grep -q 'process.env.FRONT_END_URL' core/server/services/mail/templates/*.html; then echo 'mail templates still read FRONT_END_URL directly' >&2; exit 1; fi; \
     test -f core/server/services/lib/mail-i18n.js; \
     grep -q inviteMailCopy core/server/services/invites/Invites.js; \
     grep -q copy.lead core/server/services/mail/templates/invite-user.html; \

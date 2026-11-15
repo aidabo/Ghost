@@ -10,6 +10,7 @@
 // - 使えるのは作ってから 10 分・間違えは 5 回まで（used_count で数える）。合ったら行を消す（1 回きり）。
 // - 登録の無いメールでも、送る口は同じ形の ref を同じ時間で返す（行もメールも作らないだけ）。
 const crypto = require('crypto');
+const {toFrontUrl} = require('../lib/front-logo');
 const errors = require('@tryghost/errors');
 const tpl = require('@tryghost/tpl');
 const models = require('../../models');
@@ -93,7 +94,8 @@ async function generateCode(email, ref, settingsAPI, options = {}) {
     }, options);
     const {resetToken} = await passwordreset.generateToken(email, settingsAPI, options.transacting);
     const adminUrl = urlUtils.urlFor('admin', true);
-    const resetUrl = urlUtils.urlJoin(adminUrl, 'reset', security.url.encodeBase64(resetToken), '/');
+    // リンクは front の再設定のページ（/reset/<token>/）へ。front の URL が無ければ今までどおり Ghost の管理画面
+    const resetUrl = toFrontUrl(urlUtils.urlJoin(adminUrl, 'reset', security.url.encodeBase64(resetToken), '/'));
     return {email, code, resetUrl};
 }
 

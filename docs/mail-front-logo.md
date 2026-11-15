@@ -45,6 +45,17 @@ done
 
 `/settings` でロゴを選んでいるときは、その画像の URL（CloudFront）も同じように 200 を確かめる。
 
+## メールのリンクも front の URL に
+
+メールの中のリンク（招待の「アカウントを有効にする」、パスワード再設定、一番下の「このメールは … から送りました」のサイトの URL、
+6 桁のパスワード再設定のメールのリンク）は、`services/lib/front-logo.js` の `toFrontUrl()` で front の URL にする。
+front の URL はロゴと同じ（環境変数 `FRONT_END_URL`、無ければ `GHOST_FRONT_END_URL` などの順。無ければ Ghost の URL のまま）。
+
+- 道に `/ghost` がある管理のリンク（`…/ghost/signup/<token>/`・`…/ghost/reset/<token>/`）は、`/ghost` までを front の URL に替える（front の `/signup/<token>/`・`/reset/<token>/`）。
+- サイトの URL（道に `/ghost` が無い）は、ホストを front の URL に替える（例 `http://localhost:2368/` → `<front>/`）。
+- 雛形は `{{toFront(resetLink)}}` のように書く（`EmailContentGenerator` が `toFront` を渡す）。前の `.replace(/.*ghost/, process.env.FRONT_END_URL)` は、
+  サイトの URL を替えられず（`:2368` のまま）、`GHOST_FRONT_END_URL` だけのときは `undefined/…` になり、ホスト名に ghost があると壊れた。
+
 ## 替えたメール
 
 | メール | ファイル | 今までのロゴ |

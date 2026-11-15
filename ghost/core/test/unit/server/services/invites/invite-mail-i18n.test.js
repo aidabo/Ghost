@@ -26,7 +26,7 @@ async function sendInvite({locale, user = {name: 'Aki <b>', email: 'aki@example.
         settingsCache: {get: key => ({title: SITE}[key])},
         settingsHelpers: {getDefaultEmail: () => 'noreply@ghost.test', getDefaultEmailDomain: () => 'ghost.test'},
         mailService: {utils: {generateContent: options => generator.getContent(options)}},
-        urlUtils: {urlFor: () => 'http://ghost.test/ghost/', urlJoin: (...parts) => parts.join('/')}
+        urlUtils: {urlFor: () => 'http://ghost.test/ghost/', urlJoin: (...parts) => parts.join('/').replace(/([^:])\/{2,}/g, '$1/')}
     });
     await invites.add({
         api: {mail: {send: async (payload) => {
@@ -116,6 +116,10 @@ describe('Invite mails in the screen\'s language', function () {
             const footer = {ja: 'このメールは ', en: 'This email was sent from ', zh: '此邮件由 '}[locale];
             assert.ok(mail.html.includes(footer), 'footer');
             assert.ok(mail.html.includes('<a href="mailto:new@example.com" style="color: #738A94;">new@example.com</a>'), 'footer email link');
+            // 一番下のサイトのリンクと、ボタンのリンクは front の URL（:2368 の Ghost ではない）
+            assert.ok(mail.html.includes('<a href="https://front.test/" style="color: #738A94;">https://front.test/</a>'), 'footer site link is the front');
+            assert.ok(mail.html.includes('href="https://front.test/signup/'), 'activation link is the front');
+            assert.ok(!mail.html.includes('ghost.test/'), 'no Ghost URL in the mail');
             if (locale !== 'en') {
                 for (const english of ['has invited you', 'Click here', 'Have fun', 'If you have trouble', 'This email was sent', '>Welcome<']) {
                     assert.ok(!mail.html.includes(english), `no English left: ${english}`);
