@@ -84,9 +84,8 @@ SocialGroupMember = ghostBookshelf.Model.extend({
             throw new errors.NotFoundError({message: `Role with ID ${roleId} not found.`});
         }
 
-        if (model.get('id')) {
-            this.validateMemberPermission(groupId, userId);
-        }
+        // 誰が足す・変えるかの確かめは API（api/endpoints/social-group-members.js の assertCanManageGroup）で、頼んだ人について行う。
+        // ここで前にしていた確かめは await されず、しかも頼んだ人ではなく一員本人を見ていたので外した
     },
 
     async validateMemberPermission(groupId, userId) {

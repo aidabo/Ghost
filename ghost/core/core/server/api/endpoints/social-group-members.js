@@ -10,10 +10,35 @@ const messages = {
     notFound: 'group member not found.',
     duplicateEntry: 'group member already exists for this group and user.',
     noPermissionToAdd: 'Only the group owner or a group admin can add members to this group.',
+    noPermissionToManage: 'Only the group owner or a group admin can change or remove members of this group.',
+    groupNotFound: 'The group was not found or is not active.',
+    memberNotFound: 'Group member not found.',
+    cannotMoveMember: 'A group member cannot be moved to another group or person. Remove it and add a new one.',
     noRoleChangePermission: 'You do not have permission to change a member role.'
 };
 
 /** @type {import('@tryghost/api-framework').Controller} */
+
+// 一員を足す・変える・外すのは、そのグループの持ち主・管理者（Social Group Owner・Admin）、グループを作った人、サイトの管理者だけ
+// （canManageGroupMembers。jibunsee-react docs/planning/invite-links.md の D6）。グループは**保存されている行**のものを使い、
+// 要求の body の group_id は信じない。ログインしている人が分からない要求は断る（同梱の連携の鍵は一員を足す権限を持たない）
+async function assertCanManageGroup(groupId, frame, message) {
+    const userId = frame.options && frame.options.context && frame.options.context.user;
+    if (!userId || !(await models.SocialGroupMember.canManageGroupMembers(groupId, userId))) {
+        throw new errors.NoPermissionError({message: tpl(message)});
+    }
+}
+
+async function storedMember(frame) {
+    const id = frame.options && frame.options.id;
+    // @ts-ignore
+    const row = id ? await models.SocialGroupMember.findOne({id}, {transacting: frame.options.transacting}) : null;
+    if (!row) {
+        throw new errors.NotFoundError({message: tpl(messages.memberNotFound)});
+    }
+    return row;
+}
+
 const controller = {
     docName: 'socialgroupmembers',
 
@@ -76,14 +101,14 @@ const controller = {
         ],
         permissions: true,
         async query(frame) {
-            const member = frame.data.socialgroupmembers[0];
-            // 一員を足せるのは、そのグループの持ち主・管理者（Social Group Owner・Admin）、グループを作った人、
-            // サイトの管理者だけ（canManageGroupMembers。すでにいる一員を変えるときと同じ決まり）。
-            // ログインしている人の要求だけを確かめる（サーバー同士の連携の鍵は今までどおり）
-            const userId = frame.options.context && frame.options.context.user;
-            if (userId && !(await models.SocialGroupMember.canManageGroupMembers(member && member.group_id, userId))) {
-                throw new errors.NoPermissionError({message: tpl(messages.noPermissionToAdd)});
+            const member = frame.data.socialgroupmembers[0] || {};
+            // 無い・止まったグループは、誰が頼んでも同じ答え（権限より先に見る）
+            // @ts-ignore
+            const group = member.group_id ? await models.SocialGroup.findOne({id: member.group_id}) : null;
+            if (!group || group.get('status') !== 'active') {
+                throw new errors.NotFoundError({message: tpl(messages.groupNotFound)});
             }
+            await assertCanManageGroup(member.group_id, frame, messages.noPermissionToAdd);
             try {
                 // @ts-ignore
                 return await models.SocialGroupMember.add(member, frame.options);
@@ -120,21 +145,15 @@ const controller = {
         async query(frame) {
             try {
                 const payload = frame.data.socialgroupmembers[0] || {};
-                // Changing a member's group role (promote/demote) is restricted
-                // to system admins and the group's owner/admins — the same gate
-                // as adding/removing members.
-                if (payload.role_id !== undefined) {
-                    // @ts-ignore
-                    const allowed = await models.SocialGroupMember.canManageGroupMembers(
-                        payload.group_id,
-                        frame.options?.context?.user
-                    );
-                    if (!allowed) {
-                        throw new errors.NoPermissionError({
-                            message: tpl(messages.noRoleChangePermission)
-                        });
+                // 変えられるのは、保存されている行のグループの持ち主・管理者だけ（役割でも状態でも）。
+                // 行を別のグループ・別の人に移すことはできない（移すと「足す」の決まりを回り込めるため）
+                const row = await storedMember(frame);
+                for (const key of ['group_id', 'user_id']) {
+                    if (payload[key] !== undefined && payload[key] !== row.get(key)) {
+                        throw new errors.ValidationError({message: tpl(messages.cannotMoveMember)});
                     }
                 }
+                await assertCanManageGroup(row.get('group_id'), frame, messages.noPermissionToManage);
                 // @ts-ignore
                 return await models.SocialGroupMember.edit(payload, frame.options);
             } catch (err) {
@@ -155,8 +174,9 @@ const controller = {
         options: ['id'],
         permissions: true,
         async query(frame) {
-            // @ts-ignore
-            await models.SocialGroupMember.validateDestroyMemberPermission(frame.data.socialgroupmembers[0].group_id, frame.options.context.user);
+            // 外せるのは、保存されている行のグループの持ち主・管理者だけ（body の group_id は使わない）
+            const row = await storedMember(frame);
+            await assertCanManageGroup(row.get('group_id'), frame, messages.noPermissionToManage);
             // @ts-ignore
             return await models.SocialGroupMember.destroy({...frame.options, require: true});
         }
