@@ -11,10 +11,12 @@ const generator = new EmailContentGenerator({
     templatesDir: path.resolve(__dirname, '../../../../../core/server/services/mail/templates')
 });
 
-// ロゴの URL（src="…"）・リンクの href・text 版に入る画像やリンクの URL（[https://…]）を除いた文だけを見る
-const visibleText = body => body.replace(/(src|href)="[^"]*"/g, '').replace(/https?:\/\/[^\s\]]+/g, '');
+// ロゴは front の画像にする（下で FRONT_END_URL を固定）。ロゴの最後の予備（static.ghost.org の画像）が出ないので、
+// リンク（href と text 版の [URL]）に ghost.org が戻ったら検出できる。html の src（画像）だけは文ではないので除く
+const visibleText = body => body.replace(/src="[^"]*"/g, '');
+const FRONT = 'https://front.test';
 
-// front の URL があると、ロゴは front の画像になり ghost.org の URL が出ない。どちらでも同じ結果になるよう、ここでは外す
+// 手元の env に左右されないよう、front の URL の env を全部外してから FRONT_END_URL だけ固定する
 const FRONT_URL_ENV = ['FRONT_END_URL', 'GHOST_FRONT_END_URL', 'MEMBERS_FRONTEND_URL', 'FRONTEND_URL', 'NEXT_PUBLIC_FRONT_URL', 'TENANT'];
 
 describe('Staff mails do not mention Ghost', function () {
@@ -26,6 +28,7 @@ describe('Staff mails do not mention Ghost', function () {
             saved[key] = process.env[key];
             delete process.env[key];
         }
+        process.env.FRONT_END_URL = FRONT;
     });
 
     afterEach(function () {
@@ -45,13 +48,14 @@ describe('Staff mails do not mention Ghost', function () {
     ]) {
         it(`${template}.html`, async function () {
             const {html, text} = await generator.getContent({template, data});
-            for (const body of [visibleText(html), visibleText(text)]) {
+            for (const body of [visibleText(html), text]) {
                 assert.doesNotMatch(body, /Ghost|ghost\.org/, `${template}: no Ghost in the mail`);
             }
             for (const part of expected) {
                 assert.ok(html.includes(part), `${template}: ${part}`);
             }
             assert.ok(!html.includes('..'), `${template}: no doubled period`);
+            assert.ok(html.includes(`${FRONT}/apple-touch-icon-180.png`), `${template}: the front logo, not Ghost's`);
         });
     }
 });

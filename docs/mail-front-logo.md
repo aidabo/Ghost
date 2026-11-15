@@ -75,6 +75,7 @@ html の雛形（mail・api-version-compatibility）は `services/lib/EmailConte
 `.docker/prd.Dockerfile` に `services/lib/front-logo.js`・`EmailContentGenerator.js`・`api-version-compatibility/templates`（元のイメージには無い）・
 `data/importer/email-template.js`・`services/staff/StaffServiceEmails.js`・`new-milestone-received.hbs` の COPY と、build のときの確かめを足した
 （mail・auth・members は前から COPY している）。
+- 組み立ての最後に、招待（2 つ）とパスワード再設定の雛形があり、消した Ghost の文（「is using Ghost」「No idea what Ghost is」「Welcome to Ghost」・ghost.org へのリンク）が戻っていないことを確かめる（#71）。
 
 ## 試験
 
