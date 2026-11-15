@@ -5,7 +5,8 @@ const path = require('path');
 const sinon = require('sinon');
 
 const settingsCache = require('../../../../../core/shared/settings-cache');
-const {mailT, mailLanguage} = require('../../../../../core/server/services/lib/mail-i18n');
+const {mailT, mailLanguage, SCREEN_LOCALES} = require('../../../../../core/server/services/lib/mail-i18n');
+const invitationCode = require('../../../../../core/server/services/auth/invitation-code');
 const {FRONT_URL_ENV_NAMES} = require('../../../../../core/server/services/lib/front-logo');
 const EmailContentGenerator = require('../../../../../core/server/services/lib/EmailContentGenerator');
 const Invites = require('../../../../../core/server/services/invites/Invites');
@@ -122,6 +123,15 @@ describe('Invite mails in the screen\'s language', function () {
             }
         });
     }
+
+    it('every screen language also has its own 6-digit block (the lists of languages do not drift apart)', function () {
+        const leads = new Set();
+        for (const locale of SCREEN_LOCALES) {
+            const mail = invitationCode.addCodeToMail({subject: 's', html: '<body></body>', text: 't'}, {code: '123456', locale, siteTitle: 'Site'});
+            leads.add(mail.text.split('\n')[0]);
+        }
+        assert.equal(leads.size, SCREEN_LOCALES.length);
+    });
 
     it('without a locale (or fr), the mail is in the site\'s language (ja)', async function () {
         for (const locale of [undefined, 'fr']) {
