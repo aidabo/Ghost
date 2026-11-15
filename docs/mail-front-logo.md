@@ -16,9 +16,12 @@ Ghost が送るメールに入っている **Ghost の元のロゴ**（`static.g
 - **ロゴのためにメールが送れなくなることは無い**: `getFrontLogoUrl()` は例外を投げない（設定 `my_config` が壊れている・読めない、env が無い・おかしい、どれも 4 か次の順になるだけ）。`TENANT` が無くてもエラーにならない。
 - front の URL は、**メールのリンクと同じ `FRONT_END_URL` を先に**見る（同じメールのリンクとロゴの行き先がそろう）。無ければ `GHOST_FRONT_END_URL`、
   `MEMBERS_FRONTEND_URL`・`FRONTEND_URL`・`NEXT_PUBLIC_FRONT_URL`（`services/members/frontend-url.js` と同じ並び）の順。最初に値のある名前だけを使う。
-- **本番で設定するもの**（front の `scripts/tenant/deploy-app.mjs` がホストの `env-prd.sh` に書き、`tenants/<テナント>/deploy/backend/docker-compose.yml` がコンテナに渡す）:
-  - `GHOST_FRONT_END_URL` → コンテナの `FRONT_END_URL`（サイトの URL）
-  - `TENANT`（テナント名 = `system.json` の `system`。jibunsee-react #686 から）
+- **本番で設定するもの**: `GHOST_FRONT_END_URL`（コンテナの `FRONT_END_URL`、サイトの URL）と `TENANT`（テナント名）。
+  - janabiz: front の `scripts/tenant/deploy-app.mjs` がホストの `env-prd.sh` に書き、`tenants/janabiz/deploy/backend/docker-compose.yml` がコンテナに渡す（jibunsee-react #686）。
+  - 60-think・thinkestate（このリポジトリの `yarn deploy` → `deploy-on-ec2.sh`）: `deploy-on-ec2.sh` が compose に `${TENANT}` を渡す（`env-prd.sh` に `TENANT` があればそれ、無ければ配布のテナント）。
+    **ホストの compose の ghost の `environment:` に `- TENANT=${TENANT}` を一度だけ足す**（compose はホストにあり、このリポジトリには無い）。
+    足していないと、配布の最後に `[WARN] ghost has no TENANT` と出る（配布は止まらない。ロゴが共通の画像になるだけ）。
+    compose が `env_file: .env.production` を読む作りなら、`.env.production` に `TENANT=…` を書くのでもよい。
 - front の `brand` の組の名前はテナント名と同じ（`60-think`・`janabiz`・`thinkestate`）。テナントを足したら、front の `public/brand/<テナント名>/apple-touch-icon.png` を置く（置くまでは共通の画像）。
 - スタッフへのお知らせと 2FA のメールは、Ghost のサイトのアイコン（Ghost の設定の icon）があればそれを先に使う（今までどおり）。
 
