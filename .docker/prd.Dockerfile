@@ -63,6 +63,8 @@ COPY --chown=node:node ghost/core/core/server/services/members ${GHOST_INSTALL}/
 # スタッフの節目のメール（services/staff）。2FA のメールは services/auth/session（上の services/auth に入る）
 COPY --chown=node:node ghost/core/core/server/services/lib/front-logo.js ${GHOST_INSTALL}/current/core/server/services/lib/
 COPY --chown=node:node ghost/core/core/server/services/lib/EmailContentGenerator.js ${GHOST_INSTALL}/current/core/server/services/lib/
+# メールを画面の言葉（ja・en・zh）で作る t（services/lib/mail-i18n.js）。招待の文は services/invites/invite-mail-copy.js（invites は丸ごと COPY 済み）
+COPY --chown=node:node ghost/core/core/server/services/lib/mail-i18n.js ${GHOST_INSTALL}/current/core/server/services/lib/
 # api-version-compatibility の雛形（元のイメージには templates が無い）
 COPY --chown=node:node ghost/core/core/server/services/api-version-compatibility/templates ${GHOST_INSTALL}/current/core/server/services/api-version-compatibility/templates
 COPY --chown=node:node ghost/core/core/server/data/importer/email-template.js ${GHOST_INSTALL}/current/core/server/data/importer/
@@ -175,6 +177,10 @@ RUN set -eux; \
     test -f core/server/services/lib/front-logo.js; \
     grep -q my_config core/server/services/lib/front-logo.js; \
     grep -q frontLogoUrl core/server/services/lib/EmailContentGenerator.js; \
+    test -f core/server/services/lib/mail-i18n.js; \
+    grep -q inviteMailCopy core/server/services/invites/Invites.js; \
+    grep -q copy.lead core/server/services/mail/templates/invite-user.html; \
+    grep -q 'Click here to activate your account' node_modules/@tryghost/i18n/locales/ja/ghost.json; \
     grep -q frontLogoUrl core/server/services/mail/templates/invite-user.html; \
     for f in invite-user invite-user-by-api-key reset-password; do \
       test -f "core/server/services/mail/templates/$f.html"; \

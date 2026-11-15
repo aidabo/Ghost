@@ -1,4 +1,5 @@
 const tpl = require('@tryghost/tpl');
+const {SCREEN_LOCALES} = require('../../services/lib/mail-i18n');
 const errors = require('@tryghost/errors');
 const invites = require('../../services/invites');
 const models = require('../../models');
@@ -108,8 +109,9 @@ const controller = {
                 include_code: {
                     values: ['true', 'false']
                 },
+                // 画面の言葉（メールの言葉の一覧は services/lib/mail-i18n.js の 1 か所）
                 locale: {
-                    values: ['ja', 'en', 'zh']
+                    values: SCREEN_LOCALES
                 }
             },
             data: {

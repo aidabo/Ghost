@@ -35,6 +35,10 @@ class EmailContentGenerator {
         };
 
         const data = _.defaults(defaults, options.data);
+        // 訳した文（招待のメールなどの雛形が {{copy.…}} で使う）。渡されないときも雛形が落ちないように空にする
+        if (!data.copy || typeof data.copy !== 'object') {
+            data.copy = {};
+        }
 
         // read the proper email body template
         const content = await fs.readFile(path.join(this.templatesDir, options.template + '.html'), 'utf8');
