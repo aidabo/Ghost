@@ -4,7 +4,9 @@
 #
 #   Version : env VERSION > 1st arg > SSM parameter > workdir/.env (running tag)
 #             > deploy.version (stale by design; last resort)
-#   Tenant  : TENANT=<tenant>; used for the SSM parameter default and logs.
+#   Tenant  : TENANT=<tenant>; used for the SSM parameter default and logs, and
+#             given to compose as ${TENANT} (the mails' logo is <front>/brand/<TENANT>/…;
+#             the compose file's ghost service needs `- TENANT=${TENANT}`).
 #             The image is shared by tenants.
 #   Image   : s3://60-legacy/deploy-image/ghost-<VERSION>.tar.gz
 #   Compose : exports GHOST_IMAGE_TAG; restarts only the `ghost` service.
@@ -125,17 +127,22 @@ fi
 if [ -n "$ENV_FILE" ]; then
   SAFE_ENV="$(mktemp)"
   chmod 600 "$SAFE_ENV"
-  grep -vE '^[[:space:]]*(export[[:space:]]+)?GHOST_IMAGE_TAG=' "$ENV_FILE" \
+  grep -vE '^[[:space:]]*(export[[:space:]]+)?(GHOST_IMAGE_TAG|TENANT)=' "$ENV_FILE" \
     | grep -E '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=' \
     | sed -E 's/^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*/\2=/' \
     > "$SAFE_ENV" || true
   echo "GHOST_IMAGE_TAG=$VERSION" >> "$SAFE_ENV"
+  # テナント名（メールのロゴ <front>/brand/<TENANT>/…）は、この配布のテナント（SSM で渡す TENANT）だけを正にする。
+  # 下で export するので compose の ${TENANT} はシェルの値になり、env-prd.sh に書いた TENANT は使われない。
+  # 混乱しないよう、env-prd.sh の TENANT 行は上の grep で外し（GHOST_IMAGE_TAG と同じ）、配布のテナントを 1 行だけ書く
+  echo "TENANT=$TENANT" >> "$SAFE_ENV"
   COMPOSE=(docker compose --env-file "$SAFE_ENV")
   trap 'rm -f "$SAFE_ENV"' EXIT
   echo "[INFO] using compose env file: $ENV_FILE (sanitized)"
 fi
 
 export GHOST_IMAGE_TAG="$VERSION"
+export TENANT
 
 # 手で `docker compose down/up` を叩くときにも同じイメージタグが要る。
 # 配備は --env-file で一時ファイル（秘密を含む）を渡しているため、SSM で入った
@@ -158,7 +165,8 @@ write_tag_env() {
     return 1
   }
   # source しても効くよう export を付ける（compose の .env も export を受ける）。
-  if ! printf 'export GHOST_IMAGE_TAG=%s\n' "$VERSION" > "$TMP"; then
+  # TENANT も書く（手動の compose でもメールのロゴのテナントが同じになるように。秘密ではない）
+  if ! printf 'export GHOST_IMAGE_TAG=%s\nexport TENANT=%s\n' "$VERSION" "$TENANT" > "$TMP"; then
     rm -f "$TMP"
     echo "[FATAL] cannot write $DIR/.env (owner: $(ls -ld "$DIR" | awk '{print $3}'))" >&2
     return 1
@@ -223,6 +231,16 @@ case "$IMG" in
   "$IMAGE_NAME:$VERSION") ;;
   *) echo "[FATAL] $SERVICE_NAME is not running $IMAGE_NAME:$VERSION" >&2; exit 1 ;;
 esac
+
+# メールのロゴのテナント。compose の ghost に `- TENANT=${TENANT}` が無いと届かない（配布は止めない。ロゴが共通の画像になるだけ）
+RUNNING_TENANT="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CID" 2>/dev/null | sed -n 's/^TENANT=//p' | head -n1)"
+if [ -z "$RUNNING_TENANT" ]; then
+  echo "[WARN] $SERVICE_NAME has no TENANT: add \`- TENANT=\${TENANT}\` to the ghost service's environment in $DIR's compose file (mail logo falls back to the common image)" >&2
+elif [ "$RUNNING_TENANT" != "$TENANT" ]; then
+  echo "[WARN] $SERVICE_NAME has TENANT=$RUNNING_TENANT, not this deploy's $TENANT: the compose file (or its env_file) sets another value; make it \`- TENANT=\${TENANT}\` in the ghost service's environment (mails show $RUNNING_TENANT's logo)" >&2
+else
+  echo "[INFO] $SERVICE_NAME has TENANT=$RUNNING_TENANT"
+fi
 
 # 検証が通ったので、手動 compose 用の tag を確定する。
 write_tag_env || exit 1
