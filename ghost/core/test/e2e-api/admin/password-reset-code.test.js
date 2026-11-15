@@ -102,6 +102,9 @@ describe('Password reset code API', function () {
             const sent = mailReceiver.getSentEmail(0);
             assert.match(sent.text, /https:\/\/front\.test\/reset\/[^/\s]+\//);
             assert.ok(!sent.text.includes('/ghost/'), 'no Ghost admin path');
+            // 押される HTML のリンクも front
+            assert.match(sent.html, /href="https:\/\/front\.test\/reset\/[^/"]+\/"/);
+            assert.ok(!sent.html.includes('/ghost/'), 'no Ghost admin path in html');
         } finally {
             if (saved === undefined) {
                 delete process.env.FRONT_END_URL;
