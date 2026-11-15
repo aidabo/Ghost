@@ -1,6 +1,7 @@
 // 会員のメール（ログイン・登録のリンク＋6 桁、メールアドレスの変更の確認）を、front が送った画面の言葉で
 // （jibunsee-react docs/planning/mail-i18n.md の M1・M2、D7）。無い・言葉の形でない・ja/en/zh 以外はサイトの言葉（試験では en）。
 const assert = require('assert/strict');
+const DomainEvents = require('@tryghost/domain-events');
 const {agentProvider, mockManager, fixtureManager, dbUtils} = require('../../utils/e2e-framework');
 const settingsCache = require('../../../core/shared/settings-cache');
 const spamPrevention = require('../../../core/server/web/shared/middleware/api/spam-prevention');
@@ -77,6 +78,8 @@ describe('Member mails in the screen\'s language', function () {
 
     it('the email change confirmation is in the screen\'s language', async function () {
         const member = await membersService.api.members.create({email: 'i18n-change@example.com', name: 'Member Test'});
+        // 新しい会員のスタッフへのお知らせは後から送られる。待ってから進める（後の試験に混ざらないように）
+        await DomainEvents.allSettled();
         const identity = await membersService.api.getMemberIdentityToken(member.get('transient_id'));
         await membersAgent.post('/api/member/email/')
             .body({email: 'i18n-changed@example.com', identity, locale: 'ja'})

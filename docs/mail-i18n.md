@@ -25,6 +25,7 @@
   `getText(…, otc, locale)`・`getHTML(…, otc, locale)` と後ろに足す（言葉が無いときの引数は今までと同じ）。
 - `services/members/api.js` の `getSubject`・`getText`・`getHTML` が `tFor(locale)` で `t` を選ぶ: 言葉があれば `mailT(locale)`、無ければ**今までのサイトの `t`**。
   6 桁の欄（`otcSubject`・`otcText`・`addOtcToHtml`）も同じ `t`。
+- 有料の登録の確認（`signup-paid`）は Stripe の webhook から（`members-api` の `StripeService`）`locale` 無しで送るので、**サイトの言葉のまま**。
 
 ## 本番イメージ（`.docker/prd.Dockerfile`）
 

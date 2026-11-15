@@ -122,7 +122,6 @@ describe('MagicLink', function () {
             assert.equal(result.token, 'TOKEN');
         });
 
-
         it('passes the screen language after the code (and undefined for the code when there is none)', async function () {
             const tokenProvider = {
                 createWithRef: sandbox.stub().resolves({token: 'TOKEN', ref: 'REF'}),
@@ -149,6 +148,25 @@ describe('MagicLink', function () {
             assert(options.getHTML.firstCall.calledWithExactly('FAKEURL', 'signin', 'test@example.com', '123456', 'ja'));
             assert.equal(result.otcRef, 'REF');
             assert.equal(result.token, 'TOKEN');
+        });
+        it('passes the screen language without a code (the usual sign in): undefined for the code', async function () {
+            const options = {
+                tokenProvider: new MagicLink.JWTTokenProvider(secret),
+                getSigninURL: sandbox.stub().returns('FAKEURL'),
+                getText: sandbox.stub().returns('SOMETEXT'),
+                getHTML: sandbox.stub().returns('SOMEHTML'),
+                getSubject: sandbox.stub().returns('SOMESUBJECT'),
+                transporter: {
+                    sendMail: sandbox.stub().resolves()
+                }
+            };
+            const service = new MagicLink(options);
+
+            await service.sendMagicLink({email: 'test@example.com', tokenData: {}, type: 'signin', locale: 'ja'});
+
+            assert(options.getSubject.firstCall.calledWithExactly('signin', undefined, 'ja'));
+            assert(options.getText.firstCall.calledWithExactly('FAKEURL', 'signin', 'test@example.com', undefined, 'ja'));
+            assert(options.getHTML.firstCall.calledWithExactly('FAKEURL', 'signin', 'test@example.com', undefined, 'ja'));
         });
         it('falls back to a plain link when the token provider cannot make a code', async function () {
             const options = {
