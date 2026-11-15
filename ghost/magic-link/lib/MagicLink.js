@@ -83,8 +83,10 @@ class MagicLink {
 
         const url = this.getSigninURL(token, type, options.referrer);
 
-        // コードが無いときは今までと同じ引数で呼ぶ（6 桁は在るときだけ足す）
-        const extra = otc ? [otc] : [];
+        // 言葉が無いときは今までと同じ引数（6 桁は在るときだけ）。言葉が在るときは (…, otc, locale)（otc は無ければ undefined）
+        // （locale は front の画面の言葉。jibunsee-react docs/planning/mail-i18n.md の D7）
+        const locale = typeof options.locale === 'string' && options.locale ? options.locale : undefined;
+        const extra = locale ? [otc, locale] : (otc ? [otc] : []);
         const info = await this.transporter.sendMail({
             to: options.email,
             subject: this.getSubject(type, ...extra),

@@ -159,6 +159,8 @@ COPY --chown=node:node ghost/members-api/lib/services/PaymentsService.js ${GHOST
 # 会員の 6 桁のコード: includeOTC を渡す members-api.js、6 桁をメールに入れる magic-link、メールの言葉（i18n）
 COPY --chown=node:node ghost/members-api/lib/members-api.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/
 COPY --chown=node:node ghost/magic-link/lib/MagicLink.js ${GHOST_INSTALL}/current/node_modules/@tryghost/magic-link/lib/
+# 会員のメールを画面の言葉で: front が送る locale を読む小さな関数（RouterController・MemberController が使う）
+COPY --chown=node:node ghost/members-api/lib/screen-locale.js ${GHOST_INSTALL}/current/node_modules/@tryghost/members-api/lib/
 COPY --chown=node:node ghost/i18n/locales ${GHOST_INSTALL}/current/node_modules/@tryghost/i18n/locales
 # 6 桁のコード（スタッフ・会員）のファイルがイメージに入っているか、ビルドの時に確かめる
 # （COPY は書いたものだけを上書きするので、書き忘れると配布先で起動しない。#62・#63 で 2 回起きかけた）
@@ -172,6 +174,11 @@ RUN set -eux; \
     grep -q memberOtcVerifyPerRef core/server/web/shared/middleware/brute.js; \
     grep -q codeAttempts core/server/web/shared/middleware/api/spam-prevention.js; \
     grep -q createWithRef node_modules/@tryghost/magic-link/lib/MagicLink.js; \
+    test -f node_modules/@tryghost/members-api/lib/screen-locale.js; \
+    grep -q screenLocale node_modules/@tryghost/members-api/lib/controllers/RouterController.js; \
+    grep -q screenLocale node_modules/@tryghost/members-api/lib/controllers/MemberController.js; \
+    grep -q 'locale ? \[otc, locale\]' node_modules/@tryghost/magic-link/lib/MagicLink.js; \
+    grep -q tFor core/server/services/members/api.js; \
     grep -q includeOTC node_modules/@tryghost/members-api/lib/members-api.js; \
     grep -q includeOTC node_modules/@tryghost/members-api/lib/controllers/RouterController.js; \
     test -f core/server/services/lib/front-logo.js; \

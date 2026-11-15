@@ -128,6 +128,11 @@ describe('Invite mails in the screen\'s language', function () {
         const passwordResetCode = require('../../../../../core/server/services/auth/password-reset-code');
         for (const [name, mod] of [['invitation-code', invitationCode], ['password-reset-code', passwordResetCode]]) {
             assert.deepEqual(Object.keys(mod._MAIL_TEXT).sort(), [...SCREEN_LOCALES].sort(), name);
+            // どの言葉も、en と同じ項目（件名・本文など）を持つ（1 つの言葉の中で項目が欠けても気づく）
+            const fields = Object.keys(mod._MAIL_TEXT.en).sort();
+            for (const locale of SCREEN_LOCALES) {
+                assert.deepEqual(Object.keys(mod._MAIL_TEXT[locale]).sort(), fields, `${name} ${locale}`);
+            }
         }
     });
 
