@@ -48,6 +48,25 @@ describe('Group invites', function () {
         });
     });
 
+    describe('inviterOf (who is inviting)', function () {
+        const frame = context => ({options: {context}});
+
+        it('a signed-in user is the inviter (invited_by in the body is ignored)', function () {
+            assert.equal(groupInvite.inviterOf(frame({user: 'u1'}), {invited_by: 'someone-else'}), 'u1');
+        });
+
+        it('the front\'s server key may name the inviter it checked from the browser login', function () {
+            assert.equal(groupInvite.inviterOf(frame({api_key: {id: 'k', type: 'admin'}, integration: {id: 'i1'}}), {invited_by: 'u7'}), 'u7');
+        });
+
+        it('nobody otherwise: no integration, no name, or not a string', function () {
+            assert.equal(groupInvite.inviterOf(frame({}), {invited_by: 'u7'}), undefined);
+            assert.equal(groupInvite.inviterOf(frame({integration: {id: 'i1'}}), {}), undefined);
+            assert.equal(groupInvite.inviterOf(frame({integration: {id: 'i1'}}), {invited_by: {id: 'x'}}), undefined);
+            assert.equal(groupInvite.inviterOf(frame({integration: {id: null}}), {invited_by: 'u7'}), undefined);
+        });
+    });
+
     describe('joinInvitedGroup (after signing up)', function () {
         it('adds the new user to the invite\'s group as a Social Group Member', async function () {
             sinon.stub(models.SocialGroup, 'findOne').resolves(fakeModel({id: 'g1', status: 'active'}));

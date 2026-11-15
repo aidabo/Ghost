@@ -4,6 +4,7 @@ const errors = require('@tryghost/errors');
 const invites = require('../../services/invites');
 const models = require('../../models');
 const api = require('./index');
+const {resolveInviter} = require('../../services/invitations/group-invite');
 const ALLOWED_INCLUDES = [];
 const UNSAFE_ATTRS = ['role_id'];
 
@@ -126,7 +127,9 @@ const controller = {
         permissions: {
             unsafeAttrs: UNSAFE_ATTRS
         },
-        query(frame) {
+        async query(frame) {
+            // メールの「… さんから」の人（front のサーバーが代わりに送るグループの招待なら、その招く人）
+            const inviter = await resolveInviter(frame);
             const {include_code: includeCode, locale, ...options} = frame.options;
             return invites.add({
                 api,
@@ -134,8 +137,8 @@ const controller = {
                 invites: frame.data.invites,
                 options,
                 user: {
-                    name: frame.user?.get('name'),
-                    email: frame.user?.get('email')
+                    name: inviter?.get('name'),
+                    email: inviter?.get('email')
                 },
                 code: {
                     include: includeCode === true || includeCode === 'true',

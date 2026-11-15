@@ -91,4 +91,42 @@ async function invitationInfo(token) {
     };
 }
 
-module.exports = {assertCanInviteToGroup, joinInvitedGroup, invitationInfo, kindOf};
+/**
+ * グループの招待で、招く人は誰か。ログインしている人の要求ならその人。
+ * サーバー同士の連携の鍵（front のサーバー）の要求なら、front がブラウザのログインで確かめた人を invited_by で名指しできる
+ * （家族の持ち主はふつう Author で、自分ではスタッフの招待を作れないため）。どちらも無ければ無し（断られる）
+ * @param {object} frame
+ * @param {object} invite frame.data.invites[0]
+ * @returns {string|undefined}
+ */
+function inviterOf(frame, invite) {
+    const context = (frame.options && frame.options.context) || {};
+    if (context.user) {
+        return context.user;
+    }
+    const fromIntegration = Boolean(context.integration && context.integration.id);
+    return fromIntegration && invite && typeof invite.invited_by === 'string' && invite.invited_by ? invite.invited_by : undefined;
+}
+
+/**
+ * 招待のメールに書く招いた人（User の model）。ログインしている人なら frame.user。
+ * front のサーバーが招く人の代わりに送るグループの招待なら（入力の検査で、その人がグループの持ち主・管理者と確かめ済み）、
+ * その人にし、記録上の招いた人（created_by）もその人にする（frame.options.context.user を替える）。invited_by は保存しない
+ * @param {object} frame
+ * @returns {Promise<object|null>}
+ */
+async function resolveInviter(frame) {
+    const invite = frame.data.invites[0];
+    let inviter = frame.user || null;
+    const named = inviterOf(frame, invite);
+    if (!inviter && invite.group_id && named) {
+        inviter = await models.User.findOne({id: named}, internal);
+        if (inviter) {
+            frame.options.context = {...frame.options.context, user: inviter.id};
+        }
+    }
+    delete invite.invited_by;
+    return inviter;
+}
+
+module.exports = {assertCanInviteToGroup, joinInvitedGroup, invitationInfo, kindOf, inviterOf, resolveInviter};

@@ -1,7 +1,7 @@
 const tpl = require('@tryghost/tpl');
 const errors = require('@tryghost/errors');
 const models = require('../../../../../models');
-const {assertCanInviteToGroup} = require('../../../../../services/invitations/group-invite');
+const {assertCanInviteToGroup, inviterOf} = require('../../../../../services/invitations/group-invite');
 
 const messages = {
     userAlreadyRegistered: 'User is already registered.'
@@ -19,7 +19,7 @@ module.exports = {
                 }
                 // 家族・グループの招待: 招く人がそのグループの持ち主・管理者であること（D3）
                 if (invite.group_id) {
-                    return assertCanInviteToGroup(invite.group_id, frame.options.context && frame.options.context.user);
+                    return assertCanInviteToGroup(invite.group_id, inviterOf(frame, invite));
                 }
             });
     }
