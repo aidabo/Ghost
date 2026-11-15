@@ -237,7 +237,7 @@ RUNNING_TENANT="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' 
 if [ -z "$RUNNING_TENANT" ]; then
   echo "[WARN] $SERVICE_NAME has no TENANT: add \`- TENANT=\${TENANT}\` to the ghost service's environment in $DIR's compose file (mail logo falls back to the common image)" >&2
 elif [ "$RUNNING_TENANT" != "$TENANT" ]; then
-  echo "[WARN] $SERVICE_NAME has TENANT=$RUNNING_TENANT, not this deploy's $TENANT: the compose file sets another value (mails show that tenant's logo)" >&2
+  echo "[WARN] $SERVICE_NAME has TENANT=$RUNNING_TENANT, not this deploy's $TENANT: the compose file (or its env_file) sets another value; make it \`- TENANT=\${TENANT}\` in the ghost service's environment (mails show $RUNNING_TENANT's logo)" >&2
 else
   echo "[INFO] $SERVICE_NAME has TENANT=$RUNNING_TENANT"
 fi
