@@ -9,23 +9,34 @@ Ghost が送るメールに入っている **Ghost の元のロゴ**（`static.g
 - front の URL は、**メールのリンクと同じ `FRONT_END_URL` を先に**見る（同じメールのリンクとロゴの行き先がそろう）。無ければ `GHOST_FRONT_END_URL`、
   `MEMBERS_FRONTEND_URL`・`FRONTEND_URL`・`NEXT_PUBLIC_FRONT_URL`（`services/members/frontend-url.js` と同じ並び）の順。
 - **本番で設定するもの**: ホストの `env-prd.sh` の `GHOST_FRONT_END_URL`（front の `scripts/tenant/deploy-app.mjs` がサイトの URL を入れる）。
-  `tenants/<テナント>/deploy/backend/docker-compose.yml` が `FRONT_END_URL=${GHOST_FRONT_END_URL}` でコンテナに渡す。Ghost 側に足す設定は無い。
-- ロゴは `<front の URL>/apple-touch-icon.png`。front のこの道は、そのテナントのロゴの組（`GHOST_FRONT_ICON_SET`: `60-think`・`mars-times`・`think-estate`）の
-  180x180 の正方形の画像へ転送する（front の `app/apple-touch-icon.png/route.ts`）。テナントごとに Ghost 側の設定は要らない。
+  `tenants/<テナント>/deploy/backend/docker-compose.yml` が `FRONT_END_URL=${GHOST_FRONT_END_URL}` でコンテナに渡す。
+- ロゴは、環境変数 **`TENANT`** で決まる front の画像を**直接**書く（転送を挟まない。転送をたどらないメールソフトや検査装置でも出る）。
+  画像は front の `public/brand/<組>/` の 180x180 の正方形（front の `src/lib/siteIcons.ts` の apple と同じファイル）。
+
+  | `TENANT` | ロゴの URL |
+  |---|---|
+  | `60-think` | `<front>/brand/60-think/apple-touch-icon-180.png` |
+  | `thinkestate`（`think-estate` でも） | `<front>/brand/think-estate/apple-touch-icon.png` |
+  | `janabiz`（`mars-times` でも） | `<front>/brand/mars-times/apple-touch-icon.png` |
+  | 無い・上に無い名前 | `<front>/apple-touch-icon.png`（front が自分の組 `GHOST_FRONT_ICON_SET` へ転送する） |
+
+  front でロゴの画像を足したり名前を変えたりしたら、`front-logo.js` の `TENANT_LOGO_PATHS` も直す。
+- **本番**: Ghost のコンテナに `TENANT` を渡す（`tenants/<テナント>/deploy/backend/docker-compose.yml`）。渡していないと、上の表の最後の行（転送）になる。
 - どれも無い（`http(s)://` で始まらない）ときは `null`。メールは**今までの Ghost のロゴのまま**（試験のとき・設定し忘れのときに壊れない）。
 
-例（`FRONT_END_URL=https://janabiz.example.com` のとき、招待メール）:
+例（`FRONT_END_URL=https://janabiz.example.com`・`TENANT=janabiz` のとき、招待メール）:
 
 ```html
 <!-- 前 --> <img src="https://static.ghost.org/v4.0.0/images/ghost-orb-1.png" width="60" height="60" ... />
-<!-- 後 --> <img src="https://janabiz.example.com/apple-touch-icon.png" width="60" height="60" ... />
+<!-- 後 --> <img src="https://janabiz.example.com/brand/mars-times/apple-touch-icon.png" width="60" height="60" ... />
 ```
 
 配布の後に、テナントごとにロゴの URL が画像を返すかを確かめる（URL の打ち間違いや front の 404 は、全部のメールで画像が切れる。
 コードの予備は「設定が無い」ときだけ）:
 
 ```bash
-curl -fsSIL "$FRONT_END_URL/apple-touch-icon.png" | grep -i '^content-type: image/'
+# 転送なしで画像が返ること（-L を付けない。200 と image/ を見る）
+curl -fsSI "$FRONT_END_URL/brand/mars-times/apple-touch-icon.png" | grep -iE '^(HTTP/|content-type: image/)'
 ```
 
 ## 替えたメール
@@ -63,7 +74,7 @@ html の雛形（mail・api-version-compatibility）は `services/lib/EmailConte
 front の URL を環境に**置かずに**回す（置いたままだと `test/regression/api/admin/__snapshots__/authentication.test.js.snap` の歓迎メールなどが変わる）:
 
 ```bash
-cd ghost/core && env -u FRONT_END_URL -u GHOST_FRONT_END_URL yarn test:base --timeout=60000 \
+cd ghost/core && env -u FRONT_END_URL -u GHOST_FRONT_END_URL -u TENANT yarn test:base --timeout=60000 \
   test/unit/server/services/lib/front-logo.test.js \
   test/unit/server/services/lib/email-content-generator.test.js \
   test/unit/server/services/api-version-compatibility

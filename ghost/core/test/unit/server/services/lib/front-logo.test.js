@@ -3,7 +3,7 @@
 const assert = require('assert/strict');
 const path = require('path');
 
-const {getFrontLogoUrl, siteIconOrFrontLogo} = require('../../../../../core/server/services/lib/front-logo');
+const {getFrontLogoUrl, siteIconOrFrontLogo, TENANT_LOGO_PATHS} = require('../../../../../core/server/services/lib/front-logo');
 const EmailContentGenerator = require('../../../../../core/server/services/lib/EmailContentGenerator');
 const importerTemplate = require('../../../../../core/server/data/importer/email-template');
 const membersImporterTemplate = require('../../../../../core/server/services/members/importer/email-template');
@@ -29,7 +29,7 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
 
     beforeEach(function () {
         saved = {};
-        for (const key of ['FRONT_END_URL', 'GHOST_FRONT_END_URL', 'MEMBERS_FRONTEND_URL', 'FRONTEND_URL', 'NEXT_PUBLIC_FRONT_URL']) {
+        for (const key of ['FRONT_END_URL', 'GHOST_FRONT_END_URL', 'MEMBERS_FRONTEND_URL', 'FRONTEND_URL', 'NEXT_PUBLIC_FRONT_URL', 'TENANT']) {
             saved[key] = process.env[key];
             delete process.env[key];
         }
@@ -67,10 +67,42 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
             assert.equal(siteIconOrFrontLogo('https://ghost.test/icon.png', 'orb'), 'https://ghost.test/icon.png');
         });
 
+        it('with TENANT, points straight at that tenant\'s image (no redirect), the same files as the front\'s siteIcons.ts', function () {
+            const front = {FRONT_END_URL: 'https://front.example.com/'};
+            assert.equal(getFrontLogoUrl({...front, TENANT: '60-think'}), 'https://front.example.com/brand/60-think/apple-touch-icon-180.png');
+            assert.equal(getFrontLogoUrl({...front, TENANT: 'thinkestate'}), 'https://front.example.com/brand/think-estate/apple-touch-icon.png');
+            assert.equal(getFrontLogoUrl({...front, TENANT: 'janabiz'}), 'https://front.example.com/brand/mars-times/apple-touch-icon.png');
+            // front の組の名前・前後の空白・大文字でも
+            assert.equal(getFrontLogoUrl({...front, TENANT: ' Mars-Times '}), 'https://front.example.com/brand/mars-times/apple-touch-icon.png');
+            assert.equal(getFrontLogoUrl({...front, TENANT: 'think-estate'}), 'https://front.example.com/brand/think-estate/apple-touch-icon.png');
+        });
+
+        it('without TENANT or with an unknown one, uses the front\'s /apple-touch-icon.png (the front redirects to its own set)', function () {
+            const front = {FRONT_END_URL: 'https://front.example.com'};
+            assert.equal(getFrontLogoUrl(front), 'https://front.example.com/apple-touch-icon.png');
+            assert.equal(getFrontLogoUrl({...front, TENANT: 'other'}), 'https://front.example.com/apple-touch-icon.png');
+            assert.equal(getFrontLogoUrl({...front, TENANT: 'constructor'}), 'https://front.example.com/apple-touch-icon.png');
+            // TENANT だけでは front の URL にならない
+            assert.equal(getFrontLogoUrl({TENANT: 'janabiz'}), null);
+        });
+
+        it('the paths match image files in the front (when the front checkout is next to this one)', function () {
+            const fs = require('fs');
+            const brand = path.resolve(__dirname, '../../../../../../../../01-ghost-front/apps/host/public');
+            if (!fs.existsSync(brand)) {
+                this.skip();
+            }
+            for (const logoPath of Object.values(TENANT_LOGO_PATHS)) {
+                assert.ok(fs.existsSync(path.join(brand, logoPath)), logoPath);
+            }
+        });
+
         it('is null without a usable http(s) URL (the caller keeps the Ghost logo)', function () {
             assert.equal(getFrontLogoUrl({}), null);
             assert.equal(getFrontLogoUrl({FRONT_END_URL: '  '}), null);
             assert.equal(getFrontLogoUrl({FRONT_END_URL: 'front.example.com'}), null);
+            // 最初に値のある名前だけを使う（壊れた FRONT_END_URL の後ろの GHOST_FRONT_END_URL には進まない）
+            assert.equal(getFrontLogoUrl({FRONT_END_URL: 'front.example.com', GHOST_FRONT_END_URL: 'https://a.example.com'}), null);
             assert.equal(getFrontLogoUrl({FRONT_END_URL: 'javascript:alert(1)'}), null);
             assert.equal(getFrontLogoUrl({FRONT_END_URL: 'https://x.example.com/"><script>'}), null);
         });
