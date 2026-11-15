@@ -53,9 +53,11 @@ describe('Social group members: only the group owner or an admin manages members
             assert.ok(add.notCalled);
         });
 
-        it('an unknown group is the same NotFound for everyone (before the permission check)', async function () {
+        it('an unknown or inactive group is the same NotFound for everyone (before the permission check)', async function () {
             canManage.resolves(true);
             await assert.rejects(endpoint.add.query(frame('admin', {group_id: 'nope', user_id: 'u2', role_id: 'r1', status: 'active'})), {errorType: 'NotFoundError'});
+            models.SocialGroup.findOne.callsFake(async () => fakeModel({id: 'g1', status: 'archived'}));
+            await assert.rejects(endpoint.add.query(frame('admin', {group_id: 'g1', user_id: 'u2', role_id: 'r1', status: 'active'})), {errorType: 'NotFoundError'});
             assert.ok(canManage.notCalled);
         });
     });
@@ -91,6 +93,13 @@ describe('Social group members: only the group owner or an admin manages members
             await endpoint.destroy.query(frame('owner', {group_id: 'g-other'}, {id: 'row1'}));
             assert.ok(edit.calledOnce);
             assert.ok(destroy.calledOnce);
+        });
+
+        it('edit and destroy without a signed-in user are refused (fail closed)', async function () {
+            await assert.rejects(endpoint.edit.query(frame(null, {role_id: 'r'}, {id: 'row1'})), {errorType: 'NoPermissionError'});
+            await assert.rejects(endpoint.destroy.query(frame(null, {}, {id: 'row1'})), {errorType: 'NoPermissionError'});
+            assert.ok(edit.notCalled);
+            assert.ok(destroy.notCalled);
         });
 
         it('an unknown row is NotFound', async function () {

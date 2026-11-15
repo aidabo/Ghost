@@ -13,11 +13,8 @@ const messages = {
     noPermissionToManage: 'Only the group owner or a group admin can change or remove members of this group.',
     groupNotFound: 'The group was not found or is not active.',
     memberNotFound: 'Group member not found.',
-    cannotMoveMember: 'A group member cannot be moved to another group or person. Remove it and add a new one.',
-    noRoleChangePermission: 'You do not have permission to change a member role.'
+    cannotMoveMember: 'A group member cannot be moved to another group or person. Remove it and add a new one.'
 };
-
-/** @type {import('@tryghost/api-framework').Controller} */
 
 // 一員を足す・変える・外すのは、そのグループの持ち主・管理者（Social Group Owner・Admin）、グループを作った人、サイトの管理者だけ
 // （canManageGroupMembers。jibunsee-react docs/planning/invite-links.md の D6）。グループは**保存されている行**のものを使い、
@@ -39,6 +36,7 @@ async function storedMember(frame) {
     return row;
 }
 
+/** @type {import('@tryghost/api-framework').Controller} */
 const controller = {
     docName: 'socialgroupmembers',
 
