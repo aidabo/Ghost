@@ -4,43 +4,41 @@ Ghost が送るメールに入っている **Ghost の元のロゴ**（`static.g
 
 ## ロゴの URL
 
-`services/lib/front-logo.js` の `getFrontLogoUrl()`:
+`services/lib/front-logo.js` の `getFrontLogoUrl()`。どれも**転送を挟まない** URL を書く（転送をたどらないメールソフトや検査装置でも出る）。上から順に選ぶ:
+
+| 順 | ロゴ | いつ |
+|---|---|---|
+| 1 | front の `/settings`（アプリバー）で選んだ**ロゴの画像**。無ければ同じ画面の **favicon の画像** | Ghost の設定 `my_config`（JSON）の `logo.imageUrl`（`logo.mode` が `image` のとき）・`favicon.imageUrl` が `http(s)://` の絶対 URL。上げた画像は S3（CloudFront）にあり、front の `/public` には置かれない。`.ico`・`.svg` はメールソフトで出ないことがあるので使わない |
+| 2 | `<front>/brand/<TENANT>/apple-touch-icon.png` | 環境変数 `TENANT` がある（英数字と `-` だけ）。front の `public/brand/<テナント名>/` の 180x180 の正方形。front はその組のフォルダが無いとき、同じ URL で共通の画像を 200 で返す（front の `app/brand/[set]/apple-touch-icon.png`、jibunsee-react #686） |
+| 3 | `<front>/apple-touch-icon-180.png` | `TENANT` が無い。front の `public` 直下の共通の画像 |
+| 4 | 今までの Ghost のロゴ | 1 が無く、front の URL も無い（試験のとき・設定し忘れのときに壊れない） |
 
 - front の URL は、**メールのリンクと同じ `FRONT_END_URL` を先に**見る（同じメールのリンクとロゴの行き先がそろう）。無ければ `GHOST_FRONT_END_URL`、
-  `MEMBERS_FRONTEND_URL`・`FRONTEND_URL`・`NEXT_PUBLIC_FRONT_URL`（`services/members/frontend-url.js` と同じ並び）の順。
-- **本番で設定するもの**: ホストの `env-prd.sh` の `GHOST_FRONT_END_URL`（front の `scripts/tenant/deploy-app.mjs` がサイトの URL を入れる）。
-  `tenants/<テナント>/deploy/backend/docker-compose.yml` が `FRONT_END_URL=${GHOST_FRONT_END_URL}` でコンテナに渡す。
-- ロゴは、環境変数 **`TENANT`** で決まる front の画像を**直接**書く（転送を挟まない。転送をたどらないメールソフトや検査装置でも出る）。
-  画像は front の `public/brand/<組>/` の 180x180 の正方形（front の `src/lib/siteIcons.ts` の apple と同じファイル）。
+  `MEMBERS_FRONTEND_URL`・`FRONTEND_URL`・`NEXT_PUBLIC_FRONT_URL`（`services/members/frontend-url.js` と同じ並び）の順。最初に値のある名前だけを使う。
+- **本番で設定するもの**（front の `scripts/tenant/deploy-app.mjs` がホストの `env-prd.sh` に書き、`tenants/<テナント>/deploy/backend/docker-compose.yml` がコンテナに渡す）:
+  - `GHOST_FRONT_END_URL` → コンテナの `FRONT_END_URL`（サイトの URL）
+  - `TENANT`（テナント名 = `system.json` の `system`。jibunsee-react #686 から）
+- front の `brand` の組の名前はテナント名と同じ（`60-think`・`janabiz`・`thinkestate`）。テナントを足したら、front の `public/brand/<テナント名>/apple-touch-icon.png` を置く（置くまでは共通の画像）。
+- スタッフへのお知らせと 2FA のメールは、Ghost のサイトのアイコン（Ghost の設定の icon）があればそれを先に使う（今までどおり）。
 
-  | `TENANT` | ロゴの URL |
-  |---|---|
-  | `60-think` | `<front>/brand/60-think/apple-touch-icon-180.png` |
-  | `thinkestate`（`think-estate` でも） | `<front>/brand/think-estate/apple-touch-icon.png` |
-  | `janabiz`（`mars-times` でも） | `<front>/brand/mars-times/apple-touch-icon.png` |
-  | 無い・上に無い名前 | `<front>/apple-touch-icon.png`（front が自分の組 `GHOST_FRONT_ICON_SET` へ転送する） |
-
-  front でロゴの画像を足したり名前を変えたりしたら、`front-logo.js` の `TENANT_LOGO_PATHS` も直す。
-- **本番**: Ghost のコンテナに `TENANT` を渡す（`tenants/<テナント>/deploy/backend/docker-compose.yml`）。渡していないと、上の表の最後の行（転送）になる。
-- どれも無い（`http(s)://` で始まらない）ときは `null`。メールは**今までの Ghost のロゴのまま**（試験のとき・設定し忘れのときに壊れない）。
-
-例（`FRONT_END_URL=https://janabiz.example.com`・`TENANT=janabiz` のとき、招待メール）:
+例（`FRONT_END_URL=https://janabiz.example.com`・`TENANT=janabiz`、`/settings` でロゴを選んでいないとき、招待メール）:
 
 ```html
 <!-- 前 --> <img src="https://static.ghost.org/v4.0.0/images/ghost-orb-1.png" width="60" height="60" ... />
-<!-- 後 --> <img src="https://janabiz.example.com/brand/mars-times/apple-touch-icon.png" width="60" height="60" ... />
+<!-- 後 --> <img src="https://janabiz.example.com/brand/janabiz/apple-touch-icon.png" width="60" height="60" ... />
 ```
 
-配布の後に、テナントごとにロゴの URL が画像を返すかを確かめる（URL の打ち間違いや front の 404 は、全部のメールで画像が切れる。
-コードの予備は「設定が無い」ときだけ）:
+配布の後に、ロゴの URL が転送なしで画像を返すかを確かめる（URL の打ち間違いや front の 404 は、全部のメールで画像が切れる）:
 
 ```bash
-# 転送なしで画像が返ること（-L を付けない。3xx も curl -f では成功になるので、status が 200 かを見る）
-for p in /brand/60-think/apple-touch-icon-180.png /brand/think-estate/apple-touch-icon.png /brand/mars-times/apple-touch-icon.png; do
+# -L を付けない。3xx も curl -f では成功になるので、status が 200 かを見る
+for p in "/brand/$TENANT/apple-touch-icon.png" /apple-touch-icon-180.png; do
   printf '%s ' "$p"
   curl -sS -I -o /dev/null -w '%{http_code} %{content_type}\n' "$FRONT_END_URL$p"   # 200 image/png であること
 done
 ```
+
+`/settings` でロゴを選んでいるときは、その画像の URL（CloudFront）も同じように 200 を確かめる。
 
 ## 替えたメール
 

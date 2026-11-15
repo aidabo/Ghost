@@ -173,6 +173,7 @@ RUN set -eux; \
     grep -q includeOTC node_modules/@tryghost/members-api/lib/members-api.js; \
     grep -q includeOTC node_modules/@tryghost/members-api/lib/controllers/RouterController.js; \
     test -f core/server/services/lib/front-logo.js; \
+    grep -q my_config core/server/services/lib/front-logo.js; \
     grep -q frontLogoUrl core/server/services/lib/EmailContentGenerator.js; \
     grep -q frontLogoUrl core/server/services/mail/templates/invite-user.html; \
     grep -q frontLogoUrl core/server/services/api-version-compatibility/templates/generic-mismatch.html; \

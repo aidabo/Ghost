@@ -1,9 +1,12 @@
-// メールのロゴを、Ghost の元のロゴ（static.ghost.org の orb）から front のロゴ（<front>/apple-touch-icon.png）に替える。
-// front の URL（メールのリンクと同じ FRONT_END_URL を先、無ければ GHOST_FRONT_END_URL など）が無いときは、今までの Ghost のロゴのまま。
+// メールのロゴを、Ghost の元のロゴ（static.ghost.org の orb）から front のロゴに替える（転送なし）。
+// 順: front の /settings で選んだロゴ（my_config）→ <front>/brand/<TENANT>/apple-touch-icon.png → <front>/apple-touch-icon-180.png。
+// front の URL（メールのリンクと同じ FRONT_END_URL を先、無ければ GHOST_FRONT_END_URL など）も選んだロゴも無いときは、今までの Ghost のロゴのまま。
 const assert = require('assert/strict');
 const path = require('path');
+const sinon = require('sinon');
+const settingsCache = require('../../../../../core/shared/settings-cache');
 
-const {getFrontLogoUrl, siteIconOrFrontLogo, TENANT_LOGO_PATHS} = require('../../../../../core/server/services/lib/front-logo');
+const {getFrontLogoUrl, siteIconOrFrontLogo, chosenLogoUrl} = require('../../../../../core/server/services/lib/front-logo');
 const EmailContentGenerator = require('../../../../../core/server/services/lib/EmailContentGenerator');
 const importerTemplate = require('../../../../../core/server/data/importer/email-template');
 const membersImporterTemplate = require('../../../../../core/server/services/members/importer/email-template');
@@ -11,7 +14,8 @@ const StaffServiceEmails = require('../../../../../core/server/services/staff/St
 
 const SERVER = path.resolve(__dirname, '../../../../../core/server');
 const FRONT = 'https://front.example.com';
-const FRONT_LOGO = `${FRONT}/apple-touch-icon.png`;
+const FRONT_LOGO = `${FRONT}/apple-touch-icon-180.png`;
+const CHOSEN = 'https://cdn.example.com/60-think/images/logo.png';
 const ORB = /https:\/\/static\.ghost\.org\/v[45]\.0\.0\/images\/(ghost-orb|orb-email-head)/;
 
 // 雛形ごとの中身（雛形の {{ }} が使う値）
@@ -26,8 +30,13 @@ const TEMPLATES = [
 
 describe('Mail: the front logo instead of the Ghost logo', function () {
     let saved;
+    let myConfig;
 
     beforeEach(function () {
+        // Ghost の設定 my_config（front の /settings で選んだロゴ）。試験ごとに決める
+        myConfig = null;
+        const realGet = settingsCache.get.bind(settingsCache);
+        sinon.stub(settingsCache, 'get').callsFake((key, options) => (key === 'my_config' ? myConfig : realGet(key, options)));
         saved = {};
         for (const key of ['FRONT_END_URL', 'GHOST_FRONT_END_URL', 'MEMBERS_FRONTEND_URL', 'FRONTEND_URL', 'NEXT_PUBLIC_FRONT_URL', 'TENANT']) {
             saved[key] = process.env[key];
@@ -36,6 +45,7 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
     });
 
     afterEach(function () {
+        sinon.restore();
         for (const [key, value] of Object.entries(saved)) {
             if (value === undefined) {
                 delete process.env[key];
@@ -47,15 +57,15 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
 
     describe('getFrontLogoUrl', function () {
         it('uses FRONT_END_URL first (the same host as the mail links), without a trailing slash', function () {
-            assert.equal(getFrontLogoUrl({GHOST_FRONT_END_URL: 'https://a.example.com/', FRONT_END_URL: 'https://b.example.com//'}), 'https://b.example.com/apple-touch-icon.png');
+            assert.equal(getFrontLogoUrl({GHOST_FRONT_END_URL: 'https://a.example.com/', FRONT_END_URL: 'https://b.example.com//'}), 'https://b.example.com/apple-touch-icon-180.png');
         });
 
         it('then GHOST_FRONT_END_URL, then the members front URL names (as services/members/frontend-url.js)', function () {
-            assert.equal(getFrontLogoUrl({GHOST_FRONT_END_URL: 'https://a.example.com', MEMBERS_FRONTEND_URL: 'https://m.example.com'}), 'https://a.example.com/apple-touch-icon.png');
-            assert.equal(getFrontLogoUrl({MEMBERS_FRONTEND_URL: 'https://m.example.com', FRONTEND_URL: 'https://f.example.com'}), 'https://m.example.com/apple-touch-icon.png');
-            assert.equal(getFrontLogoUrl({FRONTEND_URL: 'https://f.example.com'}), 'https://f.example.com/apple-touch-icon.png');
-            assert.equal(getFrontLogoUrl({NEXT_PUBLIC_FRONT_URL: 'https://n.example.com'}), 'https://n.example.com/apple-touch-icon.png');
-            assert.equal(getFrontLogoUrl({FRONT_END_URL: '  ', GHOST_FRONT_END_URL: 'https://a.example.com'}), 'https://a.example.com/apple-touch-icon.png');
+            assert.equal(getFrontLogoUrl({GHOST_FRONT_END_URL: 'https://a.example.com', MEMBERS_FRONTEND_URL: 'https://m.example.com'}), 'https://a.example.com/apple-touch-icon-180.png');
+            assert.equal(getFrontLogoUrl({MEMBERS_FRONTEND_URL: 'https://m.example.com', FRONTEND_URL: 'https://f.example.com'}), 'https://m.example.com/apple-touch-icon-180.png');
+            assert.equal(getFrontLogoUrl({FRONTEND_URL: 'https://f.example.com'}), 'https://f.example.com/apple-touch-icon-180.png');
+            assert.equal(getFrontLogoUrl({NEXT_PUBLIC_FRONT_URL: 'https://n.example.com'}), 'https://n.example.com/apple-touch-icon-180.png');
+            assert.equal(getFrontLogoUrl({FRONT_END_URL: '  ', GHOST_FRONT_END_URL: 'https://a.example.com'}), 'https://a.example.com/apple-touch-icon-180.png');
         });
 
         it('siteIconOrFrontLogo: the site icon, else the front logo, else the given Ghost logo (2FA, staff notices)', function () {
@@ -67,34 +77,46 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
             assert.equal(siteIconOrFrontLogo('https://ghost.test/icon.png', 'orb'), 'https://ghost.test/icon.png');
         });
 
-        it('with TENANT, points straight at that tenant\'s image (no redirect), the same files as the front\'s siteIcons.ts', function () {
+        it('with TENANT, points straight at <front>/brand/<TENANT>/apple-touch-icon.png (no redirect; the front names its sets after the tenants)', function () {
             const front = {FRONT_END_URL: 'https://front.example.com/'};
-            assert.equal(getFrontLogoUrl({...front, TENANT: '60-think'}), 'https://front.example.com/brand/60-think/apple-touch-icon-180.png');
-            assert.equal(getFrontLogoUrl({...front, TENANT: 'thinkestate'}), 'https://front.example.com/brand/think-estate/apple-touch-icon.png');
-            assert.equal(getFrontLogoUrl({...front, TENANT: 'janabiz'}), 'https://front.example.com/brand/mars-times/apple-touch-icon.png');
-            // front の組の名前・前後の空白・大文字でも
-            assert.equal(getFrontLogoUrl({...front, TENANT: ' Mars-Times '}), 'https://front.example.com/brand/mars-times/apple-touch-icon.png');
-            assert.equal(getFrontLogoUrl({...front, TENANT: 'think-estate'}), 'https://front.example.com/brand/think-estate/apple-touch-icon.png');
+            for (const tenant of ['60-think', 'janabiz', 'thinkestate', 'new-tenant']) {
+                assert.equal(getFrontLogoUrl({...front, TENANT: ` ${tenant} `}), `https://front.example.com/brand/${tenant}/apple-touch-icon.png`);
+            }
         });
 
-        it('without TENANT or with an unknown one, uses the front\'s /apple-touch-icon.png (the front redirects to its own set)', function () {
+        it('without TENANT, or with one that is not a tenant name, uses the common <front>/apple-touch-icon-180.png', function () {
             const front = {FRONT_END_URL: 'https://front.example.com'};
-            assert.equal(getFrontLogoUrl(front), 'https://front.example.com/apple-touch-icon.png');
-            assert.equal(getFrontLogoUrl({...front, TENANT: 'other'}), 'https://front.example.com/apple-touch-icon.png');
-            assert.equal(getFrontLogoUrl({...front, TENANT: 'constructor'}), 'https://front.example.com/apple-touch-icon.png');
+            assert.equal(getFrontLogoUrl(front), 'https://front.example.com/apple-touch-icon-180.png');
+            for (const tenant of ['../x', 'a/b', 'a b', '"x', '-x']) {
+                assert.equal(getFrontLogoUrl({...front, TENANT: tenant}), 'https://front.example.com/apple-touch-icon-180.png', tenant);
+            }
             // TENANT だけでは front の URL にならない
             assert.equal(getFrontLogoUrl({TENANT: 'janabiz'}), null);
         });
 
-        it('the paths match image files in the front (when the front checkout is next to this one)', function () {
-            const fs = require('fs');
-            const brand = path.resolve(__dirname, '../../../../../../../../01-ghost-front/apps/host/public');
-            if (!fs.existsSync(brand)) {
-                this.skip();
+        it('the logo chosen in the front\'s /settings comes first (logo image, else favicon image), even without the front URL', function () {
+            const env = {FRONT_END_URL: FRONT, TENANT: 'janabiz'};
+            assert.equal(getFrontLogoUrl(env, JSON.stringify({logo: {mode: 'image', imageUrl: CHOSEN}, favicon: {imageUrl: 'https://cdn.example.com/f.png'}})), CHOSEN);
+            assert.equal(getFrontLogoUrl(env, JSON.stringify({logo: {mode: 'icon', imageUrl: CHOSEN}, favicon: {imageUrl: 'https://cdn.example.com/f.png'}})), 'https://cdn.example.com/f.png');
+            assert.equal(getFrontLogoUrl({}, JSON.stringify({logo: {mode: 'image', imageUrl: CHOSEN}})), CHOSEN);
+            // 設定のキャッシュから読む（引数を省いたとき）
+            myConfig = JSON.stringify({logo: {mode: 'image', imageUrl: CHOSEN}});
+            assert.equal(getFrontLogoUrl(env), CHOSEN);
+        });
+
+        it('a chosen image that mail cannot show is skipped (not absolute http(s), .ico, .svg, broken JSON)', function () {
+            for (const config of [
+                null, '', 'not json', '"x"', '{}',
+                JSON.stringify({logo: {mode: 'default', imageUrl: CHOSEN}}),
+                JSON.stringify({logo: {mode: 'image', imageUrl: '/content/images/logo.png'}}),
+                JSON.stringify({logo: {mode: 'image', imageUrl: 'javascript:alert(1)'}}),
+                JSON.stringify({logo: {mode: 'image', imageUrl: 'https://cdn.example.com/x.png"><script>'}}),
+                JSON.stringify({favicon: {imageUrl: 'https://cdn.example.com/favicon.ico'}}),
+                JSON.stringify({logo: {mode: 'image', imageUrl: 'https://cdn.example.com/logo.SVG?v=1'}})
+            ]) {
+                assert.equal(chosenLogoUrl(config), null, String(config));
             }
-            for (const logoPath of Object.values(TENANT_LOGO_PATHS)) {
-                assert.ok(fs.existsSync(path.join(brand, logoPath)), logoPath);
-            }
+            assert.equal(getFrontLogoUrl({FRONT_END_URL: FRONT}, JSON.stringify({favicon: {imageUrl: 'https://cdn.example.com/favicon.ico'}})), FRONT_LOGO);
         });
 
         it('is null without a usable http(s) URL (the caller keeps the Ghost logo)', function () {
@@ -127,8 +149,18 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
                 process.env.FRONT_END_URL = FRONT;
                 process.env.TENANT = 'janabiz';
                 const {html} = await render();
-                assert.ok(html.includes(`<img src="${FRONT}/brand/mars-times/apple-touch-icon.png"`), 'tenant logo');
+                assert.ok(html.includes(`<img src="${FRONT}/brand/janabiz/apple-touch-icon.png"`), 'tenant logo');
                 assert.ok(!html.includes(FRONT_LOGO));
+            });
+
+            it('shows the logo chosen in the front\'s /settings first', async function () {
+                process.env.FRONT_END_URL = FRONT;
+                process.env.TENANT = 'janabiz';
+                myConfig = JSON.stringify({logo: {mode: 'image', imageUrl: CHOSEN}});
+                const {html} = await render();
+                assert.ok(html.includes(`<img src="${CHOSEN}"`), 'chosen logo');
+                assert.ok(!html.includes('/brand/'));
+                assert.doesNotMatch(html, ORB);
             });
 
             it('keeps the Ghost logo when the front URL is not set', async function () {
