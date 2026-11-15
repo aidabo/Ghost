@@ -38,6 +38,8 @@ describe('Group invites', function () {
             const canManage = sinon.stub(models.SocialGroupMember, 'canManageGroupMembers').resolves(false);
             findGroup.resolves(fakeModel({id: 'g1', status: 'active'}));
             await assert.rejects(groupInvite.assertCanInviteToGroup('g1', 'stranger'), {errorType: 'NoPermissionError'});
+            // 招く人が分からない要求（サーバーの鍵など）も断る（確かめずに通さない）
+            await assert.rejects(groupInvite.assertCanInviteToGroup('g1', undefined), {errorType: 'NoPermissionError'});
             findGroup.resolves(null);
             await assert.rejects(groupInvite.assertCanInviteToGroup('nope', 'u1'), {errorType: 'ValidationError'});
             findGroup.resolves(fakeModel({id: 'g1', status: 'archived'}));

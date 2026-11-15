@@ -25,16 +25,17 @@ function kindOf(group) {
 }
 
 /**
- * 招待に group_id を付けてよいか。ログインしている人の要求なら、そのグループの持ち主・管理者であること。
+ * 招待に group_id を付けてよいか。招く人（ログインしている人）が、そのグループの持ち主・管理者であること。
+ * 招く人が分からない要求（サーバー同士の連携の鍵など）は断る（グループの招待は、招く人の権限でしか作らない）。
  * @param {string} groupId
- * @param {string} [userId] 招く人（サーバー同士の連携の鍵では無し）
+ * @param {string} [userId] 招く人
  */
 async function assertCanInviteToGroup(groupId, userId) {
     const group = await models.SocialGroup.findOne({id: groupId}, internal);
     if (!group || group.get('status') !== 'active') {
         throw new errors.ValidationError({message: tpl(messages.groupNotFound)});
     }
-    if (userId && !(await models.SocialGroupMember.canManageGroupMembers(groupId, userId))) {
+    if (!userId || !(await models.SocialGroupMember.canManageGroupMembers(groupId, userId))) {
         throw new errors.NoPermissionError({message: tpl(messages.noPermission)});
     }
     return group;
