@@ -3,6 +3,9 @@
 const assert = require('assert/strict');
 const {agentProvider, fixtureManager, mockManager, dbUtils} = require('../../utils/e2e-framework');
 const models = require('../../../core/server/models');
+const config = require('../../../core/shared/config');
+const AdminAPITestAgent = require('../../utils/agents/admin-api-test-agent');
+const localUtils = require('./utils');
 
 let ipCounter = 0;
 function nextIp() {
@@ -17,7 +20,7 @@ describe('Invitation info API', function () {
 
     before(async function () {
         agent = await agentProvider.getAdminAPIAgent();
-        await fixtureManager.init('users');
+        await fixtureManager.init('users', 'api_keys');
         await agent.loginAsOwner();
         const roles = await agent.get('roles/').expectStatus(200);
         authorRoleId = roles.body.roles.find(role => role.name === 'Author').id;
@@ -76,10 +79,24 @@ describe('Invitation info API', function () {
         assert.equal(row && row.status, 'accepted');
         assert.equal(row.token, undefined, 'no token in the list');
 
+        // front のサーバーが使う連携の鍵（セッション無し）でも読める（連携の鍵の許可の invites: GET と Admin Integration の権限）
+        const keyAgent = new AdminAPITestAgent(agent.app, {apiURL: '/ghost/api/admin/', originURL: config.get('url')});
+        const byKey = await keyAgent.get(`invites/?filter=${encodeURIComponent('status:[pending,sent,accepted]')}`)
+            .header('Authorization', `Ghost ${localUtils.getValidAdminToken('/admin/')}`)
+            .expectStatus(200);
+        const keyRow = byKey.body.invites.find(i => i.email === email);
+        assert.equal(keyRow && keyRow.status, 'accepted');
+        assert.equal(keyRow.token, undefined);
+
         // 同じ token でもう一度受けることはできない
         await agent.post('authentication/invitation/')
             .body({invitation: [{token, email, name: 'Again', password: 'Tq7#vLm2!pWz9xRe'}]})
             .expectStatus(404);
+
+        // 登録した人に同じメールで招き直すことはできない（もうユーザー）。登録済みの行はそのまま残る
+        await agent.post('invites/').header('X-Forwarded-For', nextIp())
+            .body({invites: [{email, role_id: authorRoleId}]}).expectStatus(422);
+        assert.equal((await models.Invite.findOne({email}, {context: {internal: true}})).get('status'), 'accepted');
     });
 
     it('an unknown token and a missing token are refused', async function () {

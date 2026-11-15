@@ -30,7 +30,9 @@
 - 受ける口・読む口・6 桁の口は `status: 'sent'` だけを見るので、登録済みの招待の token はもう使えない。
 - **履歴の読み方**: front のサーバーが連携の鍵で `GET /ghost/api/admin/invites/?filter=status:[pending,sent,accepted]+created_by:'<招いた人の id>'` を呼ぶ
   （連携の鍵の許可に `invites: GET` を足した。front の `/api/invites/mine` は、ブラウザのセッションで確かめた人の招待だけに絞る）。
-  返す欄は `status`・`created_by`・`group_id`・`email`・`expires`・`created_at`（token は返さない）。
+  招待の行の欄は token 以外すべて返る（`id`・`role_id`・`email`・`status`・`expires`・`created_by`・`group_id`・`created_at`・`updated_at` など）。
+  e2e（`invitation-info.test.js`）は連携の鍵での読みも確かめる。
+- 登録したあと同じメールで招き直すと 422（もうユーザー）。登録済みの行は残る。
 - **一覧の既定は pending・sent だけ**（`Invite.defaultFilters`）。登録済み（accepted）は Ghost の管理画面の「招待中」には出ない（Resend で既存のユーザーに招待を送り直さないように）。
   `status` を書いた filter を渡したときだけ accepted も返る。
 - **「グループに追加」**: front がブラウザのセッションで `POST /social/members/` `{socialgroupmembers: [{group_id, user_id, role_id: <Social Group Member の id>, status: 'active'}]}`。`role_id` は必須。
