@@ -67,6 +67,8 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
             const env = {GHOST_FRONT_END_URL: 'https://g.example.com'};
             assert.equal(toFrontUrl('http://localhost:2368/', env), 'https://g.example.com/');
             assert.equal(toFrontUrl('http://localhost:2368/blog/', env), 'https://g.example.com/blog/');
+            // front の URL に $& などがあっても、そのまま使う（置換の記号として読まない）
+            assert.equal(toFrontUrl('http://localhost:2368/x', {FRONT_END_URL: 'https://f.example.com/$&'}), 'https://f.example.com/$&/x');
         });
 
         it('an admin link (…/ghost/…) becomes the front page of the same path', function () {

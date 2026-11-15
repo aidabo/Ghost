@@ -93,6 +93,24 @@ describe('Password reset code API', function () {
         mockManager.restore();
     });
 
+    it('the reset link in the mail is the front page (FRONT_END_URL), not Ghost\'s /ghost/reset/', async function () {
+        const saved = process.env.FRONT_END_URL;
+        process.env.FRONT_END_URL = 'https://front.test';
+        try {
+            await request(email, 'en');
+            await waitForEmails(mailReceiver, 1);
+            const sent = mailReceiver.getSentEmail(0);
+            assert.match(sent.text, /https:\/\/front\.test\/reset\/[^/\s]+\//);
+            assert.ok(!sent.text.includes('/ghost/'), 'no Ghost admin path');
+        } finally {
+            if (saved === undefined) {
+                delete process.env.FRONT_END_URL;
+            } else {
+                process.env.FRONT_END_URL = saved;
+            }
+        }
+    });
+
     it('sends a random 6-digit code (first in the subject) and the reset link, and returns a ref', async function () {
         const ref = await request(email, 'ja');
         assert.equal(typeof ref, 'string');

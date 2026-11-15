@@ -53,6 +53,8 @@ front の URL はロゴと同じ（環境変数 `FRONT_END_URL`、無ければ `
 
 - 道に `/ghost` がある管理のリンク（`…/ghost/signup/<token>/`・`…/ghost/reset/<token>/`）は、`/ghost` までを front の URL に替える（front の `/signup/<token>/`・`/reset/<token>/`）。
 - サイトの URL（道に `/ghost` が無い）は、ホストを front の URL に替える（例 `http://localhost:2368/` → `<front>/`）。
+- 例（`FRONT_END_URL=https://janabiz.example.com`、招待のメール）: `<a href="http://localhost:2368/ghost/signup/<token>/">` → `<a href="https://janabiz.example.com/signup/<token>/">`、
+  一番下の「このメールは http://localhost:2368/ から …」→「… https://janabiz.example.com/ から …」。front はサイトのルートに置く前提（Ghost の道 `/blog/` などは front にもある必要がある）。
 - 雛形は `{{toFront(resetLink)}}` のように書く（`EmailContentGenerator` が `toFront` を渡す）。前の `.replace(/.*ghost/, process.env.FRONT_END_URL)` は、
   サイトの URL を替えられず（`:2368` のまま）、`GHOST_FRONT_END_URL` だけのときは `undefined/…` になり、ホスト名に ghost があると壊れた。
 

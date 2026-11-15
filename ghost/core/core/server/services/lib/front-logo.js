@@ -107,7 +107,8 @@ function toFrontUrl(url, env = process.env) {
     if (admin) {
         return `${base}${admin[1] || '/'}`;
     }
-    return value.replace(/^https?:\/\/[^/]+/i, base);
+    // 置き換える文字列の $& などを置換の記号として読ませないよう、関数で返す
+    return value.replace(/^https?:\/\/[^/]+/i, () => base);
 }
 
 function resolveFrontLogoUrl(env, myConfig) {
