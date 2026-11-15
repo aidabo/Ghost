@@ -6,6 +6,7 @@ const settingsCache = require('../../../../shared/settings-cache');
 const {GhostMailer} = require('../../mail');
 const {t} = require('../../i18n');
 const labs = require('../../../../shared/labs');
+const {siteIconOrFrontLogo} = require('../../lib/front-logo');
 
 const expressSession = require('./express-session');
 
@@ -48,8 +49,11 @@ const sessionService = createSessionService({
         return settingsCache.get(key);
     },
     getBlogLogo() {
-        return blogIcon.getIconUrl({absolute: true, fallbackToDefault: false})
-            || 'https://static.ghost.org/v4.0.0/images/ghost-orb-1.png';
+        // サイトのアイコン、無ければ front のロゴ、それも無ければ今までの Ghost のロゴ
+        return siteIconOrFrontLogo(
+            blogIcon.getIconUrl({absolute: true, fallbackToDefault: false}),
+            'https://static.ghost.org/v4.0.0/images/ghost-orb-1.png'
+        );
     },
     mailer,
     urlUtils,

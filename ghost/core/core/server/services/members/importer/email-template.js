@@ -1,3 +1,6 @@
+// メールのロゴは front のロゴ（無ければ今までの Ghost のロゴ）。services/lib/front-logo.js
+const {getFrontLogoUrl} = require('../../lib/front-logo');
+
 function formatNumber(number) {
     return number.toLocaleString();
 }
@@ -123,7 +126,7 @@ module.exports = ({result, siteUrl, membersUrl, emailRecipient}) => `
                 <td class="wrapper" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; font-size: 14px; vertical-align: top; box-sizing: border-box;">
                   <table border="0" cellpadding="0" cellspacing="0" style="border-collapse: separate; mso-table-lspace: 0pt; mso-table-rspace: 0pt; width: 100%;">
                       <tr>
-                          <td align="center" style="padding-top: 20px; padding-bottom: 12px;"><img src="https://static.ghost.org/v4.0.0/images/ghost-orb-4.png" width="60" height="60" style="width: 60px; height: 60px;" /></td>
+                          <td align="center" style="padding-top: 20px; padding-bottom: 12px;"><img src="${getFrontLogoUrl() || 'https://static.ghost.org/v4.0.0/images/ghost-orb-4.png'}" width="60" height="60" style="width: 60px; height: 60px;" /></td>
                       </tr>
                       <tr>
                           <td style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol'; font-size: 16px; vertical-align: top;">

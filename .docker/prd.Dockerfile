@@ -58,6 +58,16 @@ COPY --chown=node:node ghost/core/core/server/services/auth ${GHOST_INSTALL}/cur
 COPY --chown=node:node ghost/core/core/server/services/invites ${GHOST_INSTALL}/current/core/server/services/invites
 # 会員の 6 桁のコード（services/members の SingleUseTokenProvider・api・members-ssr・middleware）
 COPY --chown=node:node ghost/core/core/server/services/members ${GHOST_INSTALL}/current/core/server/services/members
+# メールのロゴを front のロゴに（services/lib/front-logo.js。無ければ今までの Ghost のロゴ）。使うところ:
+# 雛形を組む EmailContentGenerator（mail・api-version-compatibility の雛形）、取り込みの終わりのメール 2 つ、
+# スタッフの節目のメール（services/staff）。2FA のメールは services/auth/session（上の services/auth に入る）
+COPY --chown=node:node ghost/core/core/server/services/lib/front-logo.js ${GHOST_INSTALL}/current/core/server/services/lib/
+COPY --chown=node:node ghost/core/core/server/services/lib/EmailContentGenerator.js ${GHOST_INSTALL}/current/core/server/services/lib/
+# api-version-compatibility の雛形（元のイメージには templates が無い）
+COPY --chown=node:node ghost/core/core/server/services/api-version-compatibility/templates ${GHOST_INSTALL}/current/core/server/services/api-version-compatibility/templates
+COPY --chown=node:node ghost/core/core/server/data/importer/email-template.js ${GHOST_INSTALL}/current/core/server/data/importer/
+COPY --chown=node:node ghost/core/core/server/services/staff/StaffServiceEmails.js ${GHOST_INSTALL}/current/core/server/services/staff/
+COPY --chown=node:node ghost/core/core/server/services/staff/email-templates/new-milestone-received.hbs ${GHOST_INSTALL}/current/core/server/services/staff/email-templates/
 # どちらも回数の制限は brute.js と spam-prevention.js（codeAttempts）
 COPY --chown=node:node ghost/core/core/server/web/shared/middleware/brute.js ${GHOST_INSTALL}/current/core/server/web/shared/middleware
 COPY --chown=node:node ghost/core/core/server/web/shared/middleware/api/spam-prevention.js ${GHOST_INSTALL}/current/core/server/web/shared/middleware/api
@@ -161,7 +171,17 @@ RUN set -eux; \
     grep -q codeAttempts core/server/web/shared/middleware/api/spam-prevention.js; \
     grep -q createWithRef node_modules/@tryghost/magic-link/lib/MagicLink.js; \
     grep -q includeOTC node_modules/@tryghost/members-api/lib/members-api.js; \
-    grep -q includeOTC node_modules/@tryghost/members-api/lib/controllers/RouterController.js
+    grep -q includeOTC node_modules/@tryghost/members-api/lib/controllers/RouterController.js; \
+    test -f core/server/services/lib/front-logo.js; \
+    grep -q my_config core/server/services/lib/front-logo.js; \
+    grep -q frontLogoUrl core/server/services/lib/EmailContentGenerator.js; \
+    grep -q frontLogoUrl core/server/services/mail/templates/invite-user.html; \
+    grep -q frontLogoUrl core/server/services/api-version-compatibility/templates/generic-mismatch.html; \
+    grep -q getFrontLogoUrl core/server/data/importer/email-template.js; \
+    grep -q getFrontLogoUrl core/server/services/members/importer/email-template.js; \
+    grep -q siteIconOrFrontLogo core/server/services/auth/session/index.js; \
+    grep -q siteIconOrFrontLogo core/server/services/staff/StaffServiceEmails.js; \
+    grep -q logoUrl core/server/services/staff/email-templates/new-milestone-received.hbs
 
 WORKDIR $GHOST_INSTALL
 VOLUME $GHOST_CONTENT
