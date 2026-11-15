@@ -5,7 +5,7 @@
 ## 言葉の決め方（`services/lib/mail-i18n.js`）
 
 - `mailLanguage(locale)`: 画面の言葉が `ja`・`en`・`zh`（`zh-CN` などは `zh`）ならそれ。それ以外・無しは**サイトの言葉**（`settings.locale`）、それも無ければ `en`。
-- 画面の言葉の一覧は `SCREEN_LOCALES` の 1 か所。招待の API の `?locale=` の検査もここを使う。6 桁の認証コードのメール（`services/auth/invitation-code.js`・`password-reset-code.js` の `MAIL_TEXT`）も同じ 3 つを持つ（試験で揃っていることを見る）。
+- 画面の言葉の一覧は `SCREEN_LOCALES` の 1 か所。招待の API の `?locale=` の検査もここを使う。6 桁の認証コードのメール（`services/auth/invitation-code.js`・`password-reset-code.js` の `MAIL_TEXT`）も同じ 3 つを持つ（`invite-mail-i18n.test.js` が、どちらの `_MAIL_TEXT` の言葉も `SCREEN_LOCALES` と過不足なく同じことを見る）。
 - `mailT(locale)`: その言葉の `t`。言葉ごとに別の i18next を作って覚える。サイト全体の `t`（`services/i18n.js`）と `changeLanguage` は使わない（同時に来た別の人のメールの言葉が混ざらない）。
 - **例外を投げない**: 言葉の表が使えないなど何が失敗しても、英語の文（キー）に値を差し込んで返す。メールは必ず作る。
 - 言葉の表は `ghost/i18n/locales/<言語>/ghost.json`。キーは英語の文。ja・zh は訳を入れる。ほかの言語は `yarn translate`（`ghost/i18n`）が空で足す＝英語のまま出る（`zh-Hant` も今は英語）。

@@ -189,6 +189,8 @@ async function resetWithCode({email, ref, code, newPassword}, options = {}) {
 }
 
 module.exports = {
+    // 試験用: メールの言葉の一覧（services/lib/mail-i18n.js の SCREEN_LOCALES と同じであること）
+    _MAIL_TEXT: MAIL_TEXT,
     requestCode,
     resetWithCode,
     TOKEN_TYPE,

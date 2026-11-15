@@ -124,6 +124,13 @@ describe('Invite mails in the screen\'s language', function () {
         });
     }
 
+    it('the 6-digit mails have exactly the screen languages (no missing, no extra)', function () {
+        const passwordResetCode = require('../../../../../core/server/services/auth/password-reset-code');
+        for (const [name, mod] of [['invitation-code', invitationCode], ['password-reset-code', passwordResetCode]]) {
+            assert.deepEqual(Object.keys(mod._MAIL_TEXT).sort(), [...SCREEN_LOCALES].sort(), name);
+        }
+    });
+
     it('every screen language also has its own 6-digit block (the lists of languages do not drift apart)', function () {
         const leads = new Set();
         for (const locale of SCREEN_LOCALES) {
