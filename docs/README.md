@@ -16,7 +16,7 @@ These remain at repo root:
 - [staff-password-reset-code.md](./staff-password-reset-code.md) — スタッフのパスワードをメールの 6 桁のコードで決め直す（`password_reset_code`、ref と組、tokens の表、回数の制限）
 - [members-signin-code.md](./members-signin-code.md) — 会員のログイン・登録をメールの 6 桁のコードで（`includeOTC`・`/members/api/verify-otc`、回数の制限、本番イメージの COPY）
 - [staff-signup-code.md](./staff-signup-code.md) — スタッフの「アカウント作成」の招待に 6 桁の認証コード（`include_code`・`/authentication/invitation_code`、合えば招待の token、回数の制限）
-- [mail-front-logo.md](./mail-front-logo.md) — メールの Ghost のロゴを front のロゴ（`<GHOST_FRONT_END_URL か FRONT_END_URL>/apple-touch-icon.png`）に。替えたメールの一覧、本番イメージの COPY
+- [mail-front-logo.md](./mail-front-logo.md) — メールの Ghost のロゴを front のロゴに（転送なし: front の /settings で選んだロゴ → `<front>/brand/<TENANT>/apple-touch-icon.png` → 共通の画像）。本番の `TENANT` の渡し方、替えたメールの一覧、本番イメージの COPY
 
 - [social-api/README.md](./social-api/README.md)
 - [CUSTOM.md](./social-api/CUSTOM.md)
