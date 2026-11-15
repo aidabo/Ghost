@@ -93,7 +93,7 @@ describe('MagicLink', function () {
         });
     });
 
-    describe('#sendMagicLink with includeOTC', function () {
+    describe('#sendMagicLink with includeOTC and the screen language', function () {
         it('passes the 6-digit code to the subject, text and HTML, and returns otcRef', async function () {
             const tokenProvider = {
                 createWithRef: sandbox.stub().resolves({token: 'TOKEN', ref: 'REF'}),

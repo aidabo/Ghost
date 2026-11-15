@@ -25,7 +25,7 @@
   `getText(…, otc, locale)`・`getHTML(…, otc, locale)` と後ろに足す（言葉が無いときの引数は今までと同じ）。
 - `services/members/api.js` の `getSubject`・`getText`・`getHTML` が `tFor(locale)` で `t` を選ぶ: 言葉があれば `mailT(locale)`、無ければ**今までのサイトの `t`**。
   6 桁の欄（`otcSubject`・`otcText`・`addOtcToHtml`）も同じ `t`。
-- 有料の登録の確認（`signup-paid`）は Stripe の webhook から（`members-api` の `StripeService`）`locale` 無しで送るので、**サイトの言葉のまま**。
+- 有料の登録の確認（`signup-paid`）は Stripe の webhook から（`ghost/core/core/server/services/stripe/StripeService.js` の `sendSignupEmail`）`locale` 無しで送るので、**サイトの言葉のまま**。
 
 ## 本番イメージ（`.docker/prd.Dockerfile`）
 
@@ -39,5 +39,7 @@ cd ghost/core && env -u FRONT_END_URL -u GHOST_FRONT_END_URL -u MEMBERS_FRONTEND
   test/unit/server/services/invites/invite-mail-i18n.test.js test/unit/server/services/mail/templates-no-ghost.test.js
 # 会員のメール（MySQL）
 cd ghost/core && NODE_ENV=testing-mysql … yarn test:base --timeout=900000 test/e2e-api/members/member-mail-i18n.test.js
+# MagicLink が言葉を渡すこと（MySQL なし）
+cd ghost/magic-link && yarn test:unit
 cd ghost/i18n && yarn translate   # 新しいキーを足したら。差分が出なければ CI（failOnUpdate）でも通る
 ```
