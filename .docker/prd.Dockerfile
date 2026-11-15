@@ -176,7 +176,9 @@ RUN set -eux; \
     grep -q my_config core/server/services/lib/front-logo.js; \
     grep -q frontLogoUrl core/server/services/lib/EmailContentGenerator.js; \
     grep -q frontLogoUrl core/server/services/mail/templates/invite-user.html; \
-    if grep -q "is using Ghost" core/server/services/mail/templates/invite-user.html; then echo "invite-user.html still mentions Ghost" >&2; exit 1; fi; \
+    for f in invite-user invite-user-by-api-key reset-password; do \
+      if grep -qE "is using Ghost|No idea what Ghost is|Welcome to Ghost|ghost\.org\"" "core/server/services/mail/templates/$f.html"; then echo "$f.html still mentions Ghost" >&2; exit 1; fi; \
+    done; \
     grep -q frontLogoUrl core/server/services/api-version-compatibility/templates/generic-mismatch.html; \
     grep -q getFrontLogoUrl core/server/data/importer/email-template.js; \
     grep -q getFrontLogoUrl core/server/services/members/importer/email-template.js; \

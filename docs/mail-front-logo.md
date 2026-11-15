@@ -63,11 +63,12 @@ done
 
 html の雛形（mail・api-version-compatibility）は `services/lib/EmailContentGenerator.js` が `frontLogoUrl` を渡し、雛形は `{{frontLogoUrl || '今までの Ghost のロゴ'}}` と書く。
 
+招待メール（`invite-user.html`・`invite-user-by-api-key.html`）の「… is using Ghost」「No idea what Ghost is?」の文と、招待・パスワード再設定の `<title>Welcome to Ghost</title>` も消した（aidabo/Ghost #71。jibunsee-react `docs/planning/mail-i18n.md` の D6）。
+
 ## 替えていないもの
 
 - ニュースレター（`ghost/email-service`）の「Powered by Ghost」: ニュースレターの設定（`show_badge`）で切る。ボタンの小さな絵はロゴではない。
 - 会員のメール・コメント・メールアドレスの確認: ロゴの画像が無い。
-- 招待メールの「… is using Ghost」などの文: ロゴとは別（必要なら別の PR）。
 
 ## 本番イメージ
 
