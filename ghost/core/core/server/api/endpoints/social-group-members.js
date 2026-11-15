@@ -9,6 +9,7 @@ const ALLOWED_INCLUDES = ['group', 'user', 'role'];
 const messages = {
     notFound: 'group member not found.',
     duplicateEntry: 'group member already exists for this group and user.',
+    noPermissionToAdd: 'Only the group owner or a group admin can add members to this group.',
     noRoleChangePermission: 'You do not have permission to change a member role.'
 };
 
@@ -75,9 +76,17 @@ const controller = {
         ],
         permissions: true,
         async query(frame) {
+            const member = frame.data.socialgroupmembers[0];
+            // 一員を足せるのは、そのグループの持ち主・管理者（Social Group Owner・Admin）、グループを作った人、
+            // サイトの管理者だけ（canManageGroupMembers。すでにいる一員を変えるときと同じ決まり）。
+            // ログインしている人の要求だけを確かめる（サーバー同士の連携の鍵は今までどおり）
+            const userId = frame.options.context && frame.options.context.user;
+            if (userId && !(await models.SocialGroupMember.canManageGroupMembers(member && member.group_id, userId))) {
+                throw new errors.NoPermissionError({message: tpl(messages.noPermissionToAdd)});
+            }
             try {
                 // @ts-ignore
-                return await models.SocialGroupMember.add(frame.data.socialgroupmembers[0], frame.options);
+                return await models.SocialGroupMember.add(member, frame.options);
             } catch (err) {
                 logging.error(err);
                 if (err.code === 'ER_DUP_ENTRY') {
