@@ -6,6 +6,8 @@ const messages = {
     blockedEmailDomain: 'Memberships from this email domain are currently restricted.'
 };
 
+// メールの言葉: front が送った画面の言葉
+const screenLocale = require('../screen-locale');
 module.exports = class MemberController {
     /**
      * @param {object} deps
@@ -68,7 +70,7 @@ module.exports = class MemberController {
         }
 
         try {
-            await this._sendEmailWithMagicLink({email, tokenData, requestedType: 'updateEmail', options});
+            await this._sendEmailWithMagicLink({email, tokenData, requestedType: 'updateEmail', options, locale: screenLocale(req.body.locale)});
             res.writeHead(201);
             return res.end('Created.');
         } catch (err) {

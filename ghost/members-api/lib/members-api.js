@@ -206,7 +206,7 @@ module.exports = function MembersAPI({
 
     const users = memberRepository;
 
-    async function sendEmailWithMagicLink({email, requestedType, tokenData, options = {forceEmailType: false}, referrer = null, includeOTC = false}) {
+    async function sendEmailWithMagicLink({email, requestedType, tokenData, options = {forceEmailType: false}, referrer = null, includeOTC = false, locale}) {
         let type = requestedType;
         if (!options.forceEmailType) {
             const member = await users.get({email});
@@ -216,7 +216,7 @@ module.exports = function MembersAPI({
                 type = 'signup';
             }
         }
-        return magicLinkService.sendMagicLink({email, type, tokenData: Object.assign({email, type}, tokenData), referrer, includeOTC});
+        return magicLinkService.sendMagicLink({email, type, tokenData: Object.assign({email, type}, tokenData), referrer, includeOTC, locale});
     }
 
     /**

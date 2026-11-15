@@ -27,6 +27,8 @@ const messages = {
     archivedNewsletters: 'Cannot subscribe to archived newsletters {newsletters}'
 };
 
+// メールの言葉: front が送った画面の言葉
+const screenLocale = require('../screen-locale');
 module.exports = class RouterController {
     /**
      * RouterController
@@ -601,7 +603,7 @@ module.exports = class RouterController {
             attribution: await this._memberAttributionService.getAttribution(req.body.urlHistory)
         };
 
-        return await this._sendEmailWithMagicLink({email, tokenData, requestedType: emailType, referrer, includeOTC});
+        return await this._sendEmailWithMagicLink({email, tokenData, requestedType: emailType, referrer, includeOTC, locale: screenLocale(req.body.locale)});
     }
 
     async _handleSignin(req, referrer = null, includeOTC = false) {
@@ -616,7 +618,7 @@ module.exports = class RouterController {
         }
 
         const tokenData = {};
-        return await this._sendEmailWithMagicLink({email, tokenData, requestedType: emailType, referrer, includeOTC});
+        return await this._sendEmailWithMagicLink({email, tokenData, requestedType: emailType, referrer, includeOTC, locale: screenLocale(req.body.locale)});
     }
 
     async _validateNewsletters(req) {

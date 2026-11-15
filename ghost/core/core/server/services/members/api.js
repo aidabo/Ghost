@@ -19,7 +19,17 @@ const newslettersService = require('../newsletters');
 const memberAttributionService = require('../member-attribution');
 const emailSuppressionList = require('../email-suppression-list');
 const CaptchaService = require('./CaptchaService');
-const {t} = require('../i18n');
+const {t: siteT} = require('../i18n');
+const {mailT} = require('../lib/mail-i18n');
+
+/**
+ * メールの t。front が送った画面の言葉（ja・en・zh）があればその言葉、無ければ今までどおりサイトの t
+ * （jibunsee-react docs/planning/mail-i18n.md の M1・M2、D7）
+ * @param {string} [locale]
+ */
+function tFor(locale) {
+    return locale ? mailT(locale) : siteT;
+}
 const sentry = require('../../../shared/sentry');
 const sharedConfig = require('../../../shared/config');
 const {getMembersFrontendUrl} = require('./frontend-url');
@@ -54,14 +64,14 @@ function trimLeadingWhitespace(strings, ...values) {
  * 6 桁のコード（OTC）をメールに足す（jibunsee-react docs/planning/staff-password-reset-code.md §8）。
  * 件名の頭に 6 桁（携帯の通知だけで読める）。本文は今のリンクの説明の前に 6 桁の欄を入れる。
  */
-function otcSubject(type, otc, siteTitle) {
+function otcSubject(type, otc, siteTitle, t = siteT) {
     const vars = {code: otc, siteTitle, interpolation: {escapeValue: false}};
     return type === 'signin'
         ? t('{{code}} is your verification code to sign in to {{siteTitle}}', vars)
         : t('{{code}} is your verification code to sign up for {{siteTitle}}', vars);
 }
 
-function otcText(otc) {
+function otcText(otc, t = siteT) {
     return `${t('Your verification code: {{code}}', {code: otc, interpolation: {escapeValue: false}})}\n${t('Enter this verification code on the screen you have open within 10 minutes, or use the link below.')}`;
 }
 
@@ -69,7 +79,7 @@ function escapeHtml(text) {
     return String(text).replace(/[&<>"']/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;'}[ch]));
 }
 
-function addOtcToHtml(html, otc) {
+function addOtcToHtml(html, otc, t = siteT) {
     const block = `<p style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 16px; color: #3A464C; margin: 0 0 8px;">${escapeHtml(t('Enter this verification code on the screen you have open within 10 minutes, or use the link below.'))}</p>`
         + `<p data-otc style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 32px; font-weight: 700; letter-spacing: 6px; color: #15212A; margin: 0 0 16px;">${escapeHtml(otc)}</p>`;
     // 今の「リンクは 24 時間で切れます」の段落の前に入れる。見つからなければ本文の頭（<body> の後）に
@@ -83,7 +93,7 @@ function addOtcToHtml(html, otc) {
     return body > 0 ? html.slice(0, body) + block + html.slice(body) : block + html;
 }
 
-function getTextWithoutOTC(url, type, email) {
+function getTextWithoutOTC(url, type, email, t = siteT) {
     const siteTitle = settingsCache.get('title');
     switch (type) {
     case 'subscribe':
@@ -173,7 +183,7 @@ function getTextWithoutOTC(url, type, email) {
     }
 }
 
-function getHTMLWithoutOTC(url, type, email) {
+function getHTMLWithoutOTC(url, type, email, t = siteT) {
     const siteTitle = settingsCache.get('title');
     const siteUrl = getMembersFrontendUrl(urlUtils);
     const domain = siteUrl.match(new RegExp('^https?://([^/:?#]+)(?:[/:?#]|$)', 'i'));
@@ -224,10 +234,12 @@ function createApiInstance(config) {
                     return ghostMailer.send(msg);
                 }
             },
-            getSubject(type, otc) {
+            // MagicLink が (type, otc, locale) で呼ぶ（6 桁も言葉も無いときは type だけ）
+            getSubject(type, otc, locale) {
+                const t = tFor(locale);
                 const siteTitle = settingsCache.get('title');
                 if (otc) {
-                    return otcSubject(type, otc, siteTitle);
+                    return otcSubject(type, otc, siteTitle, t);
                 }
                 switch (type) {
                 case 'subscribe':
@@ -243,13 +255,15 @@ function createApiInstance(config) {
                     return `🔑 ${t(`Secure sign in link for {{siteTitle}}`, {siteTitle, interpolation: {escapeValue: false}})}`;
                 }
             },
-            getText(url, type, email, otc) {
-                const text = getTextWithoutOTC(url, type, email);
-                return otc ? `${otcText(otc)}\n\n${text}` : text;
+            getText(url, type, email, otc, locale) {
+                const t = tFor(locale);
+                const text = getTextWithoutOTC(url, type, email, t);
+                return otc ? `${otcText(otc, t)}\n\n${text}` : text;
             },
-            getHTML(url, type, email, otc) {
-                const html = getHTMLWithoutOTC(url, type, email);
-                return otc ? addOtcToHtml(html, otc) : html;
+            getHTML(url, type, email, otc, locale) {
+                const t = tFor(locale);
+                const html = getHTMLWithoutOTC(url, type, email, t);
+                return otc ? addOtcToHtml(html, otc, t) : html;
             }
 
         },
