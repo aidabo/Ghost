@@ -24,18 +24,35 @@ function kindOf(group) {
     return group.get('type') === 'family' ? 'family' : 'group';
 }
 
+const GROUP_MANAGER_ROLES = ['Social Group Owner', 'Social Group Admin'];
+
+/** そのグループ自身の管理者か（グループを作った人、またはグループの Owner・Admin の一員）。サイト全体の役割は見ない */
+async function managesGroupItself(group, userId) {
+    if (group.get('creator_id') === userId) {
+        return true;
+    }
+    const member = await models.SocialGroupMember.findOne({group_id: group.id, user_id: userId, status: 'active'}, {...internal, withRelated: ['role']});
+    const roleName = member && member.related('role') && member.related('role').get('name');
+    return GROUP_MANAGER_ROLES.includes(roleName);
+}
+
 /**
- * 招待に group_id を付けてよいか。招く人（ログインしている人）が、そのグループの持ち主・管理者であること。
- * 招く人が分からない要求（サーバー同士の連携の鍵など）は断る（グループの招待は、招く人の権限でしか作らない）。
+ * 招待に group_id を付けてよいか。招く人が、そのグループの持ち主・管理者であること。招く人が分からない要求は断る。
+ * - ログインしている人: canManageGroupMembers（サイトの管理者も含む。一員を足すときと同じ）
+ * - サーバーの鍵が名指しした人（named）: そのグループ自身の管理者だけ（サイトの Owner などの id を名指しして、どのグループにも招けないように）
  * @param {string} groupId
  * @param {string} [userId] 招く人
+ * @param {{named?: boolean}} [opts]
  */
-async function assertCanInviteToGroup(groupId, userId) {
+async function assertCanInviteToGroup(groupId, userId, {named = false} = {}) {
     const group = await models.SocialGroup.findOne({id: groupId}, internal);
     if (!group || group.get('status') !== 'active') {
         throw new errors.ValidationError({message: tpl(messages.groupNotFound)});
     }
-    if (!userId || !(await models.SocialGroupMember.canManageGroupMembers(groupId, userId))) {
+    const allowed = Boolean(userId) && (named
+        ? await managesGroupItself(group, userId)
+        : await models.SocialGroupMember.canManageGroupMembers(groupId, userId));
+    if (!allowed) {
         throw new errors.NoPermissionError({message: tpl(messages.noPermission)});
     }
     return group;
@@ -82,8 +99,12 @@ async function invitationInfo(token) {
         throw new errors.NotFoundError({message: tpl(messages.inviteNotFound)});
     }
     const groupId = invite.get('group_id');
-    const group = groupId ? await models.SocialGroup.findOne({id: groupId}, internal) : null;
-    const inviter = await models.User.findOne({id: invite.get('created_by')}, internal);
+    const [found, inviter] = await Promise.all([
+        groupId ? models.SocialGroup.findOne({id: groupId}, internal) : null,
+        models.User.findOne({id: invite.get('created_by')}, internal)
+    ]);
+    // 止まった（active でない）グループには登録しても入らない（joinInvitedGroup）ので、一般ユーザーの招待として答える
+    const group = found && found.get('status') === 'active' ? found : null;
     return {
         kind: kindOf(group),
         group_name: group ? group.get('group_name') : null,

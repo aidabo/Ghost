@@ -19,7 +19,8 @@ module.exports = {
                 }
                 // 家族・グループの招待: 招く人がそのグループの持ち主・管理者であること（D3）
                 if (invite.group_id) {
-                    return assertCanInviteToGroup(invite.group_id, inviterOf(frame, invite));
+                    const named = !(frame.options.context && frame.options.context.user);
+                    return assertCanInviteToGroup(invite.group_id, inviterOf(frame, invite), {named});
                 }
             });
     }

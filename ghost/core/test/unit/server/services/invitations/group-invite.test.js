@@ -67,6 +67,44 @@ describe('Group invites', function () {
         });
     });
 
+    describe('a named inviter (sent by the front\'s server key) must manage the group itself', function () {
+        beforeEach(function () {
+            sinon.stub(models.SocialGroup, 'findOne').resolves(fakeModel({id: 'g1', status: 'active', creator_id: 'creator'}));
+        });
+
+        it('the group\'s creator or its Owner/Admin may; the site Owner shortcut does not apply', async function () {
+            const canManage = sinon.stub(models.SocialGroupMember, 'canManageGroupMembers').resolves(true);
+            const findMember = sinon.stub(models.SocialGroupMember, 'findOne');
+            await groupInvite.assertCanInviteToGroup('g1', 'creator', {named: true});
+            findMember.resolves({related: () => fakeModel({name: 'Social Group Admin'})});
+            await groupInvite.assertCanInviteToGroup('g1', 'admin', {named: true});
+            // サイトの Owner（id 1）は canManageGroupMembers では true でも、名指しの経路では断る
+            findMember.resolves(null);
+            await assert.rejects(groupInvite.assertCanInviteToGroup('g1', '1', {named: true}), {errorType: 'NoPermissionError'});
+            findMember.resolves({related: () => fakeModel({name: 'Social Group Member'})});
+            await assert.rejects(groupInvite.assertCanInviteToGroup('g1', 'member', {named: true}), {errorType: 'NoPermissionError'});
+            assert.ok(canManage.notCalled);
+        });
+    });
+
+    describe('resolveInviter (who appears as the inviter)', function () {
+        it('a signed-in request keeps its own user', async function () {
+            const user = fakeModel({id: 'u1', name: 'Me'});
+            const frame = {user, options: {context: {user: 'u1'}}, data: {invites: [{email: 'a@x', group_id: 'g1', invited_by: 'other'}]}};
+            assert.equal(await groupInvite.resolveInviter(frame), user);
+            assert.equal(frame.data.invites[0].invited_by, undefined, 'invited_by is not saved');
+        });
+
+        it('the front\'s server key: the named person becomes the inviter and created_by', async function () {
+            sinon.stub(models.User, 'findOne').resolves(fakeModel({id: 'u7', name: 'Aki'}));
+            const frame = {options: {context: {integration: {id: 'i1'}}}, data: {invites: [{email: 'a@x', group_id: 'g1', invited_by: 'u7'}]}};
+            const inviter = await groupInvite.resolveInviter(frame);
+            assert.equal(inviter.get('name'), 'Aki');
+            assert.equal(frame.options.context.user, 'u7');
+            assert.equal(frame.data.invites[0].invited_by, undefined);
+        });
+    });
+
     describe('joinInvitedGroup (after signing up)', function () {
         it('adds the new user to the invite\'s group as a Social Group Member', async function () {
             sinon.stub(models.SocialGroup, 'findOne').resolves(fakeModel({id: 'g1', status: 'active'}));
@@ -94,12 +132,19 @@ describe('Group invites', function () {
 
         it('returns only the kind, the group name and the inviter\'s name', async function () {
             const findInvite = sinon.stub(models.Invite, 'findOne').resolves(fakeModel({token: 'cmF3dG9rZW4+Lw==', group_id: 'g1', created_by: 'u1', expires: Date.now() + 1000, email: 'secret@example.com'}));
-            sinon.stub(models.SocialGroup, 'findOne').resolves(fakeModel({id: 'g1', type: 'family', group_name: 'Yamada'}));
+            sinon.stub(models.SocialGroup, 'findOne').resolves(fakeModel({id: 'g1', type: 'family', group_name: 'Yamada', status: 'active'}));
             sinon.stub(models.User, 'findOne').resolves(fakeModel({id: 'u1', name: 'Aki'}));
             const info = await groupInvite.invitationInfo(token);
             assert.deepEqual(info, {kind: 'family', group_name: 'Yamada', invited_by: 'Aki'});
             assert.equal(findInvite.firstCall.args[0].token, 'cmF3dG9rZW4+Lw==');
             assert.equal(findInvite.firstCall.args[0].status, 'sent');
+        });
+
+        it('a group that is no longer active is answered as a user invite (signing up will not join it)', async function () {
+            sinon.stub(models.Invite, 'findOne').resolves(fakeModel({token: 'cmF3dG9rZW4+Lw==', group_id: 'g1', created_by: 'u1', expires: Date.now() + 1000}));
+            sinon.stub(models.SocialGroup, 'findOne').resolves(fakeModel({id: 'g1', type: 'family', group_name: 'Yamada', status: 'archived'}));
+            sinon.stub(models.User, 'findOne').resolves(fakeModel({id: 'u1', name: 'Aki'}));
+            assert.deepEqual(await groupInvite.invitationInfo(token), {kind: 'user', group_name: null, invited_by: 'Aki'});
         });
 
         it('an unknown, expired or empty token is the same NotFound', async function () {
