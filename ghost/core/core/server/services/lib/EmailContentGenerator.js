@@ -1,7 +1,7 @@
 const _ = require('lodash').runInContext();
 const fs = require('fs-extra');
 const path = require('path');
-const {getFrontLogoUrl} = require('./front-logo');
+const {getFrontLogoUrl, toFrontUrl} = require('./front-logo');
 
 _.templateSettings.interpolate = /{{([\s\S]+?)}}/g;
 
@@ -31,7 +31,9 @@ class EmailContentGenerator {
             siteUrl: this.getSiteUrl(),
             siteTitle: this.getSiteTitle(),
             // 雛形のロゴ: front のロゴ（無ければ null。雛形は `frontLogoUrl || 今までの Ghost のロゴ` と書く）
-            frontLogoUrl: getFrontLogoUrl()
+            frontLogoUrl: getFrontLogoUrl(),
+            // 雛形のリンク: Ghost の URL を front の URL に（FRONT_END_URL、無ければ GHOST_FRONT_END_URL など。無ければそのまま）
+            toFront: url => toFrontUrl(url)
         };
 
         const data = _.defaults(defaults, options.data);

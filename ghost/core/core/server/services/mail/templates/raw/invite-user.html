@@ -95,7 +95,7 @@
                                         <!-- START OF EMAIL CONTENT -->
                                         <h1>Welcome</h1>
                                         <p>{{invitedByName}} has invited you to join <strong>{{blogName}}</strong>. Please click on the link below to activate your account.</p>
-                                        <p><a href="{{resetLink.replace(/.*ghost/, process.env.FRONT_END_URL)}}">Click here to activate your account</a></p>
+                                        <p><a href="{{toFront(resetLink)}}">Click here to activate your account</a></p>
                                         <p>If you have trouble activating your {{blogName}} account, you can reach out to {{invitedByName}} on {{invitedByEmail}} for assistance.</p>
                                         <p>Have fun, and good luck!</p>
                                         <!-- END OF EMAIL CONTENT -->
@@ -108,7 +108,7 @@
                             <table class="footer" width="100%" border="0" cellspacing="0" cellpadding="0">
                                 <tr>
                                     <td class="footer-cell" align="right">
-                                        Sent by <a href="{{siteUrl.replace(/.*ghost/, process.env.FRONT_END_URL)}}">{{siteUrl.replace(/.*ghost/, process.env.FRONT_END_URL)}}</a>
+                                        Sent by <a href="{{toFront(siteUrl)}}">{{toFront(siteUrl)}}</a>
                                     </td>
                                 </tr>
                             </table>

@@ -6,7 +6,7 @@ const path = require('path');
 const sinon = require('sinon');
 const settingsCache = require('../../../../../core/shared/settings-cache');
 
-const {getFrontLogoUrl, siteIconOrFrontLogo, chosenLogoUrl} = require('../../../../../core/server/services/lib/front-logo');
+const {getFrontLogoUrl, siteIconOrFrontLogo, chosenLogoUrl, getFrontBaseUrl, toFrontUrl} = require('../../../../../core/server/services/lib/front-logo');
 const EmailContentGenerator = require('../../../../../core/server/services/lib/EmailContentGenerator');
 const importerTemplate = require('../../../../../core/server/data/importer/email-template');
 const membersImporterTemplate = require('../../../../../core/server/services/members/importer/email-template');
@@ -53,6 +53,38 @@ describe('Mail: the front logo instead of the Ghost logo', function () {
                 process.env[key] = value;
             }
         }
+    });
+
+    describe('the links in mails point at the front (toFrontUrl)', function () {
+        it('uses FRONT_END_URL, else GHOST_FRONT_END_URL (the same order as the logo)', function () {
+            assert.equal(getFrontBaseUrl({FRONT_END_URL: 'https://f.example.com/', GHOST_FRONT_END_URL: 'https://g.example.com'}), 'https://f.example.com');
+            assert.equal(getFrontBaseUrl({GHOST_FRONT_END_URL: 'https://g.example.com/'}), 'https://g.example.com');
+            assert.equal(getFrontBaseUrl({}), null);
+            assert.equal(getFrontBaseUrl({FRONT_END_URL: 'front.example.com'}), null);
+        });
+
+        it('the site URL (no /ghost) gets the front host, keeping the path', function () {
+            const env = {GHOST_FRONT_END_URL: 'https://g.example.com'};
+            assert.equal(toFrontUrl('http://localhost:2368/', env), 'https://g.example.com/');
+            assert.equal(toFrontUrl('http://localhost:2368/blog/', env), 'https://g.example.com/blog/');
+            // front の URL に $& などがあっても、そのまま使う（置換の記号として読まない）
+            assert.equal(toFrontUrl('http://localhost:2368/x', {FRONT_END_URL: 'https://f.example.com/$&'}), 'https://f.example.com/$&/x');
+        });
+
+        it('an admin link (…/ghost/…) becomes the front page of the same path', function () {
+            const env = {FRONT_END_URL: 'https://f.example.com'};
+            assert.equal(toFrontUrl('http://localhost:2368/ghost/signup/abc/', env), 'https://f.example.com/signup/abc/');
+            assert.equal(toFrontUrl('http://localhost:2368/ghost/reset/xyz/', env), 'https://f.example.com/reset/xyz/');
+            assert.equal(toFrontUrl('https://cms.example.com/blog/ghost/signup/abc/', env), 'https://f.example.com/signup/abc/');
+            // ホスト名に ghost があっても、道に /ghost が無ければサイトの URL として扱う（前の .replace(/.*ghost/) はここで壊れた）
+            assert.equal(toFrontUrl('https://ghost.example.com/', env), 'https://f.example.com/');
+            assert.equal(toFrontUrl('https://ghost.example.com/ghost/signup/abc/', env), 'https://f.example.com/signup/abc/');
+        });
+
+        it('without a front URL the link stays as it was (never undefined)', function () {
+            assert.equal(toFrontUrl('http://localhost:2368/ghost/signup/abc/', {}), 'http://localhost:2368/ghost/signup/abc/');
+            assert.equal(toFrontUrl('', {FRONT_END_URL: 'https://f.example.com'}), '');
+        });
     });
 
     describe('getFrontLogoUrl', function () {

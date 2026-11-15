@@ -70,6 +70,47 @@ function readMyConfig() {
     }
 }
 
+/**
+ * front の URL（末尾の / なし）。FRONT_END_URL を先に、無ければ GHOST_FRONT_END_URL などの順で、最初に値のある名前だけを使う。
+ * http(s) でなければ null。メールのロゴとリンクの両方が使う（同じメールのロゴとリンクの行き先をそろえる）。
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string|null}
+ */
+function getFrontBaseUrl(env = process.env) {
+    try {
+        const name = FRONT_URL_ENV_NAMES.find(key => String((env || {})[key] || '').trim());
+        const base = String(name ? env[name] : '').trim().replace(/\/+$/, '');
+        return ABSOLUTE_URL.test(base) ? base : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Ghost の URL（サイトの URL や管理の /ghost/… のリンク）を front の URL にする。front の URL が無ければそのまま返す。
+ * - 道が /ghost を含む（招待・パスワード再設定のリンク）: 道の「…/ghost」までを front の URL に替える
+ *   （今までの雛形の .replace(/.*ghost/, …) と同じ結果。ただしホスト名の ghost には反応しない）
+ * - 含まない（サイトの URL）: 頭の「http(s)://ホスト」を front の URL に替える（道はそのまま）
+ * 例外を投げない（メールを送れなくしない）。
+ * @param {string} url
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {string}
+ */
+function toFrontUrl(url, env = process.env) {
+    const value = String(url || '');
+    const base = getFrontBaseUrl(env);
+    if (!base || !value) {
+        return value;
+    }
+    // 管理画面の道（…/ghost/…）は、道の「/ghost」までを front の URL に替える。ホスト名の ghost（ghost.example.com など）は見ない
+    const admin = value.match(/^https?:\/\/[^/]+(?:\/.*?)?\/ghost(\/.*)?$/i);
+    if (admin) {
+        return `${base}${admin[1] || '/'}`;
+    }
+    // 置き換える文字列の $& などを置換の記号として読ませないよう、関数で返す
+    return value.replace(/^https?:\/\/[^/]+/i, () => base);
+}
+
 function resolveFrontLogoUrl(env, myConfig) {
     const chosen = chosenLogoUrl(myConfig);
     if (chosen) {
@@ -77,9 +118,8 @@ function resolveFrontLogoUrl(env, myConfig) {
     }
     // 最初に値のある名前だけを使う（その値が http(s) でなくても次の名前には進まない）。
     // FRONT_END_URL が壊れていればメールのリンクも同じ値で壊れているので、ロゴだけ別のホストにしない
-    const name = FRONT_URL_ENV_NAMES.find(key => String(env[key] || '').trim());
-    const base = String(name ? env[name] : '').trim().replace(/\/+$/, '');
-    if (!ABSOLUTE_URL.test(base)) {
+    const base = getFrontBaseUrl(env);
+    if (!base) {
         return null;
     }
     return `${base}${frontLogoPath(env)}`;
@@ -112,6 +152,8 @@ function siteIconOrFrontLogo(siteIconUrl, ghostLogo = null) {
 
 module.exports = {
     getFrontLogoUrl,
+    getFrontBaseUrl,
+    toFrontUrl,
     siteIconOrFrontLogo,
     chosenLogoUrl,
     frontLogoPath,
