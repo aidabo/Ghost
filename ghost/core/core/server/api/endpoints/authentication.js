@@ -256,6 +256,29 @@ const controller = {
         }
     },
 
+    // 招待を受けるページ（front の /invite/<token>）が、token で招待を 1 件だけ読む
+    // （jibunsee-react docs/planning/invite-links.md の D10）。種類・グループ名・招いた人の名前だけを返す。
+    // メールアドレス・id は返さない。無い・期限切れ・使い済みは同じ 404。回数は IP ごとに数える（routes.js）
+    invitationInfo: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: ['token'],
+        validation: {
+            options: {
+                token: {
+                    required: true
+                }
+            }
+        },
+        permissions: false,
+        query(frame) {
+            return Promise.resolve()
+                .then(() => auth.setup.assertSetupCompleted(true)())
+                .then(() => invitations.groupInvite.invitationInfo(frame.options.token));
+        }
+    },
+
     acceptInvitation: {
         headers: {
             cacheInvalidate: false

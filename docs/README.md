@@ -18,6 +18,7 @@ These remain at repo root:
 - [staff-signup-code.md](./staff-signup-code.md) — スタッフの「アカウント作成」の招待に 6 桁の認証コード（`include_code`・`/authentication/invitation_code`、合えば招待の token、回数の制限）
 - [mail-front-logo.md](./mail-front-logo.md) — メールの Ghost のロゴを front のロゴに（転送なし: front の /settings で選んだロゴ → `<front>/brand/<TENANT>/apple-touch-icon.png` → 共通の画像）。本番の `TENANT` の渡し方、替えたメールの一覧、本番イメージの COPY
 - [mail-i18n.md](./mail-i18n.md) — メールを画面の言葉（ja・en・zh）で。`mailT(locale)`（言葉ごとの i18next、失敗しても英語で作る）、招待のメールの `copy` の約束、本番イメージの COPY
+- [group-invite.md](./group-invite.md) — 家族・グループの招待: `invites.group_id`、招けるのは持ち主・管理者（サーバーの鍵は確かめた人を `invited_by` で名指し）、登録したらそのグループへ、token で 1 件読む `invitation_info`
 
 - [social-api/README.md](./social-api/README.md)
 - [CUSTOM.md](./social-api/CUSTOM.md)

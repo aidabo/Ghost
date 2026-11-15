@@ -2,6 +2,7 @@ const errors = require('@tryghost/errors');
 const tpl = require('@tryghost/tpl');
 const models = require('../../models');
 const security = require('@tryghost/security');
+const {joinInvitedGroup} = require('./group-invite');
 
 const messages = {
     inviteNotFound: 'Invite not found.',
@@ -37,12 +38,15 @@ async function accept(invitation) {
         });
     }
 
-    await models.User.add({
+    const newUser = await models.User.add({
         email: data.email,
         name: data.name,
         password: data.password,
         roles: [invite.toJSON().role_id]
     }, options);
+
+    // 家族・グループの招待なら、そのグループの一員にする（jibunsee-react docs/planning/invite-links.md の D4）
+    await joinInvitedGroup(invite, newUser, options);
 
     return invite.destroy(options);
 }

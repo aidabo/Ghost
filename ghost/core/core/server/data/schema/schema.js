@@ -334,6 +334,8 @@ module.exports = {
         token: {type: 'string', maxlength: 191, nullable: false, unique: true},
         email: {type: 'string', maxlength: 191, nullable: false, unique: true, validations: {isEmail: true}},
         expires: {type: 'bigInteger', nullable: false},
+        // 家族・グループの招待: 登録したらこのグループに入る（無ければ一般ユーザーの招待。jibunsee-react docs/planning/invite-links.md の D3）
+        group_id: {type: 'string', maxlength: 24, nullable: true},
         created_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false},
         updated_at: {type: 'dateTime', nullable: true},

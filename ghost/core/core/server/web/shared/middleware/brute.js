@@ -231,6 +231,18 @@ module.exports = {
         })(req, res, next);
     },
     /**
+     * 招待を受けるページが token で招待を読む: IP ごとに回数を数える（token の推測を止める）。
+     * 開くたびに数えるので、同じ家の何人かが開いたり読み直したりしても止まらない多めの上限（global_block: 1 時間に 100 回）
+     */
+    inviteInfoPerIp(req, res, next) {
+        return spamPrevention.globalBlock().getMiddleware({
+            ignoreIP: false,
+            key(_req, _res, _next) {
+                _next('invite_info');
+            }
+        })(req, res, next);
+    },
+    /**
      * 「アカウント作成」の招待の 6 桁: IP ごとに確かめる回数を数える（たくさんの招待に少しずつ当てる推測を止める）
      */
     inviteCodeVerifyPerIp(req, res, next) {
