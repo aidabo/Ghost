@@ -19,7 +19,7 @@
   そのとき、ブラウザの Ghost のセッションで確かめた人の id を `invited_by` に入れる（front の `/api/invites/group`）。
 - `invited_by` は保存しない。招待の記録の `created_by` と、メールの「… さんから」・Reply-To がその人になる（`resolveInviter`）。
 - **一般ユーザーの招待（グループ無し）も同じ**: front の `/api/invites`（「会員」のタブ）も、確かめた人を `invited_by` に入れる。
-  そうすると `created_by` がその人になり、招いた人の履歴に出る。確かめるのは「いるユーザーで、止められていない（`isActive`）」ことだけ
+  そうすると `created_by` がその人になり、招いた人の履歴に出る。確かめるのは「いるユーザーで、止められていない」ことだけ（`User.findOne({id, status: 'active'})`。`status: 'active'` は active と警告中の warn-1〜4 を含み、inactive・locked は含まない）
   （グループが無いので管理者の確かめは無い）。名指しした人がいない・止められているときは 403（黙って鍵の招待にしない）。
   `invited_by` が無い鍵の招待（6 桁の「アカウント作成」）は今までどおり招く人無し。
 - 鍵を持つサーバーは名指しを信じてもらえる。招待を作れる Admin API の鍵（既定の Admin Integration は `invite: all`）なら、

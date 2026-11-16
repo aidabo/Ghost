@@ -124,13 +124,21 @@ describe('Invitation info API', function () {
 
         // 止められている人（inactive）を名指ししても断る
         const other = (await models.User.findAll({context: {internal: true}})).models.find(u => u.id !== me.id);
-        await models.User.edit({status: 'inactive'}, {id: other.id, context: {internal: true}});
+        assert.ok(other, 'another fixture user to name');
+        const before = other.get('status');
         try {
+            await models.User.edit({status: 'inactive'}, {id: other.id, context: {internal: true}});
             await keyAgent.post('invites/').header('Authorization', auth()).header('X-Forwarded-For', nextIp())
                 .body({invites: [{email: 'info-member3@example.com', role_id: authorRoleId, invited_by: other.id}]}).expectStatus(403);
             assert.equal(await models.Invite.findOne({email: 'info-member3@example.com'}, {context: {internal: true}}), null);
+
+            // 警告中（warn-*）は止められていないので名指しできる
+            await models.User.edit({status: 'warn-1'}, {id: other.id, context: {internal: true}});
+            await keyAgent.post('invites/').header('Authorization', auth()).header('X-Forwarded-For', nextIp())
+                .body({invites: [{email: 'info-member4@example.com', role_id: authorRoleId, invited_by: other.id}]}).expectStatus(201);
+            assert.equal((await models.Invite.findOne({email: 'info-member4@example.com'}, {context: {internal: true}})).get('created_by'), other.id);
         } finally {
-            await models.User.edit({status: 'active'}, {id: other.id, context: {internal: true}});
+            await models.User.edit({status: before}, {id: other.id, context: {internal: true}});
         }
     });
 
