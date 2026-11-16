@@ -38,7 +38,8 @@ SocialGroupMember = ghostBookshelf.Model.extend({
         this.on('saving', this.validateFields);
     },
 
-    async validateFields(model) {
+    async validateFields(model, attrs, options) {
+        const transacting = options?.transacting;
         logging.info('validateFields model:', JSON.stringify(model));
 
         const userId = model.get('user_id');
@@ -63,7 +64,7 @@ SocialGroupMember = ghostBookshelf.Model.extend({
         }
 
         // @ts-ignore
-        const group = await models.SocialGroup.findOne({id: groupId});
+        const group = await models.SocialGroup.findOne({id: groupId}, {transacting});
         if (!group) {
             throw new errors.NotFoundError({message: `Group with ID ${groupId} not found.`});
         }
@@ -73,13 +74,13 @@ SocialGroupMember = ghostBookshelf.Model.extend({
         }
         
         // @ts-ignore
-        const user = await models.User.findOne({id: userId});
+        const user = await models.User.findOne({id: userId}, {transacting});
         if (!user) {
             throw new errors.NotFoundError({message: `User with ID ${userId} not found.`});
         }
 
         // @ts-ignore
-        const role = await models.Role.findOne({id: roleId});
+        const role = await models.Role.findOne({id: roleId}, {transacting});
         if (!role) {
             throw new errors.NotFoundError({message: `Role with ID ${roleId} not found.`});
         }

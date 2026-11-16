@@ -2405,10 +2405,17 @@ module.exports = {
         status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'draft', index: true},
         user_id: {type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true, index: true},
         group_id: {type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', setNullDelete: true},
+        // 家族の「既定 project」。既定の project だけ group_id と同じ値を持ち、
+        // それ以外は NULL（MySQL の UNIQUE は NULL を複数許すので、1家族に1つだけ既定を持てる）。
+        // 値の設定は bootstrap endpoint だけ（docs/planning/simple-family-page-bootstrap-design.md）。
+        default_group_id: {type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', setNullDelete: true},
         created_at: {type: 'dateTime', nullable: false},
         created_by: {type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true},
         updated_at: {type: 'dateTime', nullable: false},
         updated_by: {type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true},
+        '@@UNIQUE_CONSTRAINTS@@': [
+            ['default_group_id']
+        ],
         '@@INDEXES@@': [
             ['user_id', 'status']
         ]
