@@ -95,13 +95,38 @@ describe('Group invites', function () {
             assert.equal(frame.data.invites[0].invited_by, undefined, 'invited_by is not saved');
         });
 
+        const activeUser = attrs => ({...fakeModel(attrs), isActive: () => attrs.status !== 'inactive'});
+
         it('the front\'s server key: the named person becomes the inviter and created_by', async function () {
-            sinon.stub(models.User, 'findOne').resolves(fakeModel({id: 'u7', name: 'Aki'}));
+            sinon.stub(models.User, 'findOne').resolves(activeUser({id: 'u7', name: 'Aki'}));
             const frame = {options: {context: {integration: {id: 'i1'}}}, data: {invites: [{email: 'a@x', group_id: 'g1', invited_by: 'u7'}]}};
             const inviter = await groupInvite.resolveInviter(frame);
             assert.equal(inviter.get('name'), 'Aki');
             assert.equal(frame.options.context.user, 'u7');
             assert.equal(frame.data.invites[0].invited_by, undefined);
+        });
+
+        it('a member invite (no group) also gets the named person as the inviter, for the invite history', async function () {
+            sinon.stub(models.User, 'findOne').resolves(activeUser({id: 'u7', name: 'Aki'}));
+            const frame = {options: {context: {integration: {id: 'i1'}}}, data: {invites: [{email: 'a@x', invited_by: 'u7'}]}};
+            assert.equal((await groupInvite.resolveInviter(frame)).get('name'), 'Aki');
+            assert.equal(frame.options.context.user, 'u7');
+        });
+
+        it('a named person who does not exist or is suspended is refused (not sent as the key\'s own invite)', async function () {
+            const findUser = sinon.stub(models.User, 'findOne');
+            for (const found of [null, activeUser({id: 'u7', status: 'inactive'})]) {
+                findUser.resolves(found);
+                const frame = {options: {context: {integration: {id: 'i1'}}}, data: {invites: [{email: 'a@x', invited_by: 'u7'}]}};
+                await assert.rejects(groupInvite.resolveInviter(frame), {errorType: 'NoPermissionError'});
+                assert.equal(frame.options.context.user, undefined);
+            }
+        });
+
+        it('the key without a named person stays as before (no inviter)', async function () {
+            const frame = {options: {context: {integration: {id: 'i1'}}}, data: {invites: [{email: 'a@x'}]}};
+            assert.equal(await groupInvite.resolveInviter(frame), null);
+            assert.equal(frame.options.context.user, undefined);
         });
     });
 
