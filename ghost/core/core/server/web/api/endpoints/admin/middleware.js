@@ -35,7 +35,8 @@ const notImplemented = function notImplemented(req, res, next) {
         labels: ['GET', 'PUT', 'DELETE', 'POST'],
         users: ['GET'],
         roles: ['GET'],
-        invites: ['POST'],
+        // GET: front のサーバーが招待の画面の履歴を読む（front の /api/invites/mine は、ログインしている人が送った招待だけに絞る）
+        invites: ['POST', 'GET'],
         themes: ['POST', 'PUT'],
         members: ['GET', 'PUT', 'DELETE', 'POST'],
         tiers: ['GET', 'PUT', 'POST'],

@@ -329,7 +329,8 @@ module.exports = {
             maxlength: 50,
             nullable: false,
             defaultTo: 'pending',
-            validations: {isIn: [['pending', 'sent']]}
+            // accepted: 登録が済んだ招待（消さずに残し、招待の画面の履歴に「登録済み」と出す。jibunsee-react docs/planning/invite-links.md）
+            validations: {isIn: [['pending', 'sent', 'accepted']]}
         },
         token: {type: 'string', maxlength: 191, nullable: false, unique: true},
         email: {type: 'string', maxlength: 191, nullable: false, unique: true, validations: {isEmail: true}},
