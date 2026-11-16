@@ -287,7 +287,7 @@ describe('Migrations', function () {
 
                 // Roles
                 should.exist(roles);
-                roles.length.should.eql(11);
+                roles.length.should.eql(14);
                 roles.at(0).get('name').should.eql('Administrator');
                 roles.at(1).get('name').should.eql('Editor');
                 roles.at(2).get('name').should.eql('Author');
@@ -299,6 +299,9 @@ describe('Migrations', function () {
                 roles.at(8).get('name').should.eql('DB Backup Integration');
                 roles.at(9).get('name').should.eql('Scheduler Integration');
                 roles.at(10).get('name').should.eql('Super Editor');
+                roles.at(11).get('name').should.eql('Social Group Admin');
+                roles.at(12).get('name').should.eql('Social Group Owner');
+                roles.at(13).get('name').should.eql('Social Group Member');
 
                 // Permissions
                 permissions.toJSON().should.be.CompletePermissions();
