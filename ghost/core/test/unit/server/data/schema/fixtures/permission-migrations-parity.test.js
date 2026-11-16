@@ -1,6 +1,6 @@
 // 新しい DB の権限は fixtures.json からだけ作られる（init は versions/** の migration を実行せず、記録だけする）。
 // そのため、権限を足す migration（addPermissionWithRoles・addPermissionToRole）を書いたら、fixtures.json にも同じ権限と
-// 役割との結び付きを書く。ここでは 5.115・5.116 の migration がそれらの helper に渡すものを集め、fixtures.json に全部あるかを確かめる。
+// 役割との結び付きを書く。ここでは 5.115 以降の migration がそれらの helper に渡すものを集め、fixtures.json に全部あるかを確かめる。
 // helper を使わず knex で直接書く migration は見えない（その分は手で fixtures.json に反映する）。
 const assert = require('assert/strict');
 const fs = require('fs');
@@ -9,6 +9,14 @@ const path = require('path');
 const VERSIONS = path.join(__dirname, '../../../../../../core/server/data/migrations/versions');
 const utils = require('../../../../../../core/server/data/migrations/utils');
 const fixtures = require('../../../../../../core/server/data/schema/fixtures/fixtures.json');
+
+// この fork の migration は 5.115 から。5.117 以降のフォルダも足せば自動で入る
+function forkVersions() {
+    const minor = v => Number(v.split('.')[1]);
+    return fs.readdirSync(VERSIONS)
+        .filter(v => /^5\.\d+$/.test(v) && minor(v) >= 115)
+        .sort((a, b) => minor(a) - minor(b));
+}
 
 function collectMigrationGrants() {
     const grants = [];
@@ -24,9 +32,10 @@ function collectMigrationGrants() {
     };
     let current = '';
     try {
-        for (const version of ['5.115', '5.116']) {
+        for (const version of forkVersions()) {
             const dir = path.join(VERSIONS, version);
-            for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.js')).sort()) {
+            // .cjs の migration も読む（5.116 にある）
+            for (const file of fs.readdirSync(dir).filter(f => /\.c?js$/.test(f)).sort()) {
                 current = `${version}/${file}`;
                 const full = path.join(dir, file);
                 delete require.cache[require.resolve(full)];
@@ -57,7 +66,7 @@ function fixtureGrants() {
 }
 
 describe('Permission migrations are in fixtures.json (a new database gets them too)', function () {
-    it('every permission and role grant added by a 5.115 / 5.116 migration helper is in fixtures.json', function () {
+    it('every permission and role grant added by a 5.115+ migration helper is in fixtures.json', function () {
         const grants = collectMigrationGrants();
         assert.ok(grants.length > 50, 'the migrations were read');
         const {byName, granted} = fixtureGrants();
