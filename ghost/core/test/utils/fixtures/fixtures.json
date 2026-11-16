@@ -110,6 +110,18 @@
                 {
                     "name": "Super Editor",
                     "description": "Super Editor"
+                },
+                {
+                    "name": "Social Group Admin",
+                    "description": "Social Group Admin to manage social group created"
+                },
+                {
+                    "name": "Social Group Owner",
+                    "description": "Social Group Owner to manage social group created"
+                },
+                {
+                    "name": "Social Group Member",
+                    "description": "Social Group Member to manage social group created"
                 }
             ]
         },
