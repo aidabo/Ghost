@@ -10,7 +10,8 @@ const models = require('../../models');
 const messages = {
     groupNotFound: 'The group was not found or is not active.',
     noPermission: 'Only the group owner or a group admin can invite people to this group.',
-    inviteNotFound: 'Invite not found.'
+    inviteNotFound: 'Invite not found.',
+    notAllowedToInvite: 'The inviter was not found or cannot invite now.'
 };
 
 const internal = {context: {internal: true}};
@@ -107,8 +108,11 @@ function inviterOf(frame, invite) {
 
 /**
  * 招待のメールに書く招いた人（User の model）。ログインしている人なら frame.user。
- * front のサーバーが招く人の代わりに送るグループの招待なら（入力の検査で、その人がグループの持ち主・管理者と確かめ済み）、
- * その人にし、記録上の招いた人（created_by）もその人にする（frame.options.context.user を替える）。invited_by は保存しない
+ * front のサーバーが招く人の代わりに送る招待なら、その人にし、記録上の招いた人（created_by）もその人にする
+ * （frame.options.context.user を替える。招いた人の招待の画面の履歴は created_by で読む）。invited_by は保存しない。
+ * - グループの招待: 入力の検査で、その人がグループの持ち主・管理者と確かめ済み
+ * - 一般ユーザーの招待（グループ無し）: front がブラウザのログインで確かめた人。いるユーザーで、止められていないこと
+ *   （名指しした人が見つからない・止められているときは断る。黙って連携の鍵の招待にしない）
  * @param {object} frame
  * @returns {Promise<object|null>}
  */
@@ -116,11 +120,13 @@ async function resolveInviter(frame) {
     const invite = frame.data.invites[0];
     let inviter = frame.user || null;
     const named = inviterOf(frame, invite);
-    if (!inviter && invite.group_id && named) {
-        inviter = await models.User.findOne({id: named}, internal);
-        if (inviter) {
-            frame.options.context = {...frame.options.context, user: inviter.id};
+    if (!inviter && named) {
+        // status: 'active' は止められていない状態（active・warn-*）だけを探す（User.findOne が activeStates に直す）
+        inviter = await models.User.findOne({id: named, status: 'active'}, internal);
+        if (!inviter) {
+            throw new errors.NoPermissionError({message: tpl(messages.notAllowedToInvite)});
         }
+        frame.options.context = {...frame.options.context, user: inviter.id};
     }
     delete invite.invited_by;
     return inviter;

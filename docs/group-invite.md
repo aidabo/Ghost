@@ -18,7 +18,13 @@
 - front は家族の持ち主（ふつう Author、自分ではスタッフの招待を作れない）の代わりに、サーバーの鍵で招待を送る。
   そのとき、ブラウザの Ghost のセッションで確かめた人の id を `invited_by` に入れる（front の `/api/invites/group`）。
 - `invited_by` は保存しない。招待の記録の `created_by` と、メールの「… さんから」・Reply-To がその人になる（`resolveInviter`）。
-- 鍵を持つサーバーは名指しを信じてもらえる。鍵は front などのサーバーだけが持つ秘密（同梱の連携は、もともとスタッフの招待を作れる）。
+- **一般ユーザーの招待（グループ無し）も同じ**: front の `/api/invites`（「会員」のタブ）も、確かめた人を `invited_by` に入れる。
+  そうすると `created_by` がその人になり、招いた人の履歴に出る。確かめるのは「いるユーザーで、止められていない」ことだけ（`User.findOne({id, status: 'active'})`。`status: 'active'` は active と警告中の warn-1〜4 を含み、inactive・locked は含まない）
+  （グループが無いので管理者の確かめは無い）。名指しした人がいない・止められているときは 403（黙って鍵の招待にしない）。
+  `invited_by` が無い鍵の招待（6 桁の「アカウント作成」）は今までどおり招く人無し。
+- 鍵を持つサーバーは名指しを信じてもらえる。招待を作れる Admin API の鍵（既定の Admin Integration は `invite: all`）なら、
+  止められていないどのユーザーでも名指しできる（メールの「… さんから」と `created_by` がその人になる）。鍵は front などのサーバーだけが持つ秘密にする。
+- 名指しした人がいない・止められているときは、グループの招待でも 403（前は黙って鍵の招待になっていた）。
 - 配布: Ghost と front をそろえて出す。Ghost だけ新しく front が古いと、front はグループを付けないので今までどおり（グループには入らない）。
   front だけ新しく Ghost が古いと、Ghost は `group_id`・`invited_by` を知らずに捨てる（今までどおり）。
 
@@ -32,11 +38,11 @@
   （連携の鍵の許可に `invites: GET` を足した。front の `/api/invites/mine` は、ブラウザのセッションで確かめた人の招待だけに絞る）。
   招待の行の欄は token 以外すべて返る（`id`・`role_id`・`email`・`status`・`expires`・`created_by`・`group_id`・`created_at`・`updated_at` など）。
   e2e（`invitation-info.test.js`）は連携の鍵での読みも確かめる。
-- 登録したあと同じメールで招き直すと 422（もうユーザー）。登録済みの行は残る。
 - **一覧の既定は pending・sent だけ**（`Invite.defaultFilters`）。登録済み（accepted）は Ghost の管理画面の「招待中」には出ない（Resend で既存のユーザーに招待を送り直さないように）。
   `status` を書いた filter を渡したときだけ accepted も返る。
 - **「グループに追加」**: front がブラウザのセッションで `POST /social/members/` `{socialgroupmembers: [{group_id, user_id, role_id: <Social Group Member の id>, status: 'active'}]}`。`role_id` は必須。
-- 同じメールアドレスに招待し直すと、前の招待の行は消えて新しく作られる（今までどおり）。
+- 同じメールアドレスに招待し直すと: **まだ登録していなければ**前の招待の行は消えて新しく作られる（今までどおり）。
+  **登録済みなら** 422（もうユーザー）で、登録済みの行は同じ行のまま残る（e2e で行の id が変わらないことも確かめる）。
 
 ## 招待を受けるページが token で 1 件読む口
 

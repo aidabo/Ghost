@@ -93,10 +93,53 @@ describe('Invitation info API', function () {
             .body({invitation: [{token, email, name: 'Again', password: 'Tq7#vLm2!pWz9xRe'}]})
             .expectStatus(404);
 
-        // 登録した人に同じメールで招き直すことはできない（もうユーザー）。登録済みの行はそのまま残る
+        // 登録した人に同じメールで招き直すことはできない（もうユーザー）。登録済みの行は消されず同じ行のまま残る
         await agent.post('invites/').header('X-Forwarded-For', nextIp())
             .body({invites: [{email, role_id: authorRoleId}]}).expectStatus(422);
-        assert.equal((await models.Invite.findOne({email}, {context: {internal: true}})).get('status'), 'accepted');
+        const kept = await models.Invite.findOne({email}, {context: {internal: true}});
+        assert.equal(kept.get('status'), 'accepted');
+        assert.equal(kept.id, invite.id, 'the same row, not deleted and made again');
+    });
+
+    it('a member invite sent by the front\'s key for a signed-in person is recorded as theirs (for their history)', async function () {
+        const me = (await agent.get('users/me/').expectStatus(200)).body.users[0];
+        const keyAgent = new AdminAPITestAgent(agent.app, {apiURL: '/ghost/api/admin/', originURL: config.get('url')});
+        const auth = () => `Ghost ${localUtils.getValidAdminToken('/admin/')}`;
+        const email = 'info-member@example.com';
+        await keyAgent.post('invites/').header('Authorization', auth()).header('X-Forwarded-For', nextIp())
+            .body({invites: [{email, role_id: authorRoleId, invited_by: me.id}]}).expectStatus(201);
+
+        const row = await models.Invite.findOne({email}, {context: {internal: true}});
+        assert.equal(row.get('created_by'), me.id);
+        // メールの「… さんから」もその人
+        assert.ok(mailReceiver.getSentEmail(0).html.includes(me.name));
+        const history = await keyAgent.get(`invites/?filter=${encodeURIComponent(`status:[pending,sent,accepted]+created_by:'${me.id}'`)}`)
+            .header('Authorization', auth()).expectStatus(200);
+        assert.ok(history.body.invites.some(i => i.email === email));
+
+        // いない人を名指しすると断る（黙って連携の鍵の招待にしない）
+        await keyAgent.post('invites/').header('Authorization', auth()).header('X-Forwarded-For', nextIp())
+            .body({invites: [{email: 'info-member2@example.com', role_id: authorRoleId, invited_by: 'aaaaaaaaaaaaaaaaaaaaaaaa'}]}).expectStatus(403);
+        assert.equal(await models.Invite.findOne({email: 'info-member2@example.com'}, {context: {internal: true}}), null, 'no invite row');
+
+        // 止められている人（inactive）を名指ししても断る
+        const other = (await models.User.findAll({context: {internal: true}})).models.find(u => u.id !== me.id);
+        assert.ok(other, 'another fixture user to name');
+        const before = other.get('status');
+        try {
+            await models.User.edit({status: 'inactive'}, {id: other.id, context: {internal: true}});
+            await keyAgent.post('invites/').header('Authorization', auth()).header('X-Forwarded-For', nextIp())
+                .body({invites: [{email: 'info-member3@example.com', role_id: authorRoleId, invited_by: other.id}]}).expectStatus(403);
+            assert.equal(await models.Invite.findOne({email: 'info-member3@example.com'}, {context: {internal: true}}), null);
+
+            // 警告中（warn-*）は止められていないので名指しできる
+            await models.User.edit({status: 'warn-1'}, {id: other.id, context: {internal: true}});
+            await keyAgent.post('invites/').header('Authorization', auth()).header('X-Forwarded-For', nextIp())
+                .body({invites: [{email: 'info-member4@example.com', role_id: authorRoleId, invited_by: other.id}]}).expectStatus(201);
+            assert.equal((await models.Invite.findOne({email: 'info-member4@example.com'}, {context: {internal: true}})).get('created_by'), other.id);
+        } finally {
+            await models.User.edit({status: before}, {id: other.id, context: {internal: true}});
+        }
     });
 
     it('an unknown token and a missing token are refused', async function () {
