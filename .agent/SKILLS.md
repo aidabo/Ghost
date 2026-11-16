@@ -889,3 +889,10 @@ Body:
 - Frontend proxy alignment:
 - updated `01-jibunsee-react/apps/host/src/app/api/ai/usage/route.ts` to pass-through `user_id` to Ghost usage endpoint
 - updated `SiteAssistantPanel.tsx` usage request to include `user_id`
+
+## 権限・役割の migration を足したら fixtures.json にも（2026-11-16）
+
+- 新しい DB の `init()` は `versions/**` の migration を実行せず記録だけする。権限・役割は `core/server/data/schema/fixtures/fixtures.json` からだけ作られる。
+- 権限・役割を足す migration を書いたら、`fixtures.json` にも同じ権限（`models` の Permission）と役割との結び付き（`relations`）を書く。役割を足すならテスト用の `test/utils/fixtures/fixtures.json` にも。
+- `test/unit/server/data/schema/fixtures/permission-migrations-parity.test.js` が、5.115・5.116 の migration が `addPermissionWithRoles`・`addPermissionToRole` に渡すものが `fixtures.json` に全部あるかを確かめる（knex で直接書く migration は見えないので手で）。
+- 権限以外も同じ穴がある（例: Trash グループ、news avatar の初期プロフィール）。新しい DB にも要るものは init の側（fixtures・`hooks/init/after.js`）にも書く。

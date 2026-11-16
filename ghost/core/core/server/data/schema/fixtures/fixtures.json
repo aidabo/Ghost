@@ -884,6 +884,31 @@
                     "object_type": "estatedictionaryterm"
                 },
                 {
+                    "name": "Browse estate property translations",
+                    "action_type": "browse",
+                    "object_type": "estatepropertytranslation"
+                },
+                {
+                    "name": "Read estate property translations",
+                    "action_type": "read",
+                    "object_type": "estatepropertytranslation"
+                },
+                {
+                    "name": "Add estate property translations",
+                    "action_type": "add",
+                    "object_type": "estatepropertytranslation"
+                },
+                {
+                    "name": "Edit estate property translations",
+                    "action_type": "edit",
+                    "object_type": "estatepropertytranslation"
+                },
+                {
+                    "name": "Delete estate property translations",
+                    "action_type": "destroy",
+                    "object_type": "estatepropertytranslation"
+                },
+                {
                     "name": "Add persons",
                     "action_type": "add",
                     "object_type": "person"
@@ -1805,6 +1830,8 @@
                     "estatepropertypost": "all",
                     "estatepropertystaff": "all",
                     "estatepropertytag": "all",
+                    "estatepropertytranslation": "all",
+                    "estatedictionaryterm": "all",
                     "estatesetting": "all",
                     "person": "all",
                     "persongalleryasset": "all",
@@ -1894,6 +1921,8 @@
                     "estatepropertypost": "all",
                     "estatepropertystaff": "all",
                     "estatepropertytag": "all",
+                    "estatepropertytranslation": "all",
+                    "estatedictionaryterm": "all",
                     "estatesetting": "all",
                     "person": "all",
                     "persongalleryasset": "all",
@@ -1955,6 +1984,8 @@
                     "estatepropertypost": ["browse", "read", "add", "destroy"],
                     "estatepropertystaff": ["browse", "add", "destroy"],
                     "estatepropertytag": ["browse", "read", "add", "destroy"],
+                    "estatepropertytranslation": "all",
+                    "estatedictionaryterm": "all",
                     "estatesetting": ["browse", "read", "edit"],
                     "person": ["add", "destroy", "edit"],
                     "persongalleryasset": ["add", "destroy", "edit"],
@@ -1965,7 +1996,7 @@
                     "personstory": ["add", "destroy", "edit"],
                     "personstoryepisode": ["add", "destroy", "edit"],
                     "personstoryseries": ["add", "destroy", "edit"],
-                    "publishcontent": ["add", "destroy", "edit"],
+                    "publishcontent": ["browse", "read", "add", "destroy", "edit"],
                     "socialaiagentsetting": "all",
                     "socialaichat": "all",
                     "socialaidevice": "all",
@@ -2016,6 +2047,8 @@
                     "estatepropertypost": "all",
                     "estatepropertystaff": "all",
                     "estatepropertytag": "all",
+                    "estatepropertytranslation": "all",
+                    "estatedictionaryterm": "all",
                     "estatesetting": "all",
                     "person": "all",
                     "persongalleryasset": "all",
@@ -2073,6 +2106,7 @@
                     "estatepropertypost": "browse",
                     "estatepropertystaff": "browse",
                     "estatepropertytag": "browse",
+                    "estatedictionaryterm": ["browse", "read"],
                     "estatesetting": ["browse", "read"],
                     "person": ["browse", "read"],
                     "persongalleryasset": ["browse", "read"],
@@ -2128,6 +2162,7 @@
                     "estatepropertypost": "browse",
                     "estatepropertystaff": "browse",
                     "estatepropertytag": "browse",
+                    "estatedictionaryterm": ["browse", "read"],
                     "estatesetting": ["browse", "read"],
                     "person": ["browse", "read"],
                     "persongalleryasset": ["browse", "read"],
