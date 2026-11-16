@@ -68,7 +68,8 @@ const SocialGroup = ghostBookshelf.Model.extend({
         this.on('saving', this.validateFields);
     },
 
-    async validateFields(model) {
+    async validateFields(model, attrs, options) {
+        const transacting = options?.transacting;
         logging.info(JSON.stringify(model));
 
         const userId = model.get('creator_id');
@@ -100,7 +101,7 @@ const SocialGroup = ghostBookshelf.Model.extend({
         }
 
         // @ts-ignore
-        const user = await models.User.findOne({ id: userId });
+        const user = await models.User.findOne({id: userId}, {transacting});
         if (!user) {
             throw new errors.NotFoundError({ message: `User of creator with ID ${userId} not found.` });
         }
@@ -108,7 +109,7 @@ const SocialGroup = ghostBookshelf.Model.extend({
         // No permission to update for archived group 
         if (model.get('id')) {
             // @ts-ignore
-            const group = await models.SocialGroup.findOne({ id: model.get('id') });
+            const group = await models.SocialGroup.findOne({id: model.get('id')}, {transacting});
             if (group && group.status === 'archived') {
                 throw new errors.NoPermissionError({ message: `No permission for update archived group: ${group.id} not found.` });
             }

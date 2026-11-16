@@ -32,7 +32,8 @@ const SocialAiProject = ghostBookshelf.Model.extend({
         this.on('saving', this.validateFields);
     },
 
-    async validateFields(model) {
+    async validateFields(model, attrs, options) {
+        const transacting = options?.transacting;
         const name = String(model.get('name') || '').trim();
         if (!name) {
             throw new errors.ValidationError({message: 'name is required.'});
@@ -41,7 +42,7 @@ const SocialAiProject = ghostBookshelf.Model.extend({
         const userId = String(model.get('user_id') || '').trim();
         if (userId) {
             // @ts-ignore
-            const user = await models.User.findOne({id: userId});
+            const user = await models.User.findOne({id: userId}, {transacting});
             if (!user) {
                 throw new errors.ValidationError({message: `User ${userId} does not exist.`});
             }
@@ -50,7 +51,7 @@ const SocialAiProject = ghostBookshelf.Model.extend({
         const groupId = String(model.get('group_id') || '').trim();
         if (groupId) {
             // @ts-ignore
-            const group = await models.SocialGroup.findOne({id: groupId});
+            const group = await models.SocialGroup.findOne({id: groupId}, {transacting});
             if (!group) {
                 throw new errors.ValidationError({message: `Group ${groupId} does not exist.`});
             }

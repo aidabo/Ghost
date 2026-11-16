@@ -275,6 +275,8 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/chart/jobs', mw.authAdminApi, http(api.socialAiChartJobs.add));
     router.post('/social/ai/chart/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiChartJobs.cancel));
     router.post('/social/ai/chart/jobs/claim', mw.authAdminApi, http(api.socialAiChartJobs.claim));
+    // 家族ページの初期化（家族と既定projectの自動作成。docs の bootstrap 設計）
+    router.post('/social/family/bootstrap', mw.authAdminApi, http(api.socialFamily.bootstrap));
     router.post('/social/ai/chart/jobs/:id/progress', mw.authAdminApi, http(api.socialAiChartJobs.progress));
     router.post('/social/ai/chart/jobs/:id/complete', mw.authAdminApi, http(api.socialAiChartJobs.complete));
     router.post('/social/ai/chart/jobs/:id/fail', mw.authAdminApi, http(api.socialAiChartJobs.fail));
