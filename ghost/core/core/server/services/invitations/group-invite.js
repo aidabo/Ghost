@@ -121,8 +121,9 @@ async function resolveInviter(frame) {
     let inviter = frame.user || null;
     const named = inviterOf(frame, invite);
     if (!inviter && named) {
-        inviter = await models.User.findOne({id: named, status: 'all'}, internal);
-        if (!inviter || !inviter.isActive()) {
+        // status: 'active' は止められていない状態（active・warn-*）だけを探す（User.findOne が activeStates に直す）
+        inviter = await models.User.findOne({id: named, status: 'active'}, internal);
+        if (!inviter) {
             throw new errors.NoPermissionError({message: tpl(messages.notAllowedToInvite)});
         }
         frame.options.context = {...frame.options.context, user: inviter.id};

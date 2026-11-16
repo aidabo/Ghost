@@ -120,6 +120,18 @@ describe('Invitation info API', function () {
         // いない人を名指しすると断る（黙って連携の鍵の招待にしない）
         await keyAgent.post('invites/').header('Authorization', auth()).header('X-Forwarded-For', nextIp())
             .body({invites: [{email: 'info-member2@example.com', role_id: authorRoleId, invited_by: 'aaaaaaaaaaaaaaaaaaaaaaaa'}]}).expectStatus(403);
+        assert.equal(await models.Invite.findOne({email: 'info-member2@example.com'}, {context: {internal: true}}), null, 'no invite row');
+
+        // 止められている人（inactive）を名指ししても断る
+        const other = (await models.User.findAll({context: {internal: true}})).models.find(u => u.id !== me.id);
+        await models.User.edit({status: 'inactive'}, {id: other.id, context: {internal: true}});
+        try {
+            await keyAgent.post('invites/').header('Authorization', auth()).header('X-Forwarded-For', nextIp())
+                .body({invites: [{email: 'info-member3@example.com', role_id: authorRoleId, invited_by: other.id}]}).expectStatus(403);
+            assert.equal(await models.Invite.findOne({email: 'info-member3@example.com'}, {context: {internal: true}}), null);
+        } finally {
+            await models.User.edit({status: 'active'}, {id: other.id, context: {internal: true}});
+        }
     });
 
     it('an unknown token and a missing token are refused', async function () {
