@@ -202,7 +202,8 @@ describe('Super Editor scope on knex-backed listings', function () {
         SocialGroup: {
             findOne: async ({id}) => ({id, get: () => 'active'}),
             // Only 'editor' is a member of the family group.
-            canAccessGroup: async (group, userId) => userId === 'editor' && String(group.id).toLowerCase() === FAM
+            canAccessGroup: async (group, userId) => userId === 'editor' && String(group.id).toLowerCase() === FAM,
+            ensureMediaFolderAlias: async () => 'alias'
         },
         SocialGroupMember: {
             canEditGroupContent: async ({authorId, userId}) => authorId === userId || ['owner', 'admin'].includes(userId)
@@ -354,7 +355,10 @@ describe('Super Editor scope on knex-backed listings', function () {
             {id: 'a-dzi-family-project', storage_key: 'k12', owner_scope: 'chart_jobs', dzi_job_id: 'dz-open', created_at: '2000-01-01 00:00:12'},
             {id: 'a-junction-family', storage_key: 'k13', owner_scope: 'chart_jobs', created_at: '2000-01-01 00:00:13'},
             // F9: an archived public group is not a newsroom group.
-            {id: 'a-archived-pub', storage_key: 'k14', owner_scope: 'chart_jobs', chart_job_id: 'cj-archived-pub', created_at: '2000-01-01 00:00:14'}
+            {id: 'a-archived-pub', storage_key: 'k14', owner_scope: 'chart_jobs', chart_job_id: 'cj-archived-pub', created_at: '2000-01-01 00:00:14'},
+            // family group uploads (owner_scope group): one by the viewer, one by someone else
+            {id: 'g-own', storage_key: 'gallery/groups/f/voice-1.webm', owner_scope: 'group', group_id: FAM, user_id: 'editor', created_at: '2000-01-01 00:00:15'},
+            {id: 'g-other', storage_key: 'gallery/groups/f/photo.jpg', owner_scope: 'group', group_id: FAM, user_id: 'owner', created_at: '2000-01-01 00:00:16'}
         ]);
         await database('social_ai_news_jobs').insert([
             {id: 'n-open', user_id: 'editor', group_id: null, status: 'queued', updated_at: '2000-01-01 00:00:01'},
@@ -411,6 +415,16 @@ describe('Super Editor scope on knex-backed listings', function () {
             assert.equal(own.can_rename, true);
             // someone else's upload: visible to Super Editor, but not renamable by them
             assert.equal(items.find(item => item.id === 'u-other').can_rename, false);
+        });
+
+        it('group gallery also says who may rename (the viewer\'s own upload only), and names fall back to the key', async function () {
+            const result = await gallery.group.query({options: {context: {user: 'editor'}}, data: {id: FAM}});
+            const byId = Object.fromEntries(result.data.map(item => [item.id, item]));
+            assert.deepEqual(Object.keys(byId).sort(), ['g-other', 'g-own']);
+            assert.equal(byId['g-own'].can_rename, true);
+            assert.equal(byId['g-other'].can_rename, false);
+            // no display name, no original file name: the last part of the key
+            assert.equal(byId['g-own'].name, 'voice-1.webm');
         });
     });
 

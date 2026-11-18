@@ -36,6 +36,7 @@ const messages = {
     noAssetPermission: 'You are not allowed to delete this gallery asset.',
     noRenamePermission: 'Only the person who added this file can change its name.',
     displayNameTooLong: '`display_name` must be 200 characters or fewer.',
+    displayNameRequired: '`display_name` is required (send "" or null to clear it).',
     selectedBroadcastAsset: 'This gallery asset is selected for a virtual broadcast. Clear the broadcast selection before deleting it.',
     projectRequired: '`project_id` is required.',
     projectNotFound: 'Project not found: {projectId}.',
@@ -720,6 +721,22 @@ const listByPrefix = async (store, prefix, limit, nextCursor, type) => {
     };
 };
 
+// Who may rename a gallery file: the uploader, or the owner of the chart job that produced the row
+// (the same people destroyAsset lets delete). row carries user_id and the chart job's user_id.
+const canRenameAsset = (row, userId) => {
+    if (!userId) {
+        return false;
+    }
+    return String(row.user_id || '') === String(userId) ||
+        (Boolean(row.chart_job_user_id) && String(row.chart_job_user_id) === String(userId));
+};
+
+// The name lists show: the display name (alias) first, then the uploaded file name, then the last part of the key.
+const galleryItemName = row => String(row.display_name || '').trim() ||
+    String(row.original_filename || '').trim() ||
+    String(row.key || row.storage_key || '').split('/').filter(Boolean).pop() ||
+    null;
+
 const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, newsJobId, projectId, limit, nextCursor, type, orderBy, newsroomScope = null }) => {
     const knex = models.Base.knex;
     const cursor = parseDbNextCursor(nextCursor);
@@ -978,11 +995,10 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
         path: row.path,
         thumbnail_url: row.thumbnail_url || null,
         thumbnail_storage_key: row.thumbnail_storage_key || null,
-        // display_name (alias) first, then the uploaded file name, then the last part of the key
-        name: String(row.display_name || '').trim() || String(row.original_filename || '').trim() || String(row.key || '').split('/').filter(Boolean).pop() || null,
+        name: galleryItemName(row),
         display_name: String(row.display_name || '').trim() || null,
         original_filename: row.original_filename || null,
-        can_rename: Boolean(userId) && (String(row.user_id || '') === String(userId) || String(row.chart_job_user_id || '') === String(userId)),
+        can_rename: canRenameAsset(row, userId),
         type: resolveGalleryItemType({
             asset_type: row.asset_type
         }),
@@ -1874,7 +1890,8 @@ const controller = {
             const groupAlias = await models.SocialGroup.ensureMediaFolderAlias(groupId);
             const listed = await listByAssetTable({
                 scope: 'group',
-                userId: null,
+                // not used to narrow the group list; only for can_rename (whether the viewer may rename each file)
+                userId: frame.options?.context?.user || null,
                 groupId,
                 jobId,
                 limit,
@@ -2333,8 +2350,15 @@ const controller = {
                     message: tpl(messages.assetIdRequired)
                 });
             }
+            // The key must be there: a body without it (or with a misspelt key) must not silently clear the name.
+            // "" or null clears it on purpose.
+            if (!frame.data || !Object.prototype.hasOwnProperty.call(frame.data, 'display_name')) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.displayNameRequired)
+                });
+            }
             // control characters out, spaces folded; empty = clear
-            const displayName = String(frame.data?.display_name ?? '')
+            const displayName = String(frame.data.display_name ?? '')
                 .replace(/[\u0000-\u001f\u007f]/g, ' ')
                 .replace(/\s+/g, ' ')
                 .trim();
@@ -2347,20 +2371,20 @@ const controller = {
             const knex = models.Base.knex;
             const row = await knex('social_media_assets')
                 .where({id})
-                .first('id', 'user_id', 'chart_job_id', 'original_filename');
+                .first('id', 'user_id', 'chart_job_id', 'storage_key', 'original_filename');
             if (!row) {
                 throw new errors.NotFoundError({
                     message: tpl(messages.assetRowNotFound, {id})
                 });
             }
-            let owned = String(row.user_id || '') === String(userId);
-            if (!owned && row.chart_job_id) {
+            let chartJobUserId = null;
+            if (row.chart_job_id) {
                 const job = await knex('social_ai_chart_jobs')
                     .where({id: row.chart_job_id})
                     .first('user_id');
-                owned = Boolean(job && String(job.user_id || '') === String(userId));
+                chartJobUserId = job?.user_id || null;
             }
-            if (!owned) {
+            if (!canRenameAsset({...row, chart_job_user_id: chartJobUserId}, userId)) {
                 throw new errors.NoPermissionError({
                     message: tpl(messages.noRenamePermission)
                 });
@@ -2370,12 +2394,13 @@ const controller = {
                 .where({id})
                 .update({display_name: displayName || null, updated_at: new Date()});
 
+            // {data: [...]} like destroyAsset / updateTag: the default serializer turns it into {socialgallery: [...]}
             return {
-                socialgallery: [{
+                data: [{
                     id,
                     display_name: displayName || null,
                     original_filename: row.original_filename || null,
-                    name: displayName || String(row.original_filename || '').trim() || null
+                    name: galleryItemName({...row, display_name: displayName})
                 }]
             };
         }

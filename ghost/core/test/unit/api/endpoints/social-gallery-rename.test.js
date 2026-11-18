@@ -59,7 +59,7 @@ describe('Social gallery: give a file a display name (renameAsset)', function ()
 
     it('the uploader can set a name; only display_name changes (S3 key and original file name stay)', async function () {
         const result = await rename('uploader', ASSET, '  母の話  （1）  ');
-        assert.deepEqual(result.socialgallery[0], {
+        assert.deepEqual(result.data[0], {
             id: ASSET,
             display_name: '母の話 （1）',
             original_filename: 'voice-2026-11-17.webm',
@@ -74,9 +74,34 @@ describe('Social gallery: give a file a display name (renameAsset)', function ()
     it('an empty name clears it (lists go back to the uploaded file name)', async function () {
         await rename('uploader', ASSET, '母の話');
         const result = await rename('uploader', ASSET, '   ');
-        assert.equal(result.socialgallery[0].display_name, null);
-        assert.equal(result.socialgallery[0].name, 'voice-2026-11-17.webm');
+        assert.equal(result.data[0].display_name, null);
+        assert.equal(result.data[0].name, 'voice-2026-11-17.webm');
         assert.equal((await rowOf(ASSET)).display_name, null);
+    });
+
+    it('the response goes through the default serializer as {socialgallery: [{...}]} (not wrapped twice)', async function () {
+        const result = await rename('uploader', ASSET, '母の話');
+        const serializer = require('../../../../core/server/api/endpoints/utils/serializers/output/default');
+        const frame = {options: {}};
+        serializer.all(result, {docName: 'socialgallery', method: 'renameAsset'}, frame);
+        assert.deepEqual(frame.response, {
+            socialgallery: [{id: ASSET, display_name: '母の話', original_filename: 'voice-2026-11-17.webm', name: '母の話'}]
+        });
+    });
+
+    it('a body without display_name (or a misspelt key) is refused and does not clear the name; null clears it', async function () {
+        await rename('uploader', ASSET, '母の話');
+        await assert.rejects(endpoint.renameAsset.query({options: {id: ASSET, context: {user: 'uploader'}}, data: {displayName: 'x'}}), {errorType: 'ValidationError'});
+        await assert.rejects(endpoint.renameAsset.query({options: {id: ASSET, context: {user: 'uploader'}}, data: {}}), {errorType: 'ValidationError'});
+        assert.equal((await rowOf(ASSET)).display_name, '母の話');
+        await rename('uploader', ASSET, null);
+        assert.equal((await rowOf(ASSET)).display_name, null);
+    });
+
+    it('clearing the name of a row without an uploaded file name answers with the last part of the key', async function () {
+        await db('social_media_assets').where({id: ASSET}).update({original_filename: null});
+        const result = await rename('uploader', ASSET, '');
+        assert.equal(result.data[0].name, 'voice-2026-11-17.webm');
     });
 
     it('control characters become spaces', async function () {

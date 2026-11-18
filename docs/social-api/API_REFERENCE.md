@@ -252,6 +252,10 @@ All routes below are based on `custom-routes.js`.
   - `PUT /social/gallery/assets/:id/name` — 表示の名前（別名）を付ける。body `{display_name}`（200 文字まで、空なら消す）。
     変えるのは `social_media_assets.display_name` だけ（S3・`storage_key`・`original_filename` はそのまま）。
     変えられるのは削除（`DELETE /social/gallery/assets/:id`）と同じ人: 上げた本人、または行を作った chart job の持ち主。
+    - body に `display_name` のキーが無いと 422（黙って消さない）。`""` か `null` で消す。
+    - 成功: `{"socialgallery":[{"id":"…","display_name":"母の話","original_filename":"voice-2026-11-17.webm","name":"母の話"}]}`
+      （消したときの `name` は元のファイル名、無ければ key の最後）
+    - ほかの人は 403、無い id は 404、201 文字以上は 422
 - 一覧の項目（`listByAssetTable` を通るもの: user / group / chartjobs / newsjobs / project など）:
   - `name` = `display_name` → `original_filename` → key の最後、の順
   - `display_name`・`original_filename`（元のファイル名）・`can_rename`（今の人が名前を変えられるか）も返す
