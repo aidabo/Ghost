@@ -202,7 +202,8 @@ describe('Super Editor scope on knex-backed listings', function () {
         SocialGroup: {
             findOne: async ({id}) => ({id, get: () => 'active'}),
             // Only 'editor' is a member of the family group.
-            canAccessGroup: async (group, userId) => userId === 'editor' && String(group.id).toLowerCase() === FAM
+            canAccessGroup: async (group, userId) => userId === 'editor' && String(group.id).toLowerCase() === FAM,
+            ensureMediaFolderAlias: async () => 'alias'
         },
         SocialGroupMember: {
             canEditGroupContent: async ({authorId, userId}) => authorId === userId || ['owner', 'admin'].includes(userId)
@@ -229,7 +230,7 @@ describe('Super Editor scope on knex-backed listings', function () {
         await database.schema.createTable('social_media_assets', (table) => {
             table.string('id').primary();
             [
-                'storage_key', 'storage_url', 'thumbnail_url', 'thumbnail_storage_key', 'original_filename',
+                'storage_key', 'storage_url', 'thumbnail_url', 'thumbnail_storage_key', 'original_filename', 'display_name',
                 'asset_type', 'owner_scope', 'user_id', 'group_id', 'job_id', 'dzi_job_id', 'chart_job_id',
                 'content_bundle_job_id', 'news_job_id', 'project_id', 'social_chart_id', 'tag_id',
                 'created_at', 'updated_at'
@@ -343,7 +344,7 @@ describe('Super Editor scope on knex-backed listings', function () {
             {id: 'a-family-row', storage_key: 'k3', owner_scope: 'chart_jobs', group_id: FAM, created_at: '2000-01-01 00:00:03'},
             {id: 'u-other', storage_key: 'k4', owner_scope: 'user', user_id: 'editor', created_at: '2000-01-01 00:00:04'},
             {id: 'u-other-family', storage_key: 'k5', owner_scope: 'user', user_id: 'editor', group_id: FAM, created_at: '2000-01-01 00:00:05'},
-            {id: 'u-own', storage_key: 'k6', owner_scope: 'user', user_id: 'se', created_at: '2000-01-01 00:00:06'},
+            {id: 'u-own', storage_key: 'k6', owner_scope: 'user', user_id: 'se', original_filename: 'voice-1.webm', display_name: '母の話', created_at: '2000-01-01 00:00:06'},
             {id: 'a-pub-job', storage_key: 'k7', owner_scope: 'chart_jobs', chart_job_id: 'cj-pub', created_at: '2000-01-01 00:00:07'},
             {id: 'a-pub-row', storage_key: 'k8', owner_scope: 'chart_jobs', group_id: PUB, created_at: '2000-01-01 00:00:08'},
             {id: 'a-pub-row-family-job', storage_key: 'k9', owner_scope: 'chart_jobs', group_id: PUB, chart_job_id: 'cj-family', created_at: '2000-01-01 00:00:09'},
@@ -354,7 +355,10 @@ describe('Super Editor scope on knex-backed listings', function () {
             {id: 'a-dzi-family-project', storage_key: 'k12', owner_scope: 'chart_jobs', dzi_job_id: 'dz-open', created_at: '2000-01-01 00:00:12'},
             {id: 'a-junction-family', storage_key: 'k13', owner_scope: 'chart_jobs', created_at: '2000-01-01 00:00:13'},
             // F9: an archived public group is not a newsroom group.
-            {id: 'a-archived-pub', storage_key: 'k14', owner_scope: 'chart_jobs', chart_job_id: 'cj-archived-pub', created_at: '2000-01-01 00:00:14'}
+            {id: 'a-archived-pub', storage_key: 'k14', owner_scope: 'chart_jobs', chart_job_id: 'cj-archived-pub', created_at: '2000-01-01 00:00:14'},
+            // family group uploads (owner_scope group): one by the viewer, one by someone else
+            {id: 'g-own', storage_key: 'gallery/groups/f/voice-1.webm', owner_scope: 'group', group_id: FAM, user_id: 'editor', created_at: '2000-01-01 00:00:15'},
+            {id: 'g-other', storage_key: 'gallery/groups/f/photo.jpg', owner_scope: 'group', group_id: FAM, user_id: 'owner', created_at: '2000-01-01 00:00:16'}
         ]);
         await database('social_ai_news_jobs').insert([
             {id: 'n-open', user_id: 'editor', group_id: null, status: 'queued', updated_at: '2000-01-01 00:00:01'},
@@ -400,6 +404,27 @@ describe('Super Editor scope on knex-backed listings', function () {
         it('user gallery: Super Editor sees every no-group / public-group upload, others only their own no-group ones', async function () {
             assert.deepEqual(ids(await gallery.user.query(userFrame('se'))), ['u-other', 'u-other-pub', 'u-own']);
             assert.deepEqual(ids(await gallery.user.query(userFrame('editor'))), ['u-other']);
+        });
+
+        it('lists show the display name first, keep the uploaded file name, and say who may rename (the uploader)', async function () {
+            const items = (await gallery.user.query(userFrame('se'))).data;
+            const own = items.find(item => item.id === 'u-own');
+            assert.equal(own.name, '母の話');
+            assert.equal(own.display_name, '母の話');
+            assert.equal(own.original_filename, 'voice-1.webm');
+            assert.equal(own.can_rename, true);
+            // someone else's upload: visible to Super Editor, but not renamable by them
+            assert.equal(items.find(item => item.id === 'u-other').can_rename, false);
+        });
+
+        it('group gallery also says who may rename (the viewer\'s own upload only), and names fall back to the key', async function () {
+            const result = await gallery.group.query({options: {context: {user: 'editor'}}, data: {id: FAM}});
+            const byId = Object.fromEntries(result.data.map(item => [item.id, item]));
+            assert.deepEqual(Object.keys(byId).sort(), ['g-other', 'g-own']);
+            assert.equal(byId['g-own'].can_rename, true);
+            assert.equal(byId['g-other'].can_rename, false);
+            // no display name, no original file name: the last part of the key
+            assert.equal(byId['g-own'].name, 'voice-1.webm');
         });
     });
 
