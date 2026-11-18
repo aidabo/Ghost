@@ -249,6 +249,12 @@ All routes below are based on `custom-routes.js`.
   - `POST /social/gallery/presign`
   - `POST /social/gallery/finalize`
   - `POST /social/gallery/sync-tags`
+  - `PUT /social/gallery/assets/:id/name` — 表示の名前（別名）を付ける。body `{display_name}`（200 文字まで、空なら消す）。
+    変えるのは `social_media_assets.display_name` だけ（S3・`storage_key`・`original_filename` はそのまま）。
+    変えられるのは削除（`DELETE /social/gallery/assets/:id`）と同じ人: 上げた本人、または行を作った chart job の持ち主。
+- 一覧の項目（`listByAssetTable` を通るもの: user / group / chartjobs / newsjobs / project など）:
+  - `name` = `display_name` → `original_filename` → key の最後、の順
+  - `display_name`・`original_filename`（元のファイル名）・`can_rename`（今の人が名前を変えられるか）も返す
 
 ### AI chats
 

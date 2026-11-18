@@ -1323,6 +1323,9 @@ module.exports = {
         thumbnail_storage_key: {type: 'string', maxlength: 2000, nullable: true},
         thumbnail_url: {type: 'string', maxlength: 2000, nullable: true},
         original_filename: {type: 'string', maxlength: 1000, nullable: true},
+        // Display name (alias) a person gives the file. The S3 object and original_filename stay as they are;
+        // lists show display_name first. Null = show original_filename.
+        display_name: {type: 'string', maxlength: 1000, nullable: true},
         asset_type: {type: 'string', maxlength: 50, nullable: false, index: true},
         owner_scope: {type: 'string', maxlength: 20, nullable: false, index: true},
         user_id: {type: 'string', maxlength: 24, nullable: true, index: true, references: 'users.id', cascadeDelete: true},

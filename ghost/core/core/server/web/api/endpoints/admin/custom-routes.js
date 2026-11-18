@@ -184,6 +184,8 @@ module.exports = function customApiRoutes(router) {
     router.get('/social/gallery/job-projects', mw.authAdminApi, http(api.socialGallery.jobProjects));
     router.get('/social/gallery/job-projects/', mw.authAdminApi, http(api.socialGallery.jobProjects));
     // Delete ONE gallery asset (social_media_assets) by id — chart-job gallery delete icon.
+    router.put('/social/gallery/assets/:id/name', mw.authAdminApi, http(api.socialGallery.renameAsset));
+    router.put('/social/gallery/assets/:id/name/', mw.authAdminApi, http(api.socialGallery.renameAsset));
     router.delete('/social/gallery/assets/:id', mw.authAdminApi, http(api.socialGallery.destroyAsset));
     router.delete('/social/gallery/assets/:id/', mw.authAdminApi, http(api.socialGallery.destroyAsset));
     router.get('/social/gallery/user', mw.authAdminApi, http(api.socialGallery.user));

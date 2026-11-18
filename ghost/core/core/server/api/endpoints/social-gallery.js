@@ -34,6 +34,8 @@ const messages = {
     assetIdRequired: '`id` is required.',
     assetRowNotFound: 'Gallery asset not found: {id}.',
     noAssetPermission: 'You are not allowed to delete this gallery asset.',
+    noRenamePermission: 'Only the person who added this file can change its name.',
+    displayNameTooLong: '`display_name` must be 200 characters or fewer.',
     selectedBroadcastAsset: 'This gallery asset is selected for a virtual broadcast. Clear the broadcast selection before deleting it.',
     projectRequired: '`project_id` is required.',
     projectNotFound: 'Project not found: {projectId}.',
@@ -731,6 +733,9 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
             'sma.storage_url as url',
             'sma.storage_key as path',
             'sma.original_filename as original_filename',
+            'sma.display_name as display_name',
+            'sma.user_id as user_id',
+            'cj.user_id as chart_job_user_id',
             'sma.asset_type as asset_type',
             'sma.job_id as job_id',
             'sma.content_bundle_job_id as content_bundle_job_id',
@@ -754,6 +759,8 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
 
         const query = knex('social_media_assets as sma')
             .leftJoin('tags as t', 'sma.tag_id', 't.id')
+            // who may rename: the uploader, or the owner of the chart job that produced the row (same as destroyAsset)
+            .leftJoin('social_ai_chart_jobs as cj', 'cj.id', 'sma.chart_job_id')
             .leftJoin('social_ai_news_job_media as njm', function () {
                 this.on('njm.media_id', 'sma.id').andOn('njm.role', '=', knex.raw('?', ['output']));
             })
@@ -971,7 +978,11 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
         path: row.path,
         thumbnail_url: row.thumbnail_url || null,
         thumbnail_storage_key: row.thumbnail_storage_key || null,
-        name: String(row.original_filename || '').trim() || String(row.key || '').split('/').filter(Boolean).pop() || null,
+        // display_name (alias) first, then the uploaded file name, then the last part of the key
+        name: String(row.display_name || '').trim() || String(row.original_filename || '').trim() || String(row.key || '').split('/').filter(Boolean).pop() || null,
+        display_name: String(row.display_name || '').trim() || null,
+        original_filename: row.original_filename || null,
+        can_rename: Boolean(userId) && (String(row.user_id || '') === String(userId) || String(row.chart_job_user_id || '') === String(userId)),
         type: resolveGalleryItemType({
             asset_type: row.asset_type
         }),
@@ -2292,6 +2303,79 @@ const controller = {
                     category: resolvedTag?.name || null,
                     category_slug: resolvedTag?.slug || null,
                     updated_at: now
+                }]
+            };
+        }
+    },
+
+    // Give ONE gallery asset a display name (alias). Only the name shown in lists changes:
+    // the S3 object, storage_key and original_filename stay as they are. An empty name clears it
+    // (lists fall back to original_filename). Who may rename = who may delete (destroyAsset):
+    // the uploader, or the owner of the chart job that produced the row.
+    renameAsset: {
+        headers: {
+            cacheInvalidate: false
+        },
+        options: [
+            'id'
+        ],
+        permissions: false,
+        async query(frame) {
+            const userId = frame.options?.context?.user;
+            if (!userId) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.userRequired)
+                });
+            }
+            const id = String(frame.options?.id || '').trim();
+            if (!id) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.assetIdRequired)
+                });
+            }
+            // control characters out, spaces folded; empty = clear
+            const displayName = String(frame.data?.display_name ?? '')
+                .replace(/[\u0000-\u001f\u007f]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (displayName.length > 200) {
+                throw new errors.ValidationError({
+                    message: tpl(messages.displayNameTooLong)
+                });
+            }
+
+            const knex = models.Base.knex;
+            const row = await knex('social_media_assets')
+                .where({id})
+                .first('id', 'user_id', 'chart_job_id', 'original_filename');
+            if (!row) {
+                throw new errors.NotFoundError({
+                    message: tpl(messages.assetRowNotFound, {id})
+                });
+            }
+            let owned = String(row.user_id || '') === String(userId);
+            if (!owned && row.chart_job_id) {
+                const job = await knex('social_ai_chart_jobs')
+                    .where({id: row.chart_job_id})
+                    .first('user_id');
+                owned = Boolean(job && String(job.user_id || '') === String(userId));
+            }
+            if (!owned) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.noRenamePermission)
+                });
+            }
+
+            await knex('social_media_assets')
+                .where({id})
+                .update({display_name: displayName || null, updated_at: new Date()});
+
+            return {
+                socialgallery: [{
+                    id,
+                    display_name: displayName || null,
+                    original_filename: row.original_filename || null,
+                    name: displayName || String(row.original_filename || '').trim() || null
                 }]
             };
         }
