@@ -689,8 +689,7 @@ const controller = {
             const knex = models.Base.knex;
             const row = await loadRowOrThrow(knex, frame.options?.id);
             const newsroomScope = await assertCanWriteRow({ frame, row });
-            // Checked before the cascade (and before its S3 cleanup, which
-            // runs in `finally` even when the transaction fails).
+            // Checked before the cascade (and before its S3 cleanup).
             if (newsroomScope) {
                 await assertCascadeIsNewsroom(knex, row, newsroomScope);
             }
@@ -700,7 +699,6 @@ const controller = {
             // instead of hardcoding social_ai_chart_jobs, so a 2nd family
             // (media_jobs …) hangs off the same project without breaking
             // destroy. Add a family entry when a new family ships.
-            const deletedJobs = [];
             // Best-effort gallery-bucket object cleanup (mirrors job destroy).
             // Must not block the DB delete — failures are logged.
             const cleanupGalleryPrefix = async (prefixParts) => {
@@ -742,102 +740,106 @@ const controller = {
             const cleanupGalleryBucket = (family, childId) =>
                 cleanupGalleryPrefix([...family.galleryPrefixParts, childId]);
 
-            try {
-                await knex.transaction(async (trx) => {
-                    const selectedBroadcast = await trx('social_ai_avatar_broadcast_selections as s')
-                        .join('social_media_assets as sma', 'sma.id', 's.media_id')
-                        .where('sma.project_id', row.id)
-                        .first('s.post_id');
-                    if (selectedBroadcast) {
-                        throw new errors.ValidationError({message: tpl(messages.selectedBroadcastAssets)});
-                    }
-
-                    for (const family of JOB_FAMILIES) {
-                        // M7: reject while any child job is queued/running —
-                        // deleting an active project is irreversible and would
-                        // strand a worker mid-run. Check INSIDE the same
-                        // transaction as the cascade (review #4: no
-                        // check-then-delete race with worker claim).
-                        const active = await trx(family.jobsTable)
-                            .where({project_id: row.id})
-                            .whereIn('status', ['queued', 'running'])
-                            .select('id');
-                        if (active.length > 0) {
-                            throw new errors.ValidationError({
-                                message: tpl(messages.activeJobs)
-                            });
-                        }
-
-                        const childJobs = await trx(family.jobsTable)
-                            .where({project_id: row.id})
-                            .select('id');
-                        const childIds = childJobs.map((j) => j.id);
-                        if (childIds.length === 0) {
-                            continue;
-                        }
-                        deletedJobs.push({family, ids: childIds});
-
-                        // Junction table (chart → chart_job_media; media → none).
-                        if (family.junctionTable) {
-                            await trx(family.junctionTable)
-                                .whereIn(family.linkColumn, childIds)
-                                .del();
-                        }
-
-                        // Asset rows of the project's jobs. The project is
-                        // going away entirely, so ALL of its rows go (unlike
-                        // job destroy — H3 — where artifacts rows must survive
-                        // for other jobs). gallery paths are per-JOB, so the
-                        // LIKE clauses enumerate the child job ids.
-                        const galleryPfx = family.galleryPrefixParts.join('/');
-                        const galleryLikes = childIds.map(() => `storage_key LIKE ?`);
-                        const galleryParams = childIds.flatMap((cid) => [`%${galleryPfx}/${cid}/%`]);
-                        const jobAreaLikes = childIds.map(() => `storage_key LIKE ?`);
-                        const jobAreaParams = childIds.flatMap((cid) => [`%/jobs/${cid}/%`]);
-                        const assetCol = family.assetLinkColumn;
-                        await trx('social_media_assets')
-                            .where(function () {
-                                if (assetCol) {
-                                    this.whereIn(assetCol, childIds);
-                                }
-                                this.orWhereRaw(`(${jobAreaLikes.join(' OR ')})`, jobAreaParams);
-                            })
-                            .orWhereRaw(`(${galleryLikes.join(' OR ')})`, galleryParams)
-                            .del();
-
-                        await trx(family.jobsTable)
-                            .whereIn('id', childIds)
-                            .del();
-                    }
-
-                    // Direct project-stamped rows: uploads that target the
-                    // project tree itself (media → gallery/projects/{pid}/…,
-                    // legacy chart → gallery/chart_projects/{pid}/). The
-                    // per-family cascade above covers rows linked through job
-                    // families; these are project-direct uploads.
-                    await trx('social_media_assets').where({project_id: row.id}).del();
-
-                    // Phase 1: project content links (posts/StackPages/gallery).
-                    await trx('social_ai_project_links').where({project_id: row.id}).del();
-
-                    await trx(TABLE).where({ id: row.id }).del();
-                });
-            } finally {
-                // Gallery-bucket objects: best-effort, after the transaction
-                // (objects have no FK; deleting them must never roll back the
-                // DB cascade).
-                for (const {family, ids} of deletedJobs) {
-                    for (const cid of ids) {
-                        await cleanupGalleryBucket(family, cid);
-                    }
+            // Child jobs whose rows the cascade deleted. Returned by the
+            // transaction, so it is only known once the cascade has committed.
+            const deletedJobs = await knex.transaction(async (trx) => {
+                const cascaded = [];
+                const selectedBroadcast = await trx('social_ai_avatar_broadcast_selections as s')
+                    .join('social_media_assets as sma', 'sma.id', 's.media_id')
+                    .where('sma.project_id', row.id)
+                    .first('s.post_id');
+                if (selectedBroadcast) {
+                    throw new errors.ValidationError({message: tpl(messages.selectedBroadcastAssets)});
                 }
-                // Project tree: direct uploads into the project itself (media →
-                // gallery/projects/{pid}/…, legacy chart →
-                // gallery/chart_projects/{pid}/) are prefixed by the project
-                // id, not by any child job id.
-                await cleanupGalleryPrefix(['gallery', 'chart_projects', row.id]);
-                await cleanupGalleryPrefix(['gallery', 'projects', row.id]);
+
+                for (const family of JOB_FAMILIES) {
+                    // M7: reject while any child job is queued/running —
+                    // deleting an active project is irreversible and would
+                    // strand a worker mid-run. Check INSIDE the same
+                    // transaction as the cascade (review #4: no
+                    // check-then-delete race with worker claim).
+                    const active = await trx(family.jobsTable)
+                        .where({project_id: row.id})
+                        .whereIn('status', ['queued', 'running'])
+                        .select('id');
+                    if (active.length > 0) {
+                        throw new errors.ValidationError({
+                            message: tpl(messages.activeJobs)
+                        });
+                    }
+
+                    const childJobs = await trx(family.jobsTable)
+                        .where({project_id: row.id})
+                        .select('id');
+                    const childIds = childJobs.map((j) => j.id);
+                    if (childIds.length === 0) {
+                        continue;
+                    }
+                    cascaded.push({family, ids: childIds});
+
+                    // Junction table (chart → chart_job_media; media → none).
+                    if (family.junctionTable) {
+                        await trx(family.junctionTable)
+                            .whereIn(family.linkColumn, childIds)
+                            .del();
+                    }
+
+                    // Asset rows of the project's jobs. The project is
+                    // going away entirely, so ALL of its rows go (unlike
+                    // job destroy — H3 — where artifacts rows must survive
+                    // for other jobs). gallery paths are per-JOB, so the
+                    // LIKE clauses enumerate the child job ids.
+                    const galleryPfx = family.galleryPrefixParts.join('/');
+                    const galleryLikes = childIds.map(() => `storage_key LIKE ?`);
+                    const galleryParams = childIds.flatMap((cid) => [`%${galleryPfx}/${cid}/%`]);
+                    const jobAreaLikes = childIds.map(() => `storage_key LIKE ?`);
+                    const jobAreaParams = childIds.flatMap((cid) => [`%/jobs/${cid}/%`]);
+                    const assetCol = family.assetLinkColumn;
+                    await trx('social_media_assets')
+                        .where(function () {
+                            if (assetCol) {
+                                this.whereIn(assetCol, childIds);
+                            }
+                            this.orWhereRaw(`(${jobAreaLikes.join(' OR ')})`, jobAreaParams);
+                        })
+                        .orWhereRaw(`(${galleryLikes.join(' OR ')})`, galleryParams)
+                        .del();
+
+                    await trx(family.jobsTable)
+                        .whereIn('id', childIds)
+                        .del();
+                }
+
+                // Direct project-stamped rows: uploads that target the
+                // project tree itself (media → gallery/projects/{pid}/…,
+                // legacy chart → gallery/chart_projects/{pid}/). The
+                // per-family cascade above covers rows linked through job
+                // families; these are project-direct uploads.
+                await trx('social_media_assets').where({project_id: row.id}).del();
+
+                // Phase 1: project content links (posts/StackPages/gallery).
+                await trx('social_ai_project_links').where({project_id: row.id}).del();
+
+                await trx(TABLE).where({ id: row.id }).del();
+                return cascaded;
+            });
+
+            // Gallery-bucket objects: best-effort, only after the transaction
+            // has committed (objects have no FK; deleting them must never roll
+            // back the DB cascade). A refused / failed destroy (selected
+            // broadcast asset, active child job, DB error) throws above and
+            // leaves the objects in place, since its rows were rolled back.
+            for (const {family, ids} of deletedJobs) {
+                for (const cid of ids) {
+                    await cleanupGalleryBucket(family, cid);
+                }
             }
+            // Project tree: direct uploads into the project itself (media →
+            // gallery/projects/{pid}/…, legacy chart →
+            // gallery/chart_projects/{pid}/) are prefixed by the project
+            // id, not by any child job id.
+            await cleanupGalleryPrefix(['gallery', 'chart_projects', row.id]);
+            await cleanupGalleryPrefix(['gallery', 'projects', row.id]);
 
             return {
                 ...serializeRow({
