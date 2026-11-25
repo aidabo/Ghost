@@ -7,6 +7,7 @@ const storage = require('../../adapters/storage');
 const models = require('../../models');
 const socialMediaAssets = require('./utils/social-media-assets');
 const staffScope = require('./utils/staff-scope');
+const galleryKeyScope = require('./utils/gallery-key-scope');
 
 const messages = {
     userRequired: 'No login user authentication, can not read gallery in this scope.',
@@ -43,7 +44,12 @@ const messages = {
     noProjectPermission: 'You are not allowed to access this project gallery.',
     jobIdRequired: '`job_id` is required.',
     jobNotFound: 'Chart job not found: {jobId}.',
-    noJobPermission: 'You are not allowed to access this chart job gallery.'
+    noJobPermission: 'You are not allowed to access this chart job gallery.',
+    invalidPathId: '`{name}` may only contain letters, digits, "-" and "_".',
+    storageNoScope: 'Configured storage adapter cannot place gallery uploads (no getTargetDir).',
+    keyOutOfScope: '`{field}` must be a file under {prefixes} (the area presign hands out for these values).',
+    keyUrlMismatch: '`{keyField}` and `{urlField}` must point at the same file of the media store.',
+    keyOwnedElsewhere: 'Another gallery asset already uses this storage key; it is not yours to overwrite.'
 };
 
 const TYPE_ALL = 'all';
@@ -1185,6 +1191,14 @@ const resolveGalleryScope = ({ target, groupId, propertyId, personId, chartId, p
     };
 };
 
+// Ids that become one folder name of the upload key (gallery/persons/{id}/,
+// gallery/charts/{id}/). A '/' or '..' would move the key into another area.
+const assertPathSafeId = (value, name) => {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(value || ''))) {
+        throw new errors.BadRequestError({message: tpl(messages.invalidPathId, {name})});
+    }
+};
+
 const resolveUploadContext = async (frame) => {
     const mediaStore = storage.getStorage('media');
     const userId = frame.options?.context?.user;
@@ -1234,12 +1248,14 @@ const resolveUploadContext = async (frame) => {
             groupId: null,
             propertyId: resolvedScope.propertyId,
             ownerScope: 'property',
+            areaPrefixes: [galleryKeyScope.buildAreaPrefix(baseDir)],
             tag
         };
     }
 
     // Person target: gallery/persons/{person-id}/
     if (resolvedScope.scope === 'person' && resolvedScope.personId) {
+        assertPathSafeId(resolvedScope.personId, 'person_id');
         const baseDir = path.posix.join(root, 'gallery', 'persons', resolvedScope.personId);
         return {
             mediaStore,
@@ -1248,6 +1264,7 @@ const resolveUploadContext = async (frame) => {
             groupId: null,
             personId: resolvedScope.personId,
             ownerScope: 'person',
+            areaPrefixes: [galleryKeyScope.buildAreaPrefix(baseDir)],
             tag
         };
     }
@@ -1260,7 +1277,10 @@ const resolveUploadContext = async (frame) => {
             });
         }
 
-        const jobId = String(getFrameValue(frame, 'job_id') || ObjectId().toHexString()).trim();
+        // finalize gets the presign's job id back as dzi_job_id (job_id there is the
+        // media-jobs FK), so read both; a fresh id only when neither is given.
+        const jobId = String(getFrameValue(frame, 'job_id') || getFrameValue(frame, 'dzi_job_id') || ObjectId().toHexString()).trim();
+        assertPathSafeId(jobId, 'job_id');
         const baseDir = path.posix.join(root, 'gallery', 'deepzoom', jobId);
         return {
             mediaStore,
@@ -1269,6 +1289,7 @@ const resolveUploadContext = async (frame) => {
             groupId: null,
             jobId,
             ownerScope: 'deepzoom',
+            areaPrefixes: [galleryKeyScope.buildAreaPrefix(baseDir)],
             tag
         };
     }
@@ -1344,6 +1365,11 @@ const resolveUploadContext = async (frame) => {
             ownerScope: newsJob ? 'news_jobs' : (contentBundleJob ? 'content_bundles' : 'chart_jobs'),
             contentBundleJobId: contentBundleJob?.id || null,
             newsJobId: newsJob?.id || null,
+            // finalize has no subfolder: either project tree is this project's.
+            areaPrefixes: [
+                galleryKeyScope.buildAreaPrefix(root, 'gallery', 'projects', pid),
+                galleryKeyScope.buildAreaPrefix(root, 'gallery', 'chart_projects', pid)
+            ],
             tag
         };
     }
@@ -1372,6 +1398,7 @@ const resolveUploadContext = async (frame) => {
             groupId: null,
             jobId,
             ownerScope: 'chart_jobs',
+            areaPrefixes: [galleryKeyScope.buildAreaPrefix(baseDir)],
             tag
         };
     }
@@ -1400,6 +1427,7 @@ const resolveUploadContext = async (frame) => {
             groupId: null,
             jobId,
             ownerScope: 'news_jobs',
+            areaPrefixes: [galleryKeyScope.buildAreaPrefix(baseDir)],
             tag
         };
     }
@@ -1413,6 +1441,9 @@ const resolveUploadContext = async (frame) => {
         }
 
         const cid = String(resolvedScope.chartId || getFrameValue(frame, 'social_chart_id') || '').trim();
+        if (cid) {
+            assertPathSafeId(cid, 'social_chart_id');
+        }
         const baseDir = path.posix.join(root, 'gallery', 'charts', cid || 'unknown');
         return {
             mediaStore,
@@ -1420,6 +1451,7 @@ const resolveUploadContext = async (frame) => {
             userId,
             groupId: null,
             ownerScope: 'chart',
+            areaPrefixes: [galleryKeyScope.buildAreaPrefix(baseDir)],
             tag
         };
     }
@@ -1455,6 +1487,7 @@ const resolveUploadContext = async (frame) => {
             userId,
             groupId: resolvedScope.groupId,
             ownerScope: 'group',
+            areaPrefixes: [galleryKeyScope.buildAreaPrefix(baseDir)],
             tag
         };
     }
@@ -1473,8 +1506,92 @@ const resolveUploadContext = async (frame) => {
         userId,
         groupId: null,
         ownerScope: 'user',
+        areaPrefixes: [galleryKeyScope.buildAreaPrefix(baseDir)],
         tag
     };
+};
+
+const decodeKey = (value) => {
+    try {
+        return decodeURIComponent(value);
+    } catch (err) {
+        return null;
+    }
+};
+
+/**
+ * finalize: the key and/or URL the client sends back must name one file inside
+ * the caller's upload area (uploadContext.areaPrefixes). When both are sent
+ * they must agree (the URL may be percent-encoded). Returns the key the row is
+ * stored under (the one upsertAsset takes from the URL).
+ */
+const assertFinalizeKey = ({store, prefixes, key, url, keyField, urlField}) => {
+    if (!Array.isArray(prefixes) || prefixes.length === 0) {
+        throw new errors.ValidationError({message: tpl(messages.storageNoScope)});
+    }
+    const outOfScope = field => new errors.ValidationError({
+        message: tpl(messages.keyOutOfScope, {field, prefixes: prefixes.join(' or ')})
+    });
+    const cleanKey = galleryKeyScope.trimSlashes(key);
+    if (key && !galleryKeyScope.isKeyInAreas(key, prefixes)) {
+        throw outOfScope(keyField);
+    }
+    if (!url) {
+        return cleanKey;
+    }
+
+    let urlKey;
+    try {
+        urlKey = String(socialMediaAssets.getStorageKeyFromUrl(store, url) || '');
+    } catch (err) {
+        // Local storage throws for a URL it does not serve.
+        urlKey = '';
+    }
+    // A URL the store does not serve comes back unchanged (still with its host).
+    if (!urlKey || /^[a-z][a-z0-9+.-]*:\/\//i.test(urlKey) || urlKey.includes('?') || urlKey.includes('#')) {
+        throw outOfScope(urlField);
+    }
+    const decoded = decodeKey(urlKey);
+    if (!decoded || !galleryKeyScope.isKeyInAreas(urlKey, prefixes) || !galleryKeyScope.isKeyInAreas(decoded, prefixes)) {
+        throw outOfScope(urlField);
+    }
+    if (key && galleryKeyScope.trimSlashes(urlKey) !== cleanKey && galleryKeyScope.trimSlashes(decoded) !== cleanKey) {
+        throw new errors.ValidationError({message: tpl(messages.keyUrlMismatch, {keyField, urlField})});
+    }
+    return galleryKeyScope.trimSlashes(urlKey);
+};
+
+const sameId = (a, b) => String(a || '') === String(b || '');
+
+/**
+ * finalize updates the row that already has this key (upsertAsset). That is a
+ * retry of the caller's own upload only when the row has the same owner scope,
+ * uploader and group and is not a member upload (the key's area already pins
+ * the user / group / property / project / job folder); anything else is
+ * someone else's file and is refused, never re-pointed.
+ */
+const assertCanReuseAssetRow = async ({knex, storageKey, uploadContext}) => {
+    let existing;
+    try {
+        existing = await socialMediaAssets.findAssetRowByStorageKey(knex, storageKey, ['*']);
+    } catch (err) {
+        // Before the table exists upsertAsset skips the row as well.
+        if (err?.code === 'ER_NO_SUCH_TABLE' || /no such table/i.test(String(err?.message || ''))) {
+            return;
+        }
+        throw err;
+    }
+    if (!existing) {
+        return;
+    }
+    const ownerScope = uploadContext.ownerScope || (uploadContext.groupId ? 'group' : 'user');
+    const same = sameId(existing.owner_scope, ownerScope)
+        && sameId(existing.user_id, uploadContext.userId)
+        && sameId(existing.group_id, uploadContext.groupId)
+        && !existing.member_id;
+    if (!same) {
+        throw new errors.ConflictError({message: tpl(messages.keyOwnedElsewhere), context: storageKey});
+    }
 };
 
 const resolveEstatePropertyMediaType = ({ assetType, storageKey, originalFilename }) => {
@@ -2181,6 +2298,30 @@ const controller = {
             }
 
             const uploadContext = await resolveUploadContext(frame);
+            // The row's key is the one taken from storage_url (upsertAsset), so both
+            // the key and the URL must name the same file inside the area presign
+            // hands out for these scope values; the thumbnail too (destroyAsset
+            // deletes it). Finalize is not tied to a presign call, so this is what
+            // keeps a caller from recording — and later deleting — other files.
+            const storedKey = assertFinalizeKey({
+                store: uploadContext.mediaStore,
+                prefixes: uploadContext.areaPrefixes,
+                key: storageKey,
+                url: storageUrl,
+                keyField: 'storage_key',
+                urlField: 'storage_url'
+            });
+            if (thumbnailStorageKey || thumbnailStorageUrl) {
+                assertFinalizeKey({
+                    store: uploadContext.mediaStore,
+                    prefixes: uploadContext.areaPrefixes,
+                    key: thumbnailStorageKey,
+                    url: thumbnailStorageUrl,
+                    keyField: 'thumbnail_storage_key',
+                    urlField: 'thumbnail_storage_url'
+                });
+            }
+            await assertCanReuseAssetRow({knex: models.Base.knex, storageKey: storedKey, uploadContext});
             // The resolver only returns newsJobId when the job belongs to the
             // project, so its answer wins over the raw frame value.
             const newsJobId = uploadContext.newsJobId || String(getFrameValue(frame, 'news_job_id') || '').trim() || null;
