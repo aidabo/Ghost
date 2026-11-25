@@ -667,6 +667,40 @@ const controller = {
         }
     },
 
+    // The worker cannot read /social/gallery/* (staff session only) and a job
+    // payload carries asset ids, not S3 keys. This returns the keys of exactly the
+    // assets named in THIS job's payload — the body takes no ids — to the worker
+    // holding the lease. Access is rechecked for the job's creator, in case their
+    // group permission was removed after the job was made.
+    inputAssets: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const row = await loadRow(jobId(frame));
+            assertWorker(frame, row);
+            const payload = parseJson(row.payload, {});
+            const ids = [...new Set([
+                ...(Array.isArray(payload.scenes) ? payload.scenes.map(scene => scene?.image_asset_id) : []),
+                payload.avatar?.photo_asset_id
+            ].filter(Boolean))];
+            // Return the rows that were checked, not a second read of them.
+            const checked = await assertAssetsUsable({
+                knex: models.Base.knex,
+                // @ts-ignore
+                SocialGroup: models.SocialGroup,
+                isSystemAdmin
+            }, row.user_id, ids);
+            const assets = checked.map(asset => ({
+                id: asset.id,
+                storage_key: asset.storage_key,
+                storage_url: asset.storage_url,
+                asset_type: asset.asset_type,
+                original_filename: asset.original_filename
+            }));
+            return {job_id: row.id, assets};
+        }
+    },
+
     linkAssets: {
         options: ['id'],
         permissions: false,

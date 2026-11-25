@@ -431,6 +431,62 @@ describe('Video jobs and avatar consents', function () {
         });
     });
 
+    describe('input-assets (worker reads only the job\'s own assets)', function () {
+        const start = async (payload = basePayload()) => {
+            const job = await jobs.add.query(addFrame(USER, {payload}));
+            const claim = await jobs.claim.query(worker({worker_id: 'video-1'}));
+            return {job, claim};
+        };
+
+        it('returns only the payload\'s scene images and avatar photo to the lease holder', async function () {
+            const {job, claim} = await start(basePayload({
+                scenes: [{key: 's1', image_asset_id: OWN_PHOTO}],
+                avatar: {photo_asset_id: OTHER_IN_GROUP, lipsync: false}
+            }));
+            const result = await jobs.inputAssets.query(worker(lease(claim), {id: job.id}));
+            assert.equal(result.job_id, job.id);
+            assert.deepEqual(result.assets.map(a => a.id).sort(), [OWN_PHOTO, OTHER_IN_GROUP].sort());
+            assert.deepEqual(Object.keys(result.assets[0]).sort(), ['asset_type', 'id', 'original_filename', 'storage_key', 'storage_url']);
+            assert.equal(result.assets.find(a => a.id === OWN_PHOTO).storage_key, `gallery/${OWN_PHOTO}.jpg`);
+        });
+
+        it('refuses a session (not a worker integration)', async function () {
+            const {job, claim} = await start();
+            await rejects(jobs.inputAssets.query(staff(USER, lease(claim), {id: job.id})), {errorType: 'NoPermissionError'});
+        });
+
+        it('refuses a worker that does not hold the lease', async function () {
+            const {job, claim} = await start();
+            await rejects(jobs.inputAssets.query(worker({...lease(claim), claim_token: 'stale'}, {id: job.id})), {code: 'VIDEO_JOB_LEASE_LOST'});
+        });
+
+        it('refuses an asset the creator can no longer use', async function () {
+            const {job, claim} = await start(basePayload({scenes: [{key: 's1', image_asset_id: OTHER_IN_GROUP}]}));
+            await database('social_media_assets').where({id: OTHER_IN_GROUP}).update({group_id: GROUP_NO});
+            await rejects(jobs.inputAssets.query(worker(lease(claim), {id: job.id})), {errorType: 'NoPermissionError'});
+        });
+
+        it('returns the very row it checked, even if the asset moves groups right after the check', async function () {
+            const {job, claim} = await start(basePayload({scenes: [{key: 's1', image_asset_id: OTHER_IN_GROUP}]}));
+            const original = models.SocialGroup.canAccessGroup;
+            models.SocialGroup.canAccessGroup = async (...args) => {
+                const allowed = await original(...args);
+                // the access check has passed; now the asset moves to a group the creator cannot use
+                await database('social_media_assets').where({id: OTHER_IN_GROUP}).update({group_id: GROUP_NO, storage_key: 'gallery/moved.jpg'});
+                return allowed;
+            };
+            try {
+                const result = await jobs.inputAssets.query(worker(lease(claim), {id: job.id}));
+                // the checked row, not a second read that would see the change
+                assert.equal(result.assets[0].storage_key, `gallery/${OTHER_IN_GROUP}.jpg`);
+            } finally {
+                models.SocialGroup.canAccessGroup = original;
+            }
+            // the next call checks again and refuses
+            await rejects(jobs.inputAssets.query(worker(lease(claim), {id: job.id})), {errorType: 'NoPermissionError'});
+        });
+    });
+
     describe('group, project and scope_type', function () {
         it('requires write access to the group and a matching scope_type', async function () {
             await rejects(jobs.add.query(addFrame(USER, {payload: basePayload(), group_id: GROUP_NO})), {errorType: 'NoPermissionError'});

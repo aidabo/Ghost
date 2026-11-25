@@ -18,10 +18,14 @@ const ASSET_ID = /^[a-f0-9]{24}$/;
 // @param {Function} deps.isSystemAdmin  async (userId) => boolean
 // @param {string} actor
 // @param {string[]} assetIds
+// @returns {Promise<object[]>} the asset rows that were checked (id, user_id,
+//   group_id, storage_key, storage_url, asset_type, original_filename). A caller
+//   that needs the asset's fields must use these rows, not read them again: a
+//   second read could see a group change made after the check.
 const assertAssetsUsable = async ({knex, SocialGroup, isSystemAdmin}, actor, assetIds) => {
     const ids = [...new Set((assetIds || []).filter(Boolean))];
     if (!ids.length) {
-        return;
+        return [];
     }
     if (!actor) {
         throw new errors.NoPermissionError({message: 'A user is required to use gallery assets.'});
@@ -31,7 +35,7 @@ const assertAssetsUsable = async ({knex, SocialGroup, isSystemAdmin}, actor, ass
             throw new errors.ValidationError({message: 'Asset ids must be gallery asset ids.'});
         }
     });
-    const rows = await knex('social_media_assets').whereIn('id', ids).select('id', 'user_id', 'group_id');
+    const rows = await knex('social_media_assets').whereIn('id', ids).select('id', 'user_id', 'group_id', 'storage_key', 'storage_url', 'asset_type', 'original_filename');
     const byId = new Map(rows.map(row => [row.id, row]));
     const missing = ids.filter(id => !byId.has(id));
     if (missing.length) {
@@ -39,7 +43,7 @@ const assertAssetsUsable = async ({knex, SocialGroup, isSystemAdmin}, actor, ass
     }
     const others = rows.filter(row => row.user_id !== actor);
     if (!others.length || await isSystemAdmin(actor)) {
-        return;
+        return rows;
     }
     const groupAccess = new Map();
     for (const row of others) {
@@ -55,6 +59,7 @@ const assertAssetsUsable = async ({knex, SocialGroup, isSystemAdmin}, actor, ass
             throw new errors.NoPermissionError({message: 'You are not allowed to use this gallery asset.'});
         }
     }
+    return rows;
 };
 
 module.exports = {assertAssetsUsable};
