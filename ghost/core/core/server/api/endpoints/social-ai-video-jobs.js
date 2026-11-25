@@ -31,7 +31,7 @@ const messages = {
     // job's late ticks as a quiet skip.
     invalidTransition: 'The requested job transition is not allowed.',
     notLeaseHolder: 'This worker does not hold the job lease.',
-    keyOutOfScope: 'storage_key must be under {root}gallery/video_jobs/{jobId}/ of this job.',
+    keyOutOfScope: 'storage_key must be under {prefix} (this job\'s gallery area).',
     keyOwnedElsewhere: 'storage_key belongs to another asset that this job does not own.'
 };
 
@@ -48,34 +48,35 @@ const TERMINAL_ITEM_STATUSES = new Set(['completed', 'failed', 'skipped']);
 const VALID_ROLES = ['input', 'source', 'material', 'intermediate', 'preview', 'output'];
 const VALID_SOURCE_KINDS = ['real', 'ai'];
 
-// link-assets only accepts keys in THIS job's gallery area:
-// <root>/gallery/video_jobs/<jobId>/<path>, where <root> is the media store's
-// configured root (pathPrefix or storagePath — the same root destroy() lists
-// and deletes under; '' when none). So a worker (a bug, or a wrong key) cannot
-// pull another feature's asset into the job and have it deleted with the job,
-// and nothing it links is left behind in S3 by destroy(). Leading '/' is
-// ignored; no '.', '..' or empty segments, no backslash, and no second
-// 'gallery/video_jobs/' inside the path (destroy() of that other job would
-// match the key with its LIKE and delete this row too).
-const mediaRoot = () => {
+// THIS job's gallery area as a storage key prefix:
+// [<pathPrefix>/]gallery/video_jobs/<jobId>/. pathPrefix is the S3 adapter's
+// key prefix (GHOST_STORAGE_ADAPTER_S3_PATH_PREFIX / storage.s3.pathPrefix; the
+// video worker's VIDEO_JOB_GALLERY_PREFIX must be the same value). Local storage
+// has no pathPrefix (its storagePath is a filesystem path, not part of a key),
+// so the area is plain gallery/video_jobs/<jobId>/. link-assets and destroy()
+// both use this, so what is linked is what destroy() cleans.
+const trimSlashes = value => String(value || '').replace(/^\/+|\/+$/g, '');
+const jobAreaPrefix = (mediaStore, id) => [trimSlashes(mediaStore?.pathPrefix), 'gallery', OWNER_SCOPE, id]
+    .filter(Boolean).join('/') + '/';
+const getMediaStore = () => {
     try {
-        const mediaStore = storage.getStorage('media');
-        return String(mediaStore?.pathPrefix || mediaStore?.storagePath || '');
+        return storage.getStorage('media');
     } catch (err) {
-        return '';
+        return null;
     }
 };
-const trimSlashes = value => String(value || '').replace(/^\/+|\/+$/g, '');
-const isJobStorageKey = (key, id, root) => {
-    const clean = trimSlashes(key);
-    if (!clean || key.endsWith('/') || clean.includes('\\')) {
+
+// link-assets only accepts keys in that area, so a worker (a bug, or a wrong
+// key) cannot pull another feature's asset into the job and have it deleted
+// with the job. Refused: a leading '/' (another S3 object than the one
+// destroy() lists, and a second row for the same file), '.', '..' or empty
+// segments, a backslash, and a second 'gallery/video_jobs/' inside the path
+// (destroy() of that other job would match the key with its LIKE).
+const isJobStorageKey = (key, prefix) => {
+    if (!key.startsWith(prefix) || key.includes('\\')) {
         return false;
     }
-    const prefix = [trimSlashes(root), 'gallery', OWNER_SCOPE, id].filter(Boolean).join('/') + '/';
-    if (!clean.startsWith(prefix)) {
-        return false;
-    }
-    const rest = clean.slice(prefix.length);
+    const rest = key.slice(prefix.length);
     if (!rest || rest.split('/').some(segment => !segment || segment === '.' || segment === '..')) {
         return false;
     }
@@ -678,12 +679,12 @@ const controller = {
                 ? payloadInput.removed_keys.map(String).map(key => key.trim()).filter(Boolean)
                 : [];
 
-            const root = mediaRoot();
+            const areaPrefix = jobAreaPrefix(getMediaStore(), row.id);
             for (const asset of assets) {
                 const storageKey = String(asset?.storage_key || '').trim();
-                if (storageKey && !isJobStorageKey(storageKey, row.id, root)) {
+                if (storageKey && !isJobStorageKey(storageKey, areaPrefix)) {
                     throw new errors.ValidationError({
-                        message: tpl(messages.keyOutOfScope, {root: trimSlashes(root) ? `${trimSlashes(root)}/` : '', jobId: row.id}),
+                        message: tpl(messages.keyOutOfScope, {prefix: areaPrefix}),
                         context: storageKey
                     });
                 }
@@ -844,8 +845,7 @@ const controller = {
             try {
                 const mediaStore = storage.getStorage('media');
                 if (mediaStore && typeof mediaStore.delete === 'function' && typeof mediaStore.list === 'function') {
-                    const root = mediaStore.pathPrefix || mediaStore.storagePath || '';
-                    const prefix = [root, 'gallery', OWNER_SCOPE, row.id].filter(Boolean).join('/').replace(/\/+/g, '/');
+                    const prefix = jobAreaPrefix(mediaStore, row.id);
                     let cursor = null;
                     do {
                         const listed = await mediaStore.list({prefix, limit: 1000, continuationToken: cursor});

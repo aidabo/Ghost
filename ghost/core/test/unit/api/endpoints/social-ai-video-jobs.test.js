@@ -272,7 +272,7 @@ describe('Video jobs and avatar consents', function () {
             await rejects(link([out(`gallery/${OWN_PHOTO}.jpg`)]), {
                 errorType: 'ValidationError',
                 statusCode: 422,
-                message: `storage_key must be under gallery/video_jobs/${job.id}/ of this job.`
+                message: `storage_key must be under gallery/video_jobs/${job.id}/ (this job's gallery area).`
             });
             for (const key of [
                 `gallery/video_jobs/${job.id}`,
@@ -281,6 +281,8 @@ describe('Video jobs and avatar consents', function () {
                 `gallery/video_jobs/${job.id}/../${OWN_PHOTO}.jpg`,
                 `gallery/video_jobs/${job.id}/./out.mp4`,
                 `gallery/video_jobs/${job.id}//out.mp4`,
+                // A leading '/' is another S3 object than the one destroy() lists.
+                `/gallery/video_jobs/${job.id}/out.mp4`,
                 `gallery/video_jobs/${job.id}/a\\b.mp4`,
                 `gallery/video_jobs/${job.id}x/out.mp4`,
                 `gallery/news_jobs/${job.id}/out.mp4`,
@@ -302,17 +304,46 @@ describe('Video jobs and avatar consents', function () {
             assert.equal(photo.video_job_id, null);
         });
 
-        it('takes the root from the media store (the one destroy cleans) and refuses any other prefix', async function () {
-            mediaStore = {pathPrefix: 'tenant-a/'};
-            const {job, link} = await start();
+        it('uses the S3 pathPrefix as the key prefix, refuses any other, and destroy cleans that same area', async function () {
+            const listed = [];
+            const deleted = [];
+            mediaStore = {
+                pathPrefix: 'tenant-a/',
+                list: async ({prefix}) => {
+                    listed.push(prefix);
+                    return {items: [{key: `${prefix}out.mp4`}], nextCursor: null};
+                },
+                delete: async (name, dir) => {
+                    deleted.push(`${dir}/${name}`);
+                }
+            };
+            const {job, claim, link} = await start();
             await rejects(link([out(`gallery/video_jobs/${job.id}/out.mp4`)]), {
                 errorType: 'ValidationError',
-                message: `storage_key must be under tenant-a/gallery/video_jobs/${job.id}/ of this job.`
+                message: `storage_key must be under tenant-a/gallery/video_jobs/${job.id}/ (this job's gallery area).`
             });
-            await rejects(link([out(`tenant-b/gallery/video_jobs/${job.id}/out.mp4`)]), {errorType: 'ValidationError'});
-            await rejects(link([out(`x/tenant-a/gallery/video_jobs/${job.id}/out.mp4`)]), {errorType: 'ValidationError'});
-            const linked = await link([out(`tenant-a/gallery/video_jobs/${job.id}/out.mp4`), out(`/tenant-a/gallery/video_jobs/${job.id}/p/1.jpg`)]);
-            assert.equal(linked.count, 2);
+            for (const key of [
+                `tenant-b/gallery/video_jobs/${job.id}/out.mp4`,
+                `x/tenant-a/gallery/video_jobs/${job.id}/out.mp4`,
+                `/tenant-a/gallery/video_jobs/${job.id}/out.mp4`
+            ]) {
+                await rejects(link([out(key)]), {errorType: 'ValidationError'});
+            }
+            const key = `tenant-a/gallery/video_jobs/${job.id}/out.mp4`;
+            assert.equal((await link([out(key), out(`tenant-a/gallery/video_jobs/${job.id}/p/1.jpg`)])).count, 2);
+
+            await jobs.complete.query(worker({...lease(claim), result: {}}, {id: job.id}));
+            await jobs.destroy.query(staff(USER, {}, {id: job.id}));
+            assert.deepEqual(listed, [`tenant-a/gallery/video_jobs/${job.id}/`]);
+            assert.deepEqual(deleted, [key]);
+            assert.equal(await database('social_media_assets').where({video_job_id: job.id}).first(), undefined);
+        });
+
+        it('accepts a plain gallery/video_jobs/{jobId}/ key on local storage (storagePath is not a key prefix)', async function () {
+            mediaStore = {storagePath: '/var/lib/ghost/content/media'};
+            const {job, link} = await start();
+            assert.equal((await link([out(`gallery/video_jobs/${job.id}/out.mp4`)])).count, 1);
+            await rejects(link([out(`var/lib/ghost/content/media/gallery/video_jobs/${job.id}/out.mp4`)]), {errorType: 'ValidationError'});
         });
 
         it('does not re-point a row that belongs to another job or another owner_scope', async function () {
