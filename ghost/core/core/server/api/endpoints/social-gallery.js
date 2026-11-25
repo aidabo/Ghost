@@ -792,7 +792,14 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                     this.orWhere('sma.owner_scope', 'news_jobs');
                     // Video family (social-ai-video-jobs linkAssets): the rows carry
                     // the job's user_id / group_id / project_id, so the user, group
-                    // and project filters below pick them up as they are.
+                    // and project filters below pick them up as they are (the
+                    // project listing shows the caller's own rows, as for direct
+                    // uploads; no video-job ownership join yet). There is
+                    // no per-job listing (no 'video_jobs' target / 'videojobs'
+                    // action) yet: the video screen (front PR 5) adds one if it
+                    // needs it. A browser upload never writes these rows: an
+                    // unknown target such as 'video_jobs' falls back to the user
+                    // scope in resolveGalleryScope; only linkAssets writes them.
                     this.orWhere('sma.owner_scope', 'video_jobs');
                 }
             })

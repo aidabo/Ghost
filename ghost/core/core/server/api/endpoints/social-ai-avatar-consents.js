@@ -216,6 +216,9 @@ const controller = {
                 // the transaction that inserts the job, so a job is either refused
                 // (revoked_at seen) or already inserted and canceled below.
                 const locked = await trx(TABLE).where({id: row.id}).forUpdate().first();
+                if (!locked) {
+                    throw new errors.NotFoundError({message: 'Avatar consent not found.'});
+                }
                 if (!locked.revoked_at) {
                     await trx(TABLE).where({id: row.id}).whereNull('revoked_at').update({
                         revoked_at: timestamp,

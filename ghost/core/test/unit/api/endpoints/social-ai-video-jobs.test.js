@@ -361,10 +361,14 @@ describe('Video jobs and avatar consents', function () {
         });
 
         it('lets a system admin revoke another user\'s consent', async function () {
+            process.env.VIDEO_JOB_FACE_ENABLED = 'true';
             const consent = await addConsent();
+            const job = await jobs.add.query(addFrame(USER, {payload: lipsyncPayload(consent.id)}));
             const revoked = await consents.revoke.query(staff(ADMIN, {}, {id: consent.id}));
             assert.equal(revoked.active, false);
             assert.equal(revoked.revoked_by, ADMIN);
+            assert.equal(revoked.canceled_jobs, 1);
+            assert.equal((await database('social_ai_video_jobs').where({id: job.id}).first()).status, 'canceled');
         });
 
         it('keeps the consent record when the staff user is deleted (user_id is not a cascading FK)', async function () {
