@@ -322,6 +322,7 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/video/jobs/:id/complete', mw.authAdminApi, http(api.socialAiVideoJobs.complete));
     router.post('/social/ai/video/jobs/:id/fail', mw.authAdminApi, http(api.socialAiVideoJobs.fail));
     router.post('/social/ai/video/jobs/:id/link-assets', mw.authAdminApi, http(api.socialAiVideoJobs.linkAssets));
+    router.post('/social/ai/video/jobs/:id/input-assets', mw.authAdminApi, http(api.socialAiVideoJobs.inputAssets));
     router.post('/social/ai/video/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiVideoJobs.cancel));
     router.del('/social/ai/video/jobs/:id', mw.authAdminApi, http(api.socialAiVideoJobs.destroy));
     // Staff read (NewsAgent / desk), drafts included. Kept outside
