@@ -432,6 +432,39 @@ describe('Video jobs and avatar consents', function () {
             assert.equal((await database('social_ai_video_job_media').where({media_id: preview.media_ids[0]}).first()).role, 'intermediate');
         });
 
+        it('pairs role and area: output only in the project, other roles only in the job area (422 otherwise)', async function () {
+            const {job, link} = await start();
+            const jobKey = `gallery/video_jobs/${job.id}/out.mp4`;
+            // A result in the job area would be deleted with the job (against H3).
+            await rejects(link([out(jobKey, {role: 'output'})]), {errorType: 'ValidationError', statusCode: 422});
+            for (const role of ['intermediate', 'preview', 'input', 'source', 'material']) {
+                await rejects(link([out(artifact(`${role}.mp4`), {role})]), {errorType: 'ValidationError', statusCode: 422});
+            }
+            // An unknown role is refused, not taken as output.
+            for (const role of ['result', 'OUTPUT', 1]) {
+                await rejects(link([out(artifact('x.mp4'), {role})]), {errorType: 'ValidationError', statusCode: 422});
+                await rejects(link([out(jobKey, {role})]), {errorType: 'ValidationError', statusCode: 422});
+            }
+            assert.equal(await database('social_media_assets').where({video_job_id: job.id}).first(), undefined);
+
+            // No role: the area decides (project → output, job area → intermediate).
+            const linked = await link([out(artifact('a.mp4')), out(jobKey), out(artifact('b.mp4'), {role: null})]);
+            const roles = await Promise.all(linked.media_ids.map(async id => (await database('social_ai_video_job_media').where({media_id: id}).first()).role));
+            assert.deepEqual(roles, ['output', 'intermediate', 'output']);
+            // Re-linking a job-area row as output is refused too.
+            await rejects(link([out(jobKey, {role: 'output'})]), {errorType: 'ValidationError', statusCode: 422});
+        });
+
+        it('destroy cannot delete a result: an output sent to the job area is refused before anything is written', async function () {
+            const {job, link, complete} = await start();
+            await rejects(link([out(artifact('ok.mp4'), {role: 'output'}), out(`gallery/video_jobs/${job.id}/result.mp4`, {role: 'output'})]), {errorType: 'ValidationError', statusCode: 422});
+            assert.equal(await database('social_media_assets').where({video_job_id: job.id}).first(), undefined);
+            const linked = await link([out(artifact('ok.mp4'), {role: 'output'})]);
+            await complete();
+            await jobs.destroy.query(staff(USER, {}, {id: job.id}));
+            assert.ok(await database('social_media_assets').where({id: linked.media_ids[0]}).first());
+        });
+
         it('refuses another project, another kind and malformed keys under the project with a 422', async function () {
             const {job, link} = await start();
             for (const key of [

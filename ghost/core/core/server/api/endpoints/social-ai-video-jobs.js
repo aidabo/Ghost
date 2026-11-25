@@ -43,7 +43,9 @@ const messages = {
     notLeaseHolder: 'This worker does not hold the job lease.',
     projectRequired: 'project_id is required for a video job.',
     keyOutOfScope: 'storage_key must be under {prefixes} (this job\'s gallery area or its project\'s video artifacts).',
-    keyOwnedElsewhere: 'storage_key belongs to another asset that this job does not own.'
+    keyOwnedElsewhere: 'storage_key belongs to another asset that this job does not own.',
+    unknownRole: 'role must be one of {roles}.',
+    roleOutsideArea: 'role {role} is not allowed under {prefix}: a result (output) goes to the project\'s video artifacts, anything else to this job\'s gallery area.'
 };
 
 const TABLE = 'social_ai_video_jobs';
@@ -95,6 +97,26 @@ const getMediaStore = () => {
 // here as well: a leading '/' (another S3 object than the one destroy() lists,
 // and a second row for the same file).
 const isLinkableKey = (key, prefixes) => !key.startsWith('/') && galleryKeyScope.isKeyInAreas(key, prefixes);
+
+// Role and area go together, so destroy() can never delete a result (H3):
+//
+//   area                                                | roles          | no role
+//   project  gallery/projects/<pid>/artifacts/video/    | output only    | output
+//   job      gallery/video_jobs/<jobId>/                | all but output | intermediate
+//
+// A role that is not one of VALID_ROLES is refused (not taken as output).
+// Returns the role to record, or throws a 422.
+const roleForArea = (asset, inProject, prefix) => {
+    const given = asset?.role;
+    if (given !== undefined && given !== null && !VALID_ROLES.includes(given)) {
+        throw new errors.ValidationError({message: tpl(messages.unknownRole, {roles: VALID_ROLES.join(', ')}), context: String(given)});
+    }
+    const role = given ?? (inProject ? 'output' : 'intermediate');
+    if ((role === 'output') !== inProject) {
+        throw new errors.ValidationError({message: tpl(messages.roleOutsideArea, {role, prefix})});
+    }
+    return role;
+};
 
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const leaseExpiry = () => new Date(Date.now() + 300000).toISOString().slice(0, 19).replace('T', ' ');
@@ -732,15 +754,22 @@ const controller = {
                 : [];
 
             const areaPrefixes = linkAreaPrefixes(getMediaStore(), row);
-            for (const asset of assets) {
+            const [jobPrefix, projectPrefix] = areaPrefixes;
+            // Checked for the whole batch before anything is written.
+            const roles = assets.map((asset) => {
                 const storageKey = String(asset?.storage_key || '').trim();
-                if (storageKey && !isLinkableKey(storageKey, areaPrefixes)) {
+                if (!storageKey) {
+                    return null;
+                }
+                if (!isLinkableKey(storageKey, areaPrefixes)) {
                     throw new errors.ValidationError({
                         message: tpl(messages.keyOutOfScope, {prefixes: areaPrefixes.join(' or ')}),
                         context: storageKey
                     });
                 }
-            }
+                const inProject = Boolean(projectPrefix) && isLinkableKey(storageKey, [projectPrefix]);
+                return roleForArea(asset, inProject, inProject ? projectPrefix : jobPrefix);
+            });
 
             const link = async (knex) => {
                 const mediaIds = [];
@@ -751,7 +780,7 @@ const controller = {
                 // re-pointed. So two jobs of one project writing the same result
                 // name get a 409 (the row stays the first job's, also after that
                 // job is deleted): the worker puts the job id in the name.
-                for (const asset of assets) {
+                for (const [index, asset] of assets.entries()) {
                     const storageKey = String(asset?.storage_key || '').trim();
                     const storageUrl = String(asset?.storage_url || '').trim();
                     if (!storageKey || !storageUrl) {
@@ -759,7 +788,7 @@ const controller = {
                     }
                     const storageKeyHash = socialMediaAssets.buildStorageKeyHash(storageKey);
                     const assetType = String(asset.asset_type || 'file').trim().toLowerCase();
-                    const role = VALID_ROLES.includes(asset.role) ? asset.role : 'output';
+                    const role = roles[index];
                     const sourceKind = VALID_SOURCE_KINDS.includes(asset.source_kind) ? asset.source_kind : null;
                     const sortOrder = Number.isFinite(Number(asset.sort_order)) ? Math.max(0, Number(asset.sort_order)) : 0;
                     const timestamp = now();
