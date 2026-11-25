@@ -44,6 +44,16 @@ const messages = {
     invalidLexicalStructureHelp: 'https://ghost.org/docs/publishing/'
 };
 
+async function reindexLinkedEstateProperties(postId, options = {}) {
+    const knex = options.transacting || ghostBookshelf.knex;
+    const propertyIds = await knex('estate_property_posts')
+        .where({post_id: postId})
+        .pluck('property_id');
+    for (const propertyId of propertyIds) {
+        await models.EstateProperty.reindexSearch(propertyId, options);
+    }
+}
+
 const extractGroupIdsFromFilter = (filter) => {
     if (!filter || typeof filter !== 'string') {
         return [];
@@ -1616,7 +1626,7 @@ Post = ghostBookshelf.Model.extend({
                             }
                             return found;
                         })
-                        .then((found) => {
+                        .then(async (found) => {
                             if (found) {
                                 // Pass along the updated attributes for checking status changes
                                 found._previousAttributes = post._previousAttributes;
@@ -1628,8 +1638,9 @@ Post = ghostBookshelf.Model.extend({
                                     found.relations.posts_meta._changed = post.relations.posts_meta._changed;
                                 }
 
-                                return found;
                             }
+                            await reindexLinkedEstateProperties(options.id, {transacting: options.transacting});
+                            return found;
                         });
                 });
         };

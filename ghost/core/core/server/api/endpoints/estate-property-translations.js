@@ -23,7 +23,9 @@ const controller = {
         permissions: {object: 'estatepropertytranslation', action: 'read'},
         async query(frame) {
             const entry = await models.EstatePropertyTranslation.findOne({id: frame.data.id}, frame.options);
-            if (!entry) throw new errors.NotFoundError({message: tpl(messages.notFound)});
+            if (!entry) {
+                throw new errors.NotFoundError({message: tpl(messages.notFound)});
+            }
             return entry;
         }
     },
@@ -33,7 +35,9 @@ const controller = {
         headers: {cacheInvalidate: true},
         permissions: {object: 'estatepropertytranslation', action: 'add'},
         async query(frame) {
-            return await models.EstatePropertyTranslation.add(frame.data.estatepropertytranslations[0], frame.options);
+            const entry = await models.EstatePropertyTranslation.add(frame.data.estatepropertytranslations[0], frame.options);
+            await models.EstateProperty.reindexSearch(entry.get('property_id'));
+            return entry;
         }
     },
 
@@ -43,8 +47,12 @@ const controller = {
         permissions: {object: 'estatepropertytranslation', action: 'edit'},
         async query(frame) {
             const existing = await models.EstatePropertyTranslation.findOne({id: frame.options.id}, frame.options);
-            if (!existing) throw new errors.NotFoundError({message: tpl(messages.notFound)});
-            return await models.EstatePropertyTranslation.edit(frame.data.estatepropertytranslations[0], {...frame.options, id: existing.id});
+            if (!existing) {
+                throw new errors.NotFoundError({message: tpl(messages.notFound)});
+            }
+            const entry = await models.EstatePropertyTranslation.edit(frame.data.estatepropertytranslations[0], {...frame.options, id: existing.id});
+            await models.EstateProperty.reindexSearch(entry.get('property_id'));
+            return entry;
         }
     },
 
@@ -55,8 +63,13 @@ const controller = {
         permissions: {object: 'estatepropertytranslation', action: 'destroy'},
         async query(frame) {
             const existing = await models.EstatePropertyTranslation.findOne({id: frame.options.id}, frame.options);
-            if (!existing) throw new errors.NotFoundError({message: tpl(messages.notFound)});
-            return await models.EstatePropertyTranslation.destroy({...frame.options, require: true});
+            if (!existing) {
+                throw new errors.NotFoundError({message: tpl(messages.notFound)});
+            }
+            const propertyId = existing.get('property_id');
+            const result = await models.EstatePropertyTranslation.destroy({...frame.options, require: true});
+            await models.EstateProperty.reindexSearch(propertyId);
+            return result;
         }
     }
 };
