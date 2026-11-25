@@ -200,6 +200,7 @@ const ASSET_GROUP_LINKS = [
     ['social_ai_dzi_jobs', 'job_id', false],
     ['social_ai_dzi_jobs', 'dzi_job_id', false],
     ['social_ai_news_jobs', 'news_job_id', true],
+    ['social_ai_video_jobs', 'video_job_id', true],
     ['social_ai_projects', 'project_id', false],
     ['social_charts', 'social_chart_id', false]
 ];
@@ -207,7 +208,8 @@ const ASSET_GROUP_LINKS = [
 // Junction tables that attach an asset to a job without a column on the asset.
 const ASSET_JOB_JUNCTIONS = [
     ['social_ai_chart_job_media', 'chart_job_id', 'social_ai_chart_jobs'],
-    ['social_ai_news_job_media', 'news_job_id', 'social_ai_news_jobs']
+    ['social_ai_news_job_media', 'news_job_id', 'social_ai_news_jobs'],
+    ['social_ai_video_job_media', 'video_job_id', 'social_ai_video_jobs']
 ];
 
 // Gallery (social_media_assets AS sma): a Super Editor (no-group reader) sees

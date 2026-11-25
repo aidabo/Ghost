@@ -56,6 +56,16 @@ const JOB_FAMILIES = [
         linkColumn: 'news_job_id',
         assetLinkColumn: 'news_job_id',
         galleryPrefixParts: ['gallery', 'news_jobs']
+    },
+    {
+        // Video family (2026-11-25) — own table, asset link column, junction and
+        // owner_scope/S3 prefix, like news.
+        name: 'video',
+        jobsTable: 'social_ai_video_jobs',
+        junctionTable: 'social_ai_video_job_media',
+        linkColumn: 'video_job_id',
+        assetLinkColumn: 'video_job_id',
+        galleryPrefixParts: ['gallery', 'video_jobs']
     }
 ];
 

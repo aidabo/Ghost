@@ -232,7 +232,7 @@ describe('Super Editor scope on knex-backed listings', function () {
             [
                 'storage_key', 'storage_url', 'thumbnail_url', 'thumbnail_storage_key', 'original_filename', 'display_name',
                 'asset_type', 'owner_scope', 'user_id', 'group_id', 'job_id', 'dzi_job_id', 'chart_job_id',
-                'content_bundle_job_id', 'news_job_id', 'project_id', 'social_chart_id', 'tag_id',
+                'content_bundle_job_id', 'news_job_id', 'video_job_id', 'project_id', 'social_chart_id', 'tag_id',
                 'created_at', 'updated_at'
             ].forEach(column => table.string(column));
         });
@@ -248,6 +248,9 @@ describe('Super Editor scope on knex-backed listings', function () {
         await database.schema.createTable('social_ai_news_job_media', (table) => {
             ['media_id', 'news_job_id', 'role', 'post_id'].forEach(column => table.string(column));
         });
+        await database.schema.createTable('social_ai_video_job_media', (table) => {
+            ['media_id', 'video_job_id', 'role', 'item_key'].forEach(column => table.string(column));
+        });
         await database.schema.createTable('estate_property_media', table => table.string('media_id'));
         await database.schema.createTable('social_groups', (table) => {
             table.string('id').primary();
@@ -261,7 +264,7 @@ describe('Super Editor scope on knex-backed listings', function () {
         ]);
         for (const name of [
             'social_ai_chart_jobs', 'social_ai_content_bundle_jobs', 'social_ai_media_jobs', 'social_ai_dzi_jobs',
-            'social_ai_projects', 'social_charts'
+            'social_ai_projects', 'social_charts', 'social_ai_video_jobs'
         ]) {
             await database.schema.createTable(name, (table) => {
                 table.string('id').primary();

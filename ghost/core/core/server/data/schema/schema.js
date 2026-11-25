@@ -1358,6 +1358,11 @@ module.exports = {
         // the job's asset rows are linked. Cleanup is handled explicitly by the
         // news-jobs destroy endpoint and by the JOB_FAMILIES project cascade.
         news_job_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        // Video-job artifact link (video family, separate from news/chart). A plain
+        // indexed link, NOT a FK, for the same reason as news_job_id: the worker
+        // writes the artifact before the job's asset rows are linked. Cleanup is
+        // explicit (video-jobs destroy endpoint and the JOB_FAMILIES project cascade).
+        video_job_id: {type: 'string', maxlength: 24, nullable: true, index: true},
         // Plain indexed link to social_ai_chart_projects (NOT a FK, same reasoning
         // as chart_job_id). Lets project-scoped gallery, direct project uploads and
         // the "clear project artifacts" action target rows by project_id directly.
@@ -1377,7 +1382,10 @@ module.exports = {
         // Same for news jobs (2026-09-29-00-00-03-add-news-job-assets-unique-key.js).
         '@@UNIQUE_CONSTRAINTS@@': [
             ['chart_job_id', 'storage_key_hash'],
-            ['news_job_id', 'storage_key_hash']
+            ['news_job_id', 'storage_key_hash'],
+            // 2026-11-25-00-00-03-add-video-job-assets-unique-key.js (default knex name,
+            // so a fresh DB and a migrated DB carry the same index name).
+            ['video_job_id', 'storage_key_hash']
         ]
     },
 
@@ -2592,6 +2600,100 @@ module.exports = {
             ['news_job_id', 'role', 'sort_order'],
             ['news_job_id', 'item_key'],
             ['item_key', 'source_kind']
+        ]
+    },
+
+    // Video family (2026-11-25, docs/planning/video-job-runner-plan.md in the front
+    // repo). Images + script → voice → (optional) talking face → Remotion render.
+    // A SEPARATE FAMILY from news/media/chart: own table, own asset link column
+    // (social_media_assets.video_job_id), own junction, own owner_scope
+    // ('video_jobs') and own S3 prefix. `payload` holds the template input (scenes,
+    // lines, voice, avatar); `items` is the per-line work list the worker reports.
+    // `avatar_consent_id` is lifted out of the payload so revoking a consent can
+    // find (and cancel) the open jobs that use it.
+    social_ai_video_jobs: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        type: {type: 'string', maxlength: 100, nullable: false, defaultTo: 'video-render'},
+        status: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'queued'},
+        progress: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        current_step_id: {type: 'string', maxlength: 191, nullable: true},
+        status_message: {type: 'string', maxlength: 500, nullable: true},
+        steps: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
+        items: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
+        payload: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
+        result: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
+        artifacts: {type: 'text', maxlength: 1000000, fieldtype: 'long', nullable: true},
+        error_code: {type: 'string', maxlength: 100, nullable: true},
+        error_message: {type: 'text', nullable: true},
+        project_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        base_job_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        avatar_consent_id: {type: 'string', maxlength: 24, nullable: true, index: true},
+        user_id: {type: 'string', maxlength: 24, nullable: true, references: 'users.id', setNullDelete: true, index: true},
+        group_id: {type: 'string', maxlength: 24, nullable: true, references: 'social_groups.id', setNullDelete: true},
+        scope_type: {type: 'string', maxlength: 50, nullable: false, defaultTo: 'user'},
+        claim_worker_id: {type: 'string', maxlength: 191, nullable: true},
+        claim_expires_at: {type: 'dateTime', nullable: true},
+        claim_generation: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        claim_token: {type: 'string', maxlength: 36, nullable: true},
+        retry_count: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        created_at: {type: 'dateTime', nullable: false},
+        created_by: {type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true},
+        updated_at: {type: 'dateTime', nullable: false},
+        updated_by: {type: 'string', maxlength: 24, nullable: false, references: 'users.id', cascadeDelete: true},
+        started_at: {type: 'dateTime', nullable: true},
+        completed_at: {type: 'dateTime', nullable: true},
+        '@@INDEXES@@': [
+            ['status'],
+            ['type', 'status'],
+            ['project_id', 'status'],
+            ['user_id', 'status'],
+            ['status', 'claim_expires_at']
+        ]
+    },
+
+    // Video-job ↔ media junction. `item_key` is the line / scene key the artifact
+    // belongs to (one voice and one face clip per line).
+    social_ai_video_job_media: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        video_job_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_ai_video_jobs.id', cascadeDelete: true},
+        media_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'social_media_assets.id', cascadeDelete: true},
+        role: {type: 'string', maxlength: 20, nullable: false, defaultTo: 'output', index: true},
+        source_kind: {type: 'string', maxlength: 20, nullable: true},
+        step_id: {type: 'string', maxlength: 64, nullable: true},
+        item_key: {type: 'string', maxlength: 191, nullable: true, index: true},
+        sort_order: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        caption: {type: 'string', maxlength: 2000, nullable: true},
+        created_at: {type: 'dateTime', nullable: false},
+        '@@INDEXES@@': [
+            ['video_job_id', 'role', 'sort_order'],
+            ['video_job_id', 'item_key']
+        ]
+    },
+
+    // Consent to use a person's face photo as a video avatar (plan §7.2). A record,
+    // never deleted: revoking sets revoked_at, blocks new jobs and cancels open
+    // jobs that use it. `uses` is a JSON array: 'video_avatar' (show the photo in a
+    // video) and 'lipsync' (send the photo and the script's voice to the external
+    // lip-sync AI). `photo_asset_id` is a plain link to social_media_assets (NOT a
+    // FK): the consent record must outlive the photo.
+    social_ai_avatar_consents: {
+        id: {type: 'string', maxlength: 24, nullable: false, primary: true},
+        photo_asset_id: {type: 'string', maxlength: 24, nullable: false, index: true},
+        subject_name: {type: 'string', maxlength: 191, nullable: false},
+        consented_by_name: {type: 'string', maxlength: 191, nullable: true},
+        consented_at: {type: 'dateTime', nullable: false},
+        uses: {type: 'text', maxlength: 65535, nullable: true},
+        note: {type: 'text', maxlength: 65535, nullable: true},
+        user_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true},
+        revoked_at: {type: 'dateTime', nullable: true},
+        revoked_by: {type: 'string', maxlength: 24, nullable: true},
+        revoke_reason: {type: 'string', maxlength: 500, nullable: true},
+        created_at: {type: 'dateTime', nullable: false},
+        created_by: {type: 'string', maxlength: 24, nullable: false},
+        updated_at: {type: 'dateTime', nullable: false},
+        updated_by: {type: 'string', maxlength: 24, nullable: false},
+        '@@INDEXES@@': [
+            ['user_id', 'revoked_at']
         ]
     },
 
