@@ -306,6 +306,24 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/news/jobs/:id/link-assets', mw.authAdminApi, http(api.socialAiNewsJobs.linkAssets));
     router.post('/social/ai/news/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiNewsJobs.cancel));
     router.del('/social/ai/news/jobs/:id', mw.authAdminApi, http(api.socialAiNewsJobs.destroy));
+
+    // Video family (front repo docs/planning/video-job-runner-plan.md). Same shape
+    // as news: claim / progress / complete / fail / link-assets are for the worker
+    // integration only. Literal paths (claim, consents) come before `:id`.
+    router.get('/social/ai/video/jobs', mw.authAdminApi, http(api.socialAiVideoJobs.browse));
+    router.post('/social/ai/video/jobs', mw.authAdminApi, http(api.socialAiVideoJobs.add));
+    router.post('/social/ai/video/jobs/claim', mw.authAdminApi, http(api.socialAiVideoJobs.claim));
+    router.get('/social/ai/video/consents', mw.authAdminApi, http(api.socialAiAvatarConsents.browse));
+    router.post('/social/ai/video/consents', mw.authAdminApi, http(api.socialAiAvatarConsents.add));
+    router.get('/social/ai/video/consents/:id', mw.authAdminApi, http(api.socialAiAvatarConsents.read));
+    router.post('/social/ai/video/consents/:id/revoke', mw.authAdminApi, http(api.socialAiAvatarConsents.revoke));
+    router.get('/social/ai/video/jobs/:id', mw.authAdminApi, http(api.socialAiVideoJobs.read));
+    router.post('/social/ai/video/jobs/:id/progress', mw.authAdminApi, http(api.socialAiVideoJobs.progress));
+    router.post('/social/ai/video/jobs/:id/complete', mw.authAdminApi, http(api.socialAiVideoJobs.complete));
+    router.post('/social/ai/video/jobs/:id/fail', mw.authAdminApi, http(api.socialAiVideoJobs.fail));
+    router.post('/social/ai/video/jobs/:id/link-assets', mw.authAdminApi, http(api.socialAiVideoJobs.linkAssets));
+    router.post('/social/ai/video/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiVideoJobs.cancel));
+    router.del('/social/ai/video/jobs/:id', mw.authAdminApi, http(api.socialAiVideoJobs.destroy));
     // Staff read (NewsAgent / desk), drafts included. Kept outside
     // `/broadcast-selections/:id` so "staff" can never be read as a Post id.
     router.get('/social/ai/news/staff/broadcast-selections', mw.authAdminApi, http(api.socialAiNewsBroadcastSelections.staffBrowse));

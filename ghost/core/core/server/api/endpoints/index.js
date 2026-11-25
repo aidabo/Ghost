@@ -338,6 +338,14 @@ module.exports = {
         return apiFramework.pipeline(require('./social-ai-news-jobs'), localUtils);
     },
 
+    get socialAiVideoJobs() {
+        return apiFramework.pipeline(require('./social-ai-video-jobs'), localUtils);
+    },
+
+    get socialAiAvatarConsents() {
+        return apiFramework.pipeline(require('./social-ai-avatar-consents'), localUtils);
+    },
+
     get socialAiNewsBroadcastSelections() {
         return apiFramework.pipeline(require('./social-ai-news-broadcast-selections'), localUtils);
     },
