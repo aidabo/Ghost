@@ -272,11 +272,15 @@ const updateJob = async (frame, row, patch, knex = models.Base.knex) => {
 
 // A talking face needs an active consent of the creator for this very photo, and
 // the consent must allow lip-sync (sending the photo to the external AI).
-const assertConsent = async (actor, validated) => {
+// Runs inside the add transaction and locks the consent row (FOR UPDATE), so it
+// is serialized with a revoke (social-ai-avatar-consents revoke locks the same
+// row): either the revoke commits first and this sees revoked_at, or the job is
+// inserted first and the revoke's cancel UPDATE sees it.
+const assertConsent = async (trx, actor, validated) => {
     if (!validated.consentId) {
         return;
     }
-    const consent = await models.Base.knex(CONSENTS).where({id: validated.consentId}).first();
+    const consent = await trx(CONSENTS).where({id: validated.consentId}).forUpdate().first();
     if (!consent || consent.revoked_at) {
         throw new errors.ValidationError({message: 'The avatar consent does not exist or was revoked.', code: 'VIDEO_JOB_CONSENT_REQUIRED'});
     }
@@ -404,7 +408,6 @@ const controller = {
                 SocialGroup: models.SocialGroup,
                 isSystemAdmin
             }, actor, validated.assetIds);
-            await assertConsent(actor, validated);
             if (validated.baseJobId) {
                 await assertAccess(frame, await loadRow(validated.baseJobId));
             }
@@ -414,29 +417,32 @@ const controller = {
             const steps = buildSteps(type, validated.payload);
             const items = itemsFromLines(validated.payload);
 
-            await models.Base.knex(TABLE).insert({
-                id,
-                type,
-                status: 'queued',
-                progress: 0,
-                current_step_id: steps[0].id,
-                status_message: 'Queued',
-                steps: JSON.stringify(steps),
-                items: JSON.stringify(items),
-                payload: JSON.stringify(validated.payload),
-                result: null,
-                artifacts: null,
-                project_id: ownership.projectId,
-                base_job_id: validated.baseJobId,
-                avatar_consent_id: validated.consentId,
-                user_id: actor,
-                group_id: ownership.groupId,
-                scope_type: ownership.scopeType,
-                claim_generation: 0,
-                created_at: timestamp,
-                created_by: actor,
-                updated_at: timestamp,
-                updated_by: actor
+            await models.Base.knex.transaction(async (trx) => {
+                await assertConsent(trx, actor, validated);
+                await trx(TABLE).insert({
+                    id,
+                    type,
+                    status: 'queued',
+                    progress: 0,
+                    current_step_id: steps[0].id,
+                    status_message: 'Queued',
+                    steps: JSON.stringify(steps),
+                    items: JSON.stringify(items),
+                    payload: JSON.stringify(validated.payload),
+                    result: null,
+                    artifacts: null,
+                    project_id: ownership.projectId,
+                    base_job_id: validated.baseJobId,
+                    avatar_consent_id: validated.consentId,
+                    user_id: actor,
+                    group_id: ownership.groupId,
+                    scope_type: ownership.scopeType,
+                    claim_generation: 0,
+                    created_at: timestamp,
+                    created_by: actor,
+                    updated_at: timestamp,
+                    updated_by: actor
+                });
             });
             return serialize(await loadRow(id));
         }

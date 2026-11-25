@@ -16,8 +16,14 @@ const PLACEMENTS = ['bottom-left', 'bottom-right', 'center', 'none'];
 const VOICE_PROVIDERS = ['qwen'];
 const MAX_PAYLOAD_BYTES = 200000;
 
+// An unset OR empty variable (`VIDEO_JOB_MAX_COST_USD=` in an env file) means the
+// default: Number('') is 0, which would turn every limit into 0.
 const envNumber = (name, fallback) => {
-    const value = Number(process.env[name]);
+    const raw = process.env[name];
+    if (raw === undefined || String(raw).trim() === '') {
+        return fallback;
+    }
+    const value = Number(raw);
     return Number.isFinite(value) && value >= 0 ? value : fallback;
 };
 

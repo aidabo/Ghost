@@ -16,7 +16,13 @@ const {assertAssetsUsable} = require('./utils/video-asset-access');
 //   The worker drops the face cache for the photo when it sees the revocation.
 // - `uses` says what the person agreed to: 'video_avatar' (the photo appears in a
 //   video) and 'lipsync' (the photo and the script's voice are sent to the
-//   external lip-sync AI to make a talking face).
+//   external lip-sync AI to make a talking face). Only 'lipsync' is enforced by
+//   video job add (plan decision: a consent is required only for lip-sync). A
+//   still avatar is guarded by the asset owner check instead (another user's
+//   private photo is refused); 'video_avatar' is kept as the record of what the
+//   person agreed to.
+// - user_id is a plain column (NOT a users FK with cascade), so deleting the
+//   staff user who recorded a consent does not delete the consent record.
 const TABLE = 'social_ai_avatar_consents';
 const JOBS = 'social_ai_video_jobs';
 const USES = ['video_avatar', 'lipsync'];
@@ -206,7 +212,11 @@ const controller = {
             const timestamp = now();
             let canceledJobs = 0;
             await models.Base.knex.transaction(async (trx) => {
-                if (!row.revoked_at) {
+                // Lock the consent row first: video job add reads it FOR UPDATE in
+                // the transaction that inserts the job, so a job is either refused
+                // (revoked_at seen) or already inserted and canceled below.
+                const locked = await trx(TABLE).where({id: row.id}).forUpdate().first();
+                if (!locked.revoked_at) {
                     await trx(TABLE).where({id: row.id}).whereNull('revoked_at').update({
                         revoked_at: timestamp,
                         revoked_by: actor,

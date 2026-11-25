@@ -271,6 +271,12 @@ describe('Video jobs and avatar consents', function () {
             await rejects(jobs.add.query(addFrame(USER, {payload: basePayload()})), {code: 'VIDEO_JOB_BUDGET_EXCEEDED'});
         });
 
+        it('treats an empty env variable as unset (the default), not as 0', async function () {
+            process.env.VIDEO_JOB_MAX_COST_USD = '';
+            process.env.VIDEO_JOB_MAX_LINES = ' ';
+            assert.equal((await jobs.add.query(addFrame(USER, {payload: basePayload()}))).status, 'queued');
+        });
+
         it('accepts an avatar-less job and a still avatar without lipsync', async function () {
             assert.equal((await jobs.add.query(addFrame(USER, {payload: basePayload({avatar: null})}))).status, 'queued');
             const still = await jobs.add.query(addFrame(USER, {payload: basePayload({avatar: {photo_asset_id: OWN_PHOTO, lipsync: false, motion: 'nod', placement: 'bottom-left'}})}));
@@ -352,6 +358,18 @@ describe('Video jobs and avatar consents', function () {
             const again = await consents.revoke.query(staff(USER, {}, {id: consent.id}));
             assert.equal(again.revoked_at, revoked.revoked_at);
             await rejects(jobs.add.query(addFrame(USER, {payload: lipsyncPayload(consent.id)})), {code: 'VIDEO_JOB_CONSENT_REQUIRED'});
+        });
+
+        it('lets a system admin revoke another user\'s consent', async function () {
+            const consent = await addConsent();
+            const revoked = await consents.revoke.query(staff(ADMIN, {}, {id: consent.id}));
+            assert.equal(revoked.active, false);
+            assert.equal(revoked.revoked_by, ADMIN);
+        });
+
+        it('keeps the consent record when the staff user is deleted (user_id is not a cascading FK)', async function () {
+            assert.equal(schema.social_ai_avatar_consents.user_id.references, undefined);
+            assert.equal(schema.social_ai_avatar_consents.user_id.cascadeDelete, undefined);
         });
 
         it('lets only a logged-in staff user record a consent for a photo they can use', async function () {

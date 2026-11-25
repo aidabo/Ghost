@@ -790,6 +790,10 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                     this.orWhere('sma.owner_scope', 'media_jobs');
                     this.orWhere('sma.owner_scope', 'deepzoom');
                     this.orWhere('sma.owner_scope', 'news_jobs');
+                    // Video family (social-ai-video-jobs linkAssets): the rows carry
+                    // the job's user_id / group_id / project_id, so the user, group
+                    // and project filters below pick them up as they are.
+                    this.orWhere('sma.owner_scope', 'video_jobs');
                 }
             })
             .limit(limit + 1)

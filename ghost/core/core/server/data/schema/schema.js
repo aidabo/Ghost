@@ -1383,7 +1383,7 @@ module.exports = {
         '@@UNIQUE_CONSTRAINTS@@': [
             ['chart_job_id', 'storage_key_hash'],
             ['news_job_id', 'storage_key_hash'],
-            // 2026-11-25-00-00-03-add-video-job-assets-unique-key.js (default knex name,
+            // 2026-11-25-00-00-04-add-video-job-assets-unique-key.js (default knex name,
             // so a fresh DB and a migrated DB carry the same index name).
             ['video_job_id', 'storage_key_hash']
         ]
@@ -2675,7 +2675,8 @@ module.exports = {
     // jobs that use it. `uses` is a JSON array: 'video_avatar' (show the photo in a
     // video) and 'lipsync' (send the photo and the script's voice to the external
     // lip-sync AI). `photo_asset_id` is a plain link to social_media_assets (NOT a
-    // FK): the consent record must outlive the photo.
+    // FK): the consent record must outlive the photo. `user_id` is a plain column
+    // for the same reason (deleting the staff user must not delete the record).
     social_ai_avatar_consents: {
         id: {type: 'string', maxlength: 24, nullable: false, primary: true},
         photo_asset_id: {type: 'string', maxlength: 24, nullable: false, index: true},
@@ -2684,7 +2685,7 @@ module.exports = {
         consented_at: {type: 'dateTime', nullable: false},
         uses: {type: 'text', maxlength: 65535, nullable: true},
         note: {type: 'text', maxlength: 65535, nullable: true},
-        user_id: {type: 'string', maxlength: 24, nullable: false, index: true, references: 'users.id', cascadeDelete: true},
+        user_id: {type: 'string', maxlength: 24, nullable: false, index: true},
         revoked_at: {type: 'dateTime', nullable: true},
         revoked_by: {type: 'string', maxlength: 24, nullable: true},
         revoke_reason: {type: 'string', maxlength: 500, nullable: true},
