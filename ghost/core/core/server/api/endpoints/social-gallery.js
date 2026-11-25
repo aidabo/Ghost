@@ -48,6 +48,7 @@ const messages = {
     invalidPathId: '`{name}` may only contain letters, digits, "-" and "_".',
     storageNoScope: 'Configured storage adapter cannot place gallery uploads (no getTargetDir).',
     keyOutOfScope: '`{field}` must be a file under {prefixes} (the area presign hands out for these values).',
+    keyBusy: 'Another upload is finishing with this storage key. Try again.',
     keyUrlMismatch: '`{keyField}` and `{urlField}` must point at the same file of the media store.',
     keyOwnedElsewhere: 'Another gallery asset already uses this storage key; it is not yours to overwrite.'
 };
@@ -1191,6 +1192,11 @@ const resolveGalleryScope = ({ target, groupId, propertyId, personId, chartId, p
     };
 };
 
+// The DZI job id of a deepzoom upload: presign takes it as job_id, finalize as
+// dzi_job_id (finalize's job_id is the media-jobs FK) or, without dzi_job_id,
+// as job_id. Shared by resolveUploadContext and finalize so both agree.
+const getDeepzoomJobId = frame => String(getFrameValue(frame, 'dzi_job_id') || getFrameValue(frame, 'job_id') || '').trim() || null;
+
 // Ids that become one folder name of the upload key (gallery/persons/{id}/,
 // gallery/charts/{id}/). A '/' or '..' would move the key into another area.
 const assertPathSafeId = (value, name) => {
@@ -1277,9 +1283,10 @@ const resolveUploadContext = async (frame) => {
             });
         }
 
-        // finalize gets the presign's job id back as dzi_job_id (job_id there is the
-        // media-jobs FK), so read both; a fresh id only when neither is given.
-        const jobId = String(getFrameValue(frame, 'job_id') || getFrameValue(frame, 'dzi_job_id') || ObjectId().toHexString()).trim();
+        // The folder is the DZI job's: dzi_job_id first (on finalize job_id is the
+        // media-jobs FK, see getDeepzoomJobId), then job_id (presign), and a fresh
+        // id only when neither is given.
+        const jobId = String(getDeepzoomJobId(frame) || ObjectId().toHexString()).trim();
         assertPathSafeId(jobId, 'job_id');
         const baseDir = path.posix.join(root, 'gallery', 'deepzoom', jobId);
         return {
@@ -1573,7 +1580,7 @@ const sameId = (a, b) => String(a || '') === String(b || '');
 const assertCanReuseAssetRow = async ({knex, storageKey, uploadContext}) => {
     let existing;
     try {
-        existing = await socialMediaAssets.findAssetRowByStorageKey(knex, storageKey, ['*']);
+        existing = await socialMediaAssets.findAssetRowByStorageKey(knex, storageKey, ['*'], {forUpdate: true});
     } catch (err) {
         // Before the table exists upsertAsset skips the row as well.
         if (err?.code === 'ER_NO_SUCH_TABLE' || /no such table/i.test(String(err?.message || ''))) {
@@ -2281,7 +2288,9 @@ const controller = {
             const target = String(getFrameValue(frame, 'target') || '').trim().toLowerCase();
             const requestedJobId = String(getFrameValue(frame, 'job_id') || '').trim() || null;
             const jobId = target === 'deepzoom' ? null : requestedJobId;
-            const dziJobId = String(getFrameValue(frame, 'dzi_job_id') || '').trim() || (target === 'deepzoom' ? requestedJobId : null);
+            const dziJobId = target === 'deepzoom'
+                ? getDeepzoomJobId(frame)
+                : String(getFrameValue(frame, 'dzi_job_id') || '').trim() || null;
             const chartJobId = String(getFrameValue(frame, 'chart_job_id') || '').trim() || null;
             const contentBundleJobId = String(getFrameValue(frame, 'content_bundle_job_id') || '').trim() || null;
             const socialChartId = String(getFrameValue(frame, 'social_chart_id') || '').trim() || null;
@@ -2321,7 +2330,6 @@ const controller = {
                     urlField: 'thumbnail_storage_url'
                 });
             }
-            await assertCanReuseAssetRow({knex: models.Base.knex, storageKey: storedKey, uploadContext});
             // The resolver only returns newsJobId when the job belongs to the
             // project, so its answer wins over the raw frame value.
             const newsJobId = uploadContext.newsJobId || String(getFrameValue(frame, 'news_job_id') || '').trim() || null;
@@ -2332,28 +2340,47 @@ const controller = {
 
             let assetId;
             try {
-                assetId = await socialMediaAssets.upsertAsset({
-                    knex: models.Base.knex,
-                    store: uploadContext.mediaStore,
-                    url: storageUrl,
-                    thumbnailUrl: thumbnailStorageUrl || null,
-                    thumbnailStorageKey: thumbnailStorageKey || null,
-                    assetType,
-                    originalFilename,
-                    jobId,
-                    dziJobId,
-                    chartJobId,
-                    contentBundleJobId,
-                    newsJobId,
-                    projectId: uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null,
-                    socialChartId,
-                    userId: uploadContext.userId,
-                    groupId: uploadContext.groupId,
-                    propertyId: uploadContext.propertyId || propertyId,
-                    ownerScope: uploadContext.ownerScope,
-                    tag: uploadContext.tag
+                // The owner check and the write are one transaction, and the check
+                // locks the row (FOR UPDATE; on MySQL a key with no row yet takes a
+                // gap lock, so a second finalize of the same key waits or fails with
+                // a deadlock instead of slipping in between). A separate check
+                // followed by upsertAsset let two finalizes both see "no row" and
+                // the later one overwrite the earlier one's owner.
+                assetId = await models.Base.knex.transaction(async (trx) => {
+                    await assertCanReuseAssetRow({knex: trx, storageKey: storedKey, uploadContext});
+                    return socialMediaAssets.upsertAsset({
+                        knex: trx,
+                        store: uploadContext.mediaStore,
+                        url: storageUrl,
+                        thumbnailUrl: thumbnailStorageUrl || null,
+                        thumbnailStorageKey: thumbnailStorageKey || null,
+                        assetType,
+                        originalFilename,
+                        jobId,
+                        dziJobId,
+                        chartJobId,
+                        contentBundleJobId,
+                        newsJobId,
+                        projectId: uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null,
+                        socialChartId,
+                        userId: uploadContext.userId,
+                        groupId: uploadContext.groupId,
+                        propertyId: uploadContext.propertyId || propertyId,
+                        ownerScope: uploadContext.ownerScope,
+                        tag: uploadContext.tag
+                    });
                 });
             } catch (err) {
+                // The owner check's 409 (thrown inside the transaction) goes out as
+                // is; wrapStorageError would turn it into a 500.
+                if (err instanceof errors.ConflictError) {
+                    throw err;
+                }
+                // Lost the race for a key with no row yet (MySQL deadlock / lock
+                // wait): the other finalize owns it now; a retry sees its row.
+                if (err?.code === 'ER_LOCK_DEADLOCK' || err?.code === 'ER_LOCK_WAIT_TIMEOUT' || err?.code === 'SQLITE_BUSY') {
+                    throw new errors.ConflictError({message: tpl(messages.keyBusy), context: storageKey});
+                }
                 wrapStorageError(messages.finalizeFailed, { storageKey }, err);
             }
 

@@ -93,17 +93,23 @@ const isMissingStorageKeyHashColumnError = (err) => {
     );
 };
 
-const findAssetRowByStorageKey = async (knex, storageKey, columns = ['id']) => {
+// forUpdate: lock the row found by storage_key_hash (and, on MySQL, the index
+// gap when there is none) for the caller's transaction. SQLite has no row locks; its write transactions are
+// already serialized, so the clause is left out there.
+const findAssetRowByStorageKey = async (knex, storageKey, columns = ['id'], {forUpdate = false} = {}) => {
     const normalizedKey = String(storageKey || '').trim();
     if (!normalizedKey) {
         return null;
     }
+    const lock = forUpdate && !String(knex?.client?.config?.client || '').includes('sqlite')
+        ? query => query.forUpdate()
+        : query => query;
 
     const storageKeyHash = buildStorageKeyHash(normalizedKey);
     if (storageKeyHash) {
         try {
-            const row = await knex('social_media_assets')
-                .where({storage_key_hash: storageKeyHash, storage_key: normalizedKey})
+            const row = await lock(knex('social_media_assets')
+                .where({storage_key_hash: storageKeyHash, storage_key: normalizedKey}))
                 .first(...columns);
             if (row) {
                 return row;
@@ -115,6 +121,9 @@ const findAssetRowByStorageKey = async (knex, storageKey, columns = ['id']) => {
         }
     }
 
+    // Not locked: storage_key has no index, so FOR UPDATE here would lock every
+    // row the scan reads. A row missing from the hash lookup is a legacy row
+    // (no hash); it already exists, so the caller's owner check covers it.
     return knex('social_media_assets').where({storage_key: normalizedKey}).first(...columns);
 };
 

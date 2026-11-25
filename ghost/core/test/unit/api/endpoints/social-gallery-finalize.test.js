@@ -147,6 +147,31 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             assert.equal(row.owner_scope, 'news_jobs');
         });
 
+        it('two finalizes of the same key at once: one wins, the other gets 409, one row with the winner as owner', async function () {
+            // A group's area is shared, so two members can name the same key.
+            const key = `${ROOT}/gallery/groups/group-alias/${YM}/race-1234abcd.png`;
+            const results = await Promise.allSettled([
+                finalize(OTHER, {...keyed(key), group_id: GROUP, original_filename: 'theirs.png'}),
+                finalize(ME, {...keyed(key), group_id: GROUP, original_filename: 'mine.png'})
+            ]);
+            const won = results.filter(r => r.status === 'fulfilled');
+            const lost = results.filter(r => r.status === 'rejected');
+            assert.equal(won.length, 1);
+            assert.equal(lost.length, 1);
+            assert.equal(lost[0].reason.errorType, 'ConflictError');
+            const rows = await db('social_media_assets').where({storage_key: key});
+            assert.equal(rows.length, 1);
+            assert.equal(rows[0].user_id, won[0].value.data[0].user_id);
+            assert.equal(rows[0].original_filename, won[0].value.data[0].user_id === OTHER ? 'theirs.png' : 'mine.png');
+        });
+
+        it('a member upload row is never taken over by staff', async function () {
+            const key = `${ROOT}/gallery/users/me-alias/${YM}/member-1234abcd.png`;
+            await db('social_media_assets').insert({id: '0000000000000000000000f5', storage_key: key, storage_url: `${HOST}/${key}`, owner_scope: 'user', user_id: ME, member_id: 'member-1'});
+            await assert.rejects(finalize(ME, keyed(key)), {errorType: 'ConflictError'});
+            assert.equal((await rowOf(key)).member_id, 'member-1');
+        });
+
         it('a row in my area that another user owns (a different scope) is not overwritten', async function () {
             const key = `${ROOT}/gallery/users/me-alias/${YM}/a-1234abcd.png`;
             await db('social_media_assets').insert({id: '0000000000000000000000f2', storage_key: key, storage_url: `${HOST}/${key}`, owner_scope: 'group', user_id: OTHER, group_id: GROUP});
@@ -334,6 +359,10 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             assert.ok(fixed.storage_key.startsWith(`${ROOT}/gallery/deepzoom/${DZI_JOB}/`));
             await finalize(ME, {storage_key: fixed.storage_key, storage_url: fixed.storage_url, target: 'deepzoom', job_id: DZI_JOB});
             assert.equal((await rowOf(fixed.storage_key)).dzi_job_id, DZI_JOB);
+            // job_id (the media-jobs FK) sent along with dzi_job_id: the folder is the dzi job's.
+            const both = (await presign(ME, {target: 'deepzoom', filename: 'map2.pdf', content_type: 'application/pdf'})).data[0];
+            await finalize(ME, {storage_key: both.storage_key, storage_url: both.storage_url, target: 'deepzoom', dzi_job_id: both.job_id, job_id: '00000000000000000000ee09'});
+            assert.equal((await rowOf(both.storage_key)).dzi_job_id, both.job_id);
             // Another deepzoom job's folder is out of scope.
             await assert.rejects(finalize(ME, {storage_key: fixed.storage_key, storage_url: fixed.storage_url, target: 'deepzoom', dzi_job_id: signed.job_id}), {errorType: 'ValidationError'});
         });
