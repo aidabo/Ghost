@@ -538,6 +538,7 @@ async function upsertEstateSearchI18nIndex(knex, propertyId, baseRow, options = 
     const postRows = await knex('estate_property_posts as epp')
         .leftJoin('posts as p', 'epp.post_id', 'p.id')
         .where('epp.property_id', propertyId)
+        .where('p.status', 'published')
         .select(['epp.locale', 'p.title', 'p.custom_excerpt', 'p.plaintext']);
 
     const rows = locales.map((locale) => {
@@ -547,13 +548,16 @@ async function upsertEstateSearchI18nIndex(knex, propertyId, baseRow, options = 
         const posts = postRows
             .filter(row => String(row.locale || '').toLowerCase() === locale)
             .flatMap(row => [row.title, row.custom_excerpt, row.plaintext]);
+        const postTitles = postRows
+            .filter(row => String(row.locale || '').toLowerCase() === locale)
+            .map(row => row.title);
         const searchableText = truncateUtf8(compactText([baseRow.searchable_text, translations, posts]));
         return {
             property_id: propertyId,
             locale,
             searchable_text: searchableText,
             normalized_text: truncateUtf8(normalizeSearchText(searchableText)),
-            title_text: truncateUtf8(compactText(posts.slice(0, 1)), 9000),
+            title_text: truncateUtf8(compactText(postTitles), 9000),
             translation_text: truncateUtf8(compactText(translations)),
             indexed_at: new Date()
         };
@@ -1411,6 +1415,9 @@ const EstateProperty = ghostBookshelf.Model.extend({
 
             if (await hasSearchIndexTables(ghostBookshelf.knex)) {
                 await ghostBookshelf.knex(ESTATE_SEARCH_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
+                if (await hasSearchI18nIndexTable(ghostBookshelf.knex)) {
+                    await ghostBookshelf.knex(ESTATE_SEARCH_I18N_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
+                }
                 if (await ghostBookshelf.knex.schema.hasTable(ESTATE_STATION_INDEX_TABLE)) {
                     await ghostBookshelf.knex(ESTATE_STATION_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
                 }
