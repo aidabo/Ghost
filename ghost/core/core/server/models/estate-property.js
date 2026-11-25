@@ -314,6 +314,18 @@ function compactText(parts) {
         .slice(0, 64000);
 }
 
+function truncateUtf8(value, maxBytes = 60000) {
+    const text = String(value || '');
+    if (Buffer.byteLength(text, 'utf8') <= maxBytes) {
+        return text;
+    }
+    let end = Math.min(text.length, maxBytes);
+    while (end > 0 && Buffer.byteLength(text.slice(0, end), 'utf8') > maxBytes) {
+        end -= 1;
+    }
+    return text.slice(0, end);
+}
+
 async function hasSearchIndexTables(knex) {
     return await knex.schema.hasTable(ESTATE_SEARCH_INDEX_TABLE);
 }
@@ -513,7 +525,7 @@ async function buildEstateSearchIndexRows(knex, propertyId) {
     };
 }
 
-async function upsertEstateSearchI18nIndex(knex, propertyId, baseRow) {
+async function upsertEstateSearchI18nIndex(knex, propertyId, baseRow, options = {}) {
     if (!await hasSearchI18nIndexTable(knex)) {
         return false;
     }
@@ -535,20 +547,27 @@ async function upsertEstateSearchI18nIndex(knex, propertyId, baseRow) {
         const posts = postRows
             .filter(row => String(row.locale || '').toLowerCase() === locale)
             .flatMap(row => [row.title, row.custom_excerpt, row.plaintext]);
-        const searchableText = compactText([baseRow.searchable_text, translations, posts]);
+        const searchableText = truncateUtf8(compactText([baseRow.searchable_text, translations, posts]));
         return {
             property_id: propertyId,
             locale,
             searchable_text: searchableText,
-            normalized_text: normalizeSearchText(searchableText),
-            title_text: compactText(posts.slice(0, 1)),
-            translation_text: compactText(translations),
+            normalized_text: truncateUtf8(normalizeSearchText(searchableText)),
+            title_text: truncateUtf8(compactText(posts.slice(0, 1)), 9000),
+            translation_text: truncateUtf8(compactText(translations)),
             indexed_at: new Date()
         };
     });
 
-    await knex(ESTATE_SEARCH_I18N_INDEX_TABLE).where({property_id: propertyId}).del();
-    await knex(ESTATE_SEARCH_I18N_INDEX_TABLE).insert(rows);
+    const writeRows = async (transaction) => {
+        await transaction(ESTATE_SEARCH_I18N_INDEX_TABLE).where({property_id: propertyId}).del();
+        await transaction(ESTATE_SEARCH_I18N_INDEX_TABLE).insert(rows);
+    };
+    if (options.transacting) {
+        await writeRows(knex);
+    } else {
+        await ghostBookshelf.transaction(writeRows);
+    }
     return true;
 }
 
@@ -582,7 +601,7 @@ async function upsertEstateSearchIndex(propertyId, options = {}) {
             await knex(ESTATE_STATION_INDEX_TABLE).insert(payload.stations);
         }
     }
-    await upsertEstateSearchI18nIndex(knex, propertyId, payload.row);
+    await upsertEstateSearchI18nIndex(knex, propertyId, payload.row, options);
     return true;
 }
 

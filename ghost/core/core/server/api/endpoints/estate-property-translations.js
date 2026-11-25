@@ -1,8 +1,17 @@
 const models = require('../../models');
 const errors = require('@tryghost/errors');
 const tpl = require('@tryghost/tpl');
+const logging = require('@tryghost/logging');
 
 const messages = {notFound: 'estate property translation not found.'};
+
+async function reindexProperty(propertyId) {
+    try {
+        await models.EstateProperty.reindexSearch(propertyId);
+    } catch (err) {
+        logging.error(`Failed to refresh estate search index for property ${propertyId}: ${err.message}`);
+    }
+}
 
 const controller = {
     docName: 'estatepropertytranslations',
@@ -36,7 +45,7 @@ const controller = {
         permissions: {object: 'estatepropertytranslation', action: 'add'},
         async query(frame) {
             const entry = await models.EstatePropertyTranslation.add(frame.data.estatepropertytranslations[0], frame.options);
-            await models.EstateProperty.reindexSearch(entry.get('property_id'));
+            await reindexProperty(entry.get('property_id'));
             return entry;
         }
     },
@@ -51,7 +60,7 @@ const controller = {
                 throw new errors.NotFoundError({message: tpl(messages.notFound)});
             }
             const entry = await models.EstatePropertyTranslation.edit(frame.data.estatepropertytranslations[0], {...frame.options, id: existing.id});
-            await models.EstateProperty.reindexSearch(entry.get('property_id'));
+            await reindexProperty(entry.get('property_id'));
             return entry;
         }
     },
@@ -68,7 +77,7 @@ const controller = {
             }
             const propertyId = existing.get('property_id');
             const result = await models.EstatePropertyTranslation.destroy({...frame.options, require: true});
-            await models.EstateProperty.reindexSearch(propertyId);
+            await reindexProperty(propertyId);
             return result;
         }
     }

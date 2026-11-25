@@ -1,6 +1,7 @@
 const models = require('../../models');
 const errors = require('@tryghost/errors');
 const tpl = require('@tryghost/tpl');
+const logging = require('@tryghost/logging');
 
 const messages = {
     notFound: 'estate property post link not found.'
@@ -8,7 +9,11 @@ const messages = {
 
 async function reindexProperty(propertyId) {
     if (propertyId) {
-        await models.EstateProperty.reindexSearch(propertyId);
+        try {
+            await models.EstateProperty.reindexSearch(propertyId);
+        } catch (err) {
+            logging.error(`Failed to refresh estate search index for property ${propertyId}: ${err.message}`);
+        }
     }
 }
 

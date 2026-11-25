@@ -54,6 +54,14 @@ async function reindexLinkedEstateProperties(postId, options = {}) {
     }
 }
 
+function scheduleLinkedEstatePropertyReindex(postId, transaction) {
+    transaction.executionPromise
+        .then(() => reindexLinkedEstateProperties(postId))
+        .catch((err) => {
+            logging.error(`Failed to refresh estate search index for post ${postId}: ${err.message}`);
+        });
+}
+
 const extractGroupIdsFromFilter = (filter) => {
     if (!filter || typeof filter !== 'string') {
         return [];
@@ -1639,7 +1647,7 @@ Post = ghostBookshelf.Model.extend({
                                 }
 
                             }
-                            await reindexLinkedEstateProperties(options.id, {transacting: options.transacting});
+                            scheduleLinkedEstatePropertyReindex(options.id, options.transacting);
                             return found;
                         });
                 });
