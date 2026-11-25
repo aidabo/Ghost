@@ -769,6 +769,21 @@ const loadVideoJobRoles = async (rows) => {
     return roles;
 };
 
+// A video job's result stays after the job is deleted (H3 in
+// social-ai-video-jobs destroy), but its junction row goes with the job. The
+// project video area [<root>/]gallery/projects/<pid>/artifacts/video/ only ever
+// holds results (roleForArea there: output only), so a row left there without
+// a junction row is still the output.
+const videoJobRole = (row, roles) => {
+    const linked = roles.get(String(row.id));
+    if (linked) {
+        return linked;
+    }
+    const key = String(row.key || '');
+    const area = row.project_id ? `gallery/projects/${row.project_id}/artifacts/video/` : null;
+    return area && (key.startsWith(area) || key.includes(`/${area}`)) ? 'output' : null;
+};
+
 const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, newsJobId, projectId, limit, nextCursor, type, orderBy, newsroomScope = null }) => {
     const knex = models.Base.knex;
     const cursor = parseDbNextCursor(nextCursor);
@@ -1055,7 +1070,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
         // its creator and a site admin may read. Only the id and the role; the
         // job itself (payload, …) is never returned here.
         video_job_id: row.video_job_id || null,
-        role: (row.video_job_id && videoRoles.get(String(row.id))) || null,
+        role: row.video_job_id ? videoJobRole(row, videoRoles) : null,
         project_id: row.project_id || null,
         post_id: row.post_id || null,
         post_title: row.post_title || null,

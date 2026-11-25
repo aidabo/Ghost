@@ -134,6 +134,33 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
         assert.equal(rows.a4.role, 'output');
     });
 
+    it('a result kept after its job was deleted (H3: no junction row) is still role=output', async function () {
+        // What video-jobs destroy leaves: the junction rows and the job are gone, the
+        // result under gallery/projects/<pid>/artifacts/video/ stays with video_job_id.
+        await db('social_media_assets').insert({
+            id: 'a5', owner_scope: 'video_jobs', user_id: 'other', project_id: PROJECT, video_job_id: 'vj-gone',
+            storage_key: `gallery/projects/${PROJECT}/artifacts/video/vj-gone-memories.mp4`, asset_type: 'video', created_at: NOW
+        });
+        const rows = byId(await listProject('me', PROJECT));
+        assert.equal(rows.a5.video_job_id, 'vj-gone');
+        assert.equal(rows.a5.role, 'output');
+    });
+
+    it('outside the project video area a row without a junction row gets no role', async function () {
+        await db('social_media_assets').insert({
+            id: 'a6', owner_scope: 'video_jobs', user_id: 'other', project_id: PROJECT, video_job_id: 'vj-gone',
+            storage_key: 'gallery/video_jobs/vj-gone/line-1.wav', asset_type: 'audio', created_at: NOW
+        });
+        const rows = byId(await listProject('me', PROJECT));
+        assert.equal(rows.a6.role, null);
+    });
+
+    it('a file linked twice to its job: output wins', async function () {
+        await db('social_ai_video_job_media').insert({id: 'm1b', video_job_id: JOB_BY_OTHER, media_id: 'a1', role: 'preview', created_at: NOW});
+        const rows = byId(await listProject('me', PROJECT));
+        assert.equal(rows.a1.role, 'output');
+    });
+
     it('the visibility rules stay: a draft project of someone else is still refused', async function () {
         await assert.rejects(() => listProject('other', OTHER_PROJECT));
     });
