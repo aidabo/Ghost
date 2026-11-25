@@ -12,8 +12,12 @@ const messages = {
 };
 
 const ESTATE_SEARCH_INDEX_TABLE = 'estate_property_search_index';
+const ESTATE_SEARCH_I18N_INDEX_TABLE = 'estate_property_search_index_i18n';
 const ESTATE_STATION_INDEX_TABLE = 'estate_property_station_index';
-const ESTATE_SEARCH_CACHE_PREFIX = 'estate:property-search:v1:';
+// Keep localized search payloads below MySQL TEXT's 65535-byte limit.
+const ESTATE_SEARCH_TEXT_MAX_BYTES = 60000;
+const ESTATE_SEARCH_TITLE_MAX_BYTES = 9000;
+const ESTATE_SEARCH_CACHE_PREFIX = 'estate:property-search:v2:';
 const ESTATE_SEARCH_CACHE_OPTION_KEYS = [
     'filter', 'include', 'withRelated', 'query', 'q', 'search', 'query_any', 'station_walk_minutes_max',
     'price_min', 'price_max', 'rent_min', 'rent_max', 'area_min', 'area_max',
@@ -313,8 +317,22 @@ function compactText(parts) {
         .slice(0, 64000);
 }
 
+function truncateUtf8(value, maxBytes = ESTATE_SEARCH_TEXT_MAX_BYTES) {
+    const text = String(value || '');
+    const bytes = Buffer.from(text, 'utf8');
+    if (bytes.length <= maxBytes) {
+        return text;
+    }
+    // Remove replacement characters introduced when a multibyte code point crosses the byte boundary.
+    return bytes.subarray(0, maxBytes).toString('utf8').replace(/\uFFFD+$/g, '');
+}
+
 async function hasSearchIndexTables(knex) {
     return await knex.schema.hasTable(ESTATE_SEARCH_INDEX_TABLE);
+}
+
+async function hasSearchI18nIndexTable(knex) {
+    return await knex.schema.hasTable(ESTATE_SEARCH_I18N_INDEX_TABLE);
 }
 
 async function buildEstateSearchIndexRows(knex, propertyId) {
@@ -508,6 +526,55 @@ async function buildEstateSearchIndexRows(knex, propertyId) {
     };
 }
 
+async function upsertEstateSearchI18nIndex(knex, propertyId, baseRow, options = {}) {
+    if (!await hasSearchI18nIndexTable(knex)) {
+        return false;
+    }
+
+    const locales = ['ja', 'en', 'zh'];
+    const hasTranslations = await knex.schema.hasTable('estate_property_translations');
+    const translationRows = hasTranslations
+        ? await knex('estate_property_translations').where({property_id: propertyId}).select(['locale', 'field', 'text'])
+        : [];
+    const postRows = await knex('estate_property_posts as epp')
+        .innerJoin('posts as p', 'epp.post_id', 'p.id')
+        .where('epp.property_id', propertyId)
+        .where('p.status', 'published')
+        .select(['epp.locale', 'p.title', 'p.custom_excerpt', 'p.plaintext']);
+
+    const rows = locales.map((locale) => {
+        const translations = translationRows
+            .filter(row => String(row.locale || '').toLowerCase() === locale)
+            .map(row => `${row.field || ''} ${row.text || ''}`);
+        const localePostRows = postRows.filter(row => String(row.locale || '').toLowerCase() === locale);
+        const posts = localePostRows
+            .flatMap(row => [row.title, row.custom_excerpt, row.plaintext]);
+        const postTitles = localePostRows
+            .map(row => row.title);
+        const searchableText = truncateUtf8(compactText([baseRow.searchable_text, translations, posts]));
+        return {
+            property_id: propertyId,
+            locale,
+            searchable_text: searchableText,
+            normalized_text: truncateUtf8(normalizeSearchText(searchableText)),
+            title_text: truncateUtf8(compactText(postTitles), ESTATE_SEARCH_TITLE_MAX_BYTES),
+            translation_text: truncateUtf8(compactText(translations)),
+            indexed_at: new Date()
+        };
+    });
+
+    const writeRows = async (transaction) => {
+        await transaction(ESTATE_SEARCH_I18N_INDEX_TABLE).where({property_id: propertyId}).del();
+        await transaction(ESTATE_SEARCH_I18N_INDEX_TABLE).insert(rows);
+    };
+    if (options.transacting) {
+        await writeRows(knex);
+    } else {
+        await ghostBookshelf.transaction(writeRows);
+    }
+    return true;
+}
+
 async function upsertEstateSearchIndex(propertyId, options = {}) {
     const knex = options.transacting || ghostBookshelf.knex;
     if (!await hasSearchIndexTables(knex)) {
@@ -516,6 +583,9 @@ async function upsertEstateSearchIndex(propertyId, options = {}) {
     const payload = await buildEstateSearchIndexRows(knex, propertyId);
     if (!payload) {
         await knex(ESTATE_SEARCH_INDEX_TABLE).where({property_id: propertyId}).del();
+        if (await hasSearchI18nIndexTable(knex)) {
+            await knex(ESTATE_SEARCH_I18N_INDEX_TABLE).where({property_id: propertyId}).del();
+        }
         if (await knex.schema.hasTable(ESTATE_STATION_INDEX_TABLE)) {
             await knex(ESTATE_STATION_INDEX_TABLE).where({property_id: propertyId}).del();
         }
@@ -535,6 +605,7 @@ async function upsertEstateSearchIndex(propertyId, options = {}) {
             await knex(ESTATE_STATION_INDEX_TABLE).insert(payload.stations);
         }
     }
+    await upsertEstateSearchI18nIndex(knex, propertyId, payload.row, options);
     return true;
 }
 
@@ -730,7 +801,7 @@ function addBooleanFeatureFilter(qb, values) {
     }
 }
 
-function applyEstateSearchFilters(qb, options = {}) {
+function applyEstateSearchFilters(qb, options = {}, includeI18nIndex = false) {
     const parsedQuery = parseNaturalEstateSearchQuery(options.query || options.q || options.search || '');
     const naturalStationFilters = {stationName: '', railwayLine: '', walkMax: 0};
     for (const condition of parsedQuery.conditions) {
@@ -758,13 +829,15 @@ function applyEstateSearchFilters(qb, options = {}) {
     if (tokens.length > 0) {
         addWhereLike(qb, [
             'si.normalized_text', 'si.address_text', 'si.station_text', 'si.line_text',
-            'si.tag_text', 'si.feature_text', 'si.equipment_text', 'si.surrounding_text', 'si.hazard_text'
+            'si.tag_text', 'si.feature_text', 'si.equipment_text', 'si.surrounding_text', 'si.hazard_text',
+            ...(includeI18nIndex ? ['si18n.normalized_text', 'si18n.title_text', 'si18n.translation_text'] : [])
         ], tokens);
     }
     if (options.query_any) {
         addWhereAnyLike(qb, [
             'si.normalized_text', 'si.address_text', 'si.station_text', 'si.line_text',
-            'si.tag_text', 'si.feature_text', 'si.equipment_text', 'si.surrounding_text', 'si.hazard_text'
+            'si.tag_text', 'si.feature_text', 'si.equipment_text', 'si.surrounding_text', 'si.hazard_text',
+            ...(includeI18nIndex ? ['si18n.normalized_text', 'si18n.title_text', 'si18n.translation_text'] : [])
         ], options.query_any);
     }
 
@@ -1100,6 +1173,11 @@ const EstateProperty = ghostBookshelf.Model.extend({
         const indexedCount = await knex(ESTATE_SEARCH_INDEX_TABLE).count({total: 'property_id'}).first();
         if (Number(indexedCount?.total || 0) === 0) {
             await this.reindexAllSearch(options);
+        } else if (await hasSearchI18nIndexTable(knex)) {
+            const i18nIndexedCount = await knex(ESTATE_SEARCH_I18N_INDEX_TABLE).count({total: 'property_id'}).first();
+            if (Number(i18nIndexedCount?.total || 0) === 0) {
+                await this.reindexAllSearch(options);
+            }
         }
 
         const page = Math.max(1, Number(options.page || 1));
@@ -1110,9 +1188,16 @@ const EstateProperty = ghostBookshelf.Model.extend({
         let ids = Array.isArray(cached?.ids) ? cached.ids.filter(Boolean) : [];
 
         if (!cached) {
+            const hasI18nIndex = await hasSearchI18nIndexTable(knex);
             const baseQuery = knex(`${ESTATE_SEARCH_INDEX_TABLE} as si`)
                 .innerJoin('estate_properties as ep', 'si.property_id', 'ep.id');
-            applyEstateSearchFilters(baseQuery, options);
+            if (hasI18nIndex) {
+                baseQuery.leftJoin(`${ESTATE_SEARCH_I18N_INDEX_TABLE} as si18n`, function joinLocale() {
+                    this.on('si18n.property_id', '=', 'ep.id')
+                        .onVal('si18n.locale', '=', String(options.locale || 'ja').toLowerCase());
+                });
+            }
+            applyEstateSearchFilters(baseQuery, options, hasI18nIndex);
 
             const countRow = await baseQuery.clone().clearSelect().clearOrder().countDistinct({total: 'ep.id'}).first();
             total = Number(countRow?.total || 0);
@@ -1330,9 +1415,15 @@ const EstateProperty = ghostBookshelf.Model.extend({
 
             if (await hasSearchIndexTables(ghostBookshelf.knex)) {
                 await ghostBookshelf.knex(ESTATE_SEARCH_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
+                if (await hasSearchI18nIndexTable(ghostBookshelf.knex)) {
+                    await ghostBookshelf.knex(ESTATE_SEARCH_I18N_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
+                }
                 if (await ghostBookshelf.knex.schema.hasTable(ESTATE_STATION_INDEX_TABLE)) {
                     await ghostBookshelf.knex(ESTATE_STATION_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
                 }
+            }
+            if (await ghostBookshelf.knex.schema.hasTable('estate_property_translations')) {
+                await ghostBookshelf.knex('estate_property_translations').where({property_id: options.id}).transacting(options.transacting).del();
             }
             // Search index rows reference the property and must be removed before
             // deleting the parent row. Keeping this inside the same transaction

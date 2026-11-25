@@ -44,6 +44,25 @@ const messages = {
     invalidLexicalStructureHelp: 'https://ghost.org/docs/publishing/'
 };
 
+async function reindexLinkedEstateProperties(postId, options = {}) {
+    const knex = options.transacting || ghostBookshelf.knex;
+    const propertyIds = await knex('estate_property_posts')
+        .where({post_id: postId})
+        .pluck('property_id');
+    for (const propertyId of propertyIds) {
+        await models.EstateProperty.reindexSearch(propertyId, options);
+    }
+}
+
+function scheduleLinkedEstatePropertyReindex(postId, transaction) {
+    // Reindex only after commit and never let search maintenance break post saves.
+    transaction.executionPromise
+        .then(() => reindexLinkedEstateProperties(postId))
+        .catch((err) => {
+            logging.error(`Failed to refresh estate search index for post ${postId}: ${err.message}`);
+        });
+}
+
 const extractGroupIdsFromFilter = (filter) => {
     if (!filter || typeof filter !== 'string') {
         return [];
@@ -1616,7 +1635,7 @@ Post = ghostBookshelf.Model.extend({
                             }
                             return found;
                         })
-                        .then((found) => {
+                        .then(async (found) => {
                             if (found) {
                                 // Pass along the updated attributes for checking status changes
                                 found._previousAttributes = post._previousAttributes;
@@ -1628,8 +1647,9 @@ Post = ghostBookshelf.Model.extend({
                                     found.relations.posts_meta._changed = post.relations.posts_meta._changed;
                                 }
 
-                                return found;
                             }
+                            scheduleLinkedEstatePropertyReindex(options.id, options.transacting);
+                            return found;
                         });
                 });
         };

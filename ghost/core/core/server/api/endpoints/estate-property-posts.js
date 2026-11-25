@@ -1,10 +1,21 @@
 const models = require('../../models');
 const errors = require('@tryghost/errors');
 const tpl = require('@tryghost/tpl');
+const logging = require('@tryghost/logging');
 
 const messages = {
     notFound: 'estate property post link not found.'
 };
+
+async function reindexProperty(propertyId) {
+    if (propertyId) {
+        try {
+            await models.EstateProperty.reindexSearch(propertyId);
+        } catch (err) {
+            logging.error(`Failed to refresh estate search index for property ${propertyId}: ${err.message}`);
+        }
+    }
+}
 
 const controller = {
     docName: 'estatepropertyposts',
@@ -60,6 +71,7 @@ const controller = {
                     id: data.property_id
                 });
             }
+            await reindexProperty(data.property_id);
 
             return link;
         }
@@ -89,7 +101,10 @@ const controller = {
                 });
             }
 
-            return models.EstatePropertyPost.destroy({...frame.options, require: true});
+            const propertyId = entry.get('property_id');
+            const result = await models.EstatePropertyPost.destroy({...frame.options, require: true});
+            await reindexProperty(propertyId);
+            return result;
         }
     }
 };
