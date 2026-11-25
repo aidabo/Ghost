@@ -43,6 +43,8 @@ describe('Video jobs and avatar consents', function () {
     let models;
     let jobs;
     let consents;
+    // What storage.getStorage('media') returns (null = no media store, root '').
+    let mediaStore = null;
     const savedEnv = {};
     const ENV = ['VIDEO_JOB_FACE_ENABLED', 'VIDEO_JOB_MAX_COST_USD', 'VIDEO_JOB_TEMPLATE_IDS', 'VIDEO_JOB_MAX_LINES'];
 
@@ -60,7 +62,7 @@ describe('Video jobs and avatar consents', function () {
                     return {buildStorageKeyHash: key => createHash('sha256').update(key).digest('hex')};
                 }
                 if (request === '../../adapters/storage') {
-                    return {getStorage: () => null};
+                    return {getStorage: () => mediaStore};
                 }
                 if (request === '@tryghost/logging') {
                     return {warn() {}};
@@ -106,6 +108,7 @@ describe('Video jobs and avatar consents', function () {
     });
 
     beforeEach(async function () {
+        mediaStore = null;
         ENV.forEach((name) => {
             savedEnv[name] = process.env[name];
             delete process.env[name];
@@ -263,21 +266,33 @@ describe('Video jobs and avatar consents', function () {
             return {job, claim, link: assets => jobs.linkAssets.query(worker({...lease(claim), assets}, {id: job.id}))};
         };
 
-        it('refuses a key outside gallery/video_jobs/{jobId}/ and leaves the other asset alone', async function () {
+        it('refuses a key outside gallery/video_jobs/{jobId}/ with a 422 and leaves the other asset alone', async function () {
             const {job, link} = await start();
             // An existing gallery photo of the user (owner_scope 'user').
-            await rejects(link([out(`gallery/${OWN_PHOTO}.jpg`)]), {errorType: 'ValidationError'});
+            await rejects(link([out(`gallery/${OWN_PHOTO}.jpg`)]), {
+                errorType: 'ValidationError',
+                statusCode: 422,
+                message: `storage_key must be under gallery/video_jobs/${job.id}/ of this job.`
+            });
             for (const key of [
                 `gallery/video_jobs/${job.id}`,
                 `gallery/video_jobs/${job.id}/`,
+                `gallery/video_jobs/${job.id}/sub/`,
                 `gallery/video_jobs/${job.id}/../${OWN_PHOTO}.jpg`,
+                `gallery/video_jobs/${job.id}/./out.mp4`,
                 `gallery/video_jobs/${job.id}//out.mp4`,
-                `/gallery/video_jobs/${job.id}/out.mp4`,
+                `gallery/video_jobs/${job.id}/a\\b.mp4`,
                 `gallery/video_jobs/${job.id}x/out.mp4`,
                 `gallery/news_jobs/${job.id}/out.mp4`,
-                `gallery/video_jobs/other/${job.id}/out.mp4`
+                `gallery/video_jobs/other/${job.id}/out.mp4`,
+                // A prefix that is not the configured root (here: none).
+                `tenant-a/gallery/video_jobs/${job.id}/out.mp4`,
+                // Another job's area around this one, and this job's area
+                // holding another job's: destroy() of the other job would match.
+                `gallery/video_jobs/fffffffffffffffffffffff1/gallery/video_jobs/${job.id}/out.mp4`,
+                `gallery/video_jobs/${job.id}/gallery/video_jobs/fffffffffffffffffffffff1/out.mp4`
             ]) {
-                await rejects(link([out(key)]), {errorType: 'ValidationError'});
+                await rejects(link([out(key)]), {errorType: 'ValidationError', statusCode: 422});
             }
             // One bad key refuses the whole batch: nothing is written.
             await rejects(link([out(`gallery/video_jobs/${job.id}/ok.mp4`), out(`gallery/${OWN_PHOTO}.jpg`)]), {errorType: 'ValidationError'});
@@ -285,6 +300,19 @@ describe('Video jobs and avatar consents', function () {
             const photo = await database('social_media_assets').where({id: OWN_PHOTO}).first();
             assert.equal(photo.owner_scope, 'user');
             assert.equal(photo.video_job_id, null);
+        });
+
+        it('takes the root from the media store (the one destroy cleans) and refuses any other prefix', async function () {
+            mediaStore = {pathPrefix: 'tenant-a/'};
+            const {job, link} = await start();
+            await rejects(link([out(`gallery/video_jobs/${job.id}/out.mp4`)]), {
+                errorType: 'ValidationError',
+                message: `storage_key must be under tenant-a/gallery/video_jobs/${job.id}/ of this job.`
+            });
+            await rejects(link([out(`tenant-b/gallery/video_jobs/${job.id}/out.mp4`)]), {errorType: 'ValidationError'});
+            await rejects(link([out(`x/tenant-a/gallery/video_jobs/${job.id}/out.mp4`)]), {errorType: 'ValidationError'});
+            const linked = await link([out(`tenant-a/gallery/video_jobs/${job.id}/out.mp4`), out(`/tenant-a/gallery/video_jobs/${job.id}/p/1.jpg`)]);
+            assert.equal(linked.count, 2);
         });
 
         it('does not re-point a row that belongs to another job or another owner_scope', async function () {
@@ -309,15 +337,22 @@ describe('Video jobs and avatar consents', function () {
             assert.equal((await database('social_ai_video_job_media').where({video_job_id: job.id})).length, 0);
         });
 
-        it('accepts keys in the job area (with a tenant prefix too) and re-links them idempotently', async function () {
+        it('accepts keys in the job area and re-links them idempotently (a video_jobs row with no job is reused)', async function () {
             const {job, link} = await start();
-            const keys = [`gallery/video_jobs/${job.id}/out.mp4`, `tenant-a/gallery/video_jobs/${job.id}/preview/p1.jpg`];
-            const first = await link(keys.map(key => out(key)));
-            assert.equal(first.count, 2);
+            const keys = [`gallery/video_jobs/${job.id}/out.mp4`, `gallery/video_jobs/${job.id}/preview/p1.jpg`];
+            const orphanKey = `gallery/video_jobs/${job.id}/orphan.mp4`;
+            await database('social_media_assets').insert({
+                id: 'eeeeeeeeeeeeeeeeeeeeeee3', user_id: USER, owner_scope: 'video_jobs', video_job_id: null,
+                storage_key: orphanKey, storage_key_hash: createHash('sha256').update(orphanKey).digest('hex'),
+                storage_url: 'https://example.test/orphan.mp4', asset_type: 'video', created_at: '2026-01-01 00:00:00'
+            });
+            const first = await link([...keys, orphanKey].map(key => out(key)));
+            assert.equal(first.count, 3);
+            assert.equal(first.media_ids[2], 'eeeeeeeeeeeeeeeeeeeeeee3');
             const again = await link([out(keys[0], {role: 'preview'})]);
             assert.deepEqual(again.media_ids, [first.media_ids[0]]);
             const rows = await database('social_media_assets').where({video_job_id: job.id});
-            assert.equal(rows.length, 2);
+            assert.equal(rows.length, 3);
             assert.ok(rows.every(media => media.owner_scope === 'video_jobs' && media.user_id === USER));
         });
     });

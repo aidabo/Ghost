@@ -31,7 +31,7 @@ const messages = {
     // job's late ticks as a quiet skip.
     invalidTransition: 'The requested job transition is not allowed.',
     notLeaseHolder: 'This worker does not hold the job lease.',
-    keyOutOfScope: 'storage_key must be under gallery/video_jobs/{jobId}/ of this job.',
+    keyOutOfScope: 'storage_key must be under {root}gallery/video_jobs/{jobId}/ of this job.',
     keyOwnedElsewhere: 'storage_key belongs to another asset that this job does not own.'
 };
 
@@ -49,22 +49,37 @@ const VALID_ROLES = ['input', 'source', 'material', 'intermediate', 'preview', '
 const VALID_SOURCE_KINDS = ['real', 'ai'];
 
 // link-assets only accepts keys in THIS job's gallery area:
-// [<tenant prefix>/]gallery/video_jobs/<jobId>/<path>. The same area destroy()
-// cleans, so a worker (a bug, or a wrong key) cannot pull another feature's
-// asset into the job and have it deleted with the job. No '.', '..' or empty
-// segments, no backslash.
-const isJobStorageKey = (key, id) => {
-    if (!key || key.includes('\\') || key.startsWith('/')) {
+// <root>/gallery/video_jobs/<jobId>/<path>, where <root> is the media store's
+// configured root (pathPrefix or storagePath — the same root destroy() lists
+// and deletes under; '' when none). So a worker (a bug, or a wrong key) cannot
+// pull another feature's asset into the job and have it deleted with the job,
+// and nothing it links is left behind in S3 by destroy(). Leading '/' is
+// ignored; no '.', '..' or empty segments, no backslash, and no second
+// 'gallery/video_jobs/' inside the path (destroy() of that other job would
+// match the key with its LIKE and delete this row too).
+const mediaRoot = () => {
+    try {
+        const mediaStore = storage.getStorage('media');
+        return String(mediaStore?.pathPrefix || mediaStore?.storagePath || '');
+    } catch (err) {
+        return '';
+    }
+};
+const trimSlashes = value => String(value || '').replace(/^\/+|\/+$/g, '');
+const isJobStorageKey = (key, id, root) => {
+    const clean = trimSlashes(key);
+    if (!clean || key.endsWith('/') || clean.includes('\\')) {
         return false;
     }
-    const segments = key.split('/');
-    if (segments.some(segment => !segment || segment === '.' || segment === '..')) {
+    const prefix = [trimSlashes(root), 'gallery', OWNER_SCOPE, id].filter(Boolean).join('/') + '/';
+    if (!clean.startsWith(prefix)) {
         return false;
     }
-    const at = segments.findIndex((segment, index) => segment === 'gallery'
-        && segments[index + 1] === OWNER_SCOPE
-        && segments[index + 2] === id);
-    return at >= 0 && segments.length > at + 3;
+    const rest = clean.slice(prefix.length);
+    if (!rest || rest.split('/').some(segment => !segment || segment === '.' || segment === '..')) {
+        return false;
+    }
+    return !`/${rest}`.includes(`/gallery/${OWNER_SCOPE}/`);
 };
 
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -663,10 +678,14 @@ const controller = {
                 ? payloadInput.removed_keys.map(String).map(key => key.trim()).filter(Boolean)
                 : [];
 
+            const root = mediaRoot();
             for (const asset of assets) {
                 const storageKey = String(asset?.storage_key || '').trim();
-                if (storageKey && !isJobStorageKey(storageKey, row.id)) {
-                    throw new errors.ValidationError({message: tpl(messages.keyOutOfScope), context: storageKey});
+                if (storageKey && !isJobStorageKey(storageKey, row.id, root)) {
+                    throw new errors.ValidationError({
+                        message: tpl(messages.keyOutOfScope, {root: trimSlashes(root) ? `${trimSlashes(root)}/` : '', jobId: row.id}),
+                        context: storageKey
+                    });
                 }
             }
 
