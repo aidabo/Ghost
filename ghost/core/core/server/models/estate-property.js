@@ -14,6 +14,9 @@ const messages = {
 const ESTATE_SEARCH_INDEX_TABLE = 'estate_property_search_index';
 const ESTATE_SEARCH_I18N_INDEX_TABLE = 'estate_property_search_index_i18n';
 const ESTATE_STATION_INDEX_TABLE = 'estate_property_station_index';
+// Keep localized search payloads below MySQL TEXT's 65535-byte limit.
+const ESTATE_SEARCH_TEXT_MAX_BYTES = 60000;
+const ESTATE_SEARCH_TITLE_MAX_BYTES = 9000;
 const ESTATE_SEARCH_CACHE_PREFIX = 'estate:property-search:v2:';
 const ESTATE_SEARCH_CACHE_OPTION_KEYS = [
     'filter', 'include', 'withRelated', 'query', 'q', 'search', 'query_any', 'station_walk_minutes_max',
@@ -314,16 +317,13 @@ function compactText(parts) {
         .slice(0, 64000);
 }
 
-function truncateUtf8(value, maxBytes = 60000) {
+function truncateUtf8(value, maxBytes = ESTATE_SEARCH_TEXT_MAX_BYTES) {
     const text = String(value || '');
-    if (Buffer.byteLength(text, 'utf8') <= maxBytes) {
+    const bytes = Buffer.from(text, 'utf8');
+    if (bytes.length <= maxBytes) {
         return text;
     }
-    let end = Math.min(text.length, maxBytes);
-    while (end > 0 && Buffer.byteLength(text.slice(0, end), 'utf8') > maxBytes) {
-        end -= 1;
-    }
-    return text.slice(0, end);
+    return bytes.subarray(0, maxBytes).toString('utf8').replace(/\uFFFD+$/g, '');
 }
 
 async function hasSearchIndexTables(knex) {
@@ -557,7 +557,7 @@ async function upsertEstateSearchI18nIndex(knex, propertyId, baseRow, options = 
             locale,
             searchable_text: searchableText,
             normalized_text: truncateUtf8(normalizeSearchText(searchableText)),
-            title_text: truncateUtf8(compactText(postTitles), 9000),
+            title_text: truncateUtf8(compactText(postTitles), ESTATE_SEARCH_TITLE_MAX_BYTES),
             translation_text: truncateUtf8(compactText(translations)),
             indexed_at: new Date()
         };

@@ -55,6 +55,7 @@ async function reindexLinkedEstateProperties(postId, options = {}) {
 }
 
 function scheduleLinkedEstatePropertyReindex(postId, transaction) {
+    // Reindex only after commit and never let search maintenance break post saves.
     transaction.executionPromise
         .then(() => reindexLinkedEstateProperties(postId))
         .catch((err) => {
