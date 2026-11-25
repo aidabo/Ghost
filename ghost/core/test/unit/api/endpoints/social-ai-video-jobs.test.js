@@ -255,6 +255,73 @@ describe('Video jobs and avatar consents', function () {
         });
     });
 
+    describe('link-assets key scope (no re-pointing of other assets)', function () {
+        const out = (key, extra = {}) => ({storage_key: key, storage_url: `https://example.test/${key}`, asset_type: 'video', ...extra});
+        const start = async () => {
+            const job = await jobs.add.query(addFrame(USER, {payload: basePayload()}));
+            const claim = await jobs.claim.query(worker({worker_id: 'video-1'}));
+            return {job, claim, link: assets => jobs.linkAssets.query(worker({...lease(claim), assets}, {id: job.id}))};
+        };
+
+        it('refuses a key outside gallery/video_jobs/{jobId}/ and leaves the other asset alone', async function () {
+            const {job, link} = await start();
+            // An existing gallery photo of the user (owner_scope 'user').
+            await rejects(link([out(`gallery/${OWN_PHOTO}.jpg`)]), {errorType: 'ValidationError'});
+            for (const key of [
+                `gallery/video_jobs/${job.id}`,
+                `gallery/video_jobs/${job.id}/`,
+                `gallery/video_jobs/${job.id}/../${OWN_PHOTO}.jpg`,
+                `gallery/video_jobs/${job.id}//out.mp4`,
+                `/gallery/video_jobs/${job.id}/out.mp4`,
+                `gallery/video_jobs/${job.id}x/out.mp4`,
+                `gallery/news_jobs/${job.id}/out.mp4`,
+                `gallery/video_jobs/other/${job.id}/out.mp4`
+            ]) {
+                await rejects(link([out(key)]), {errorType: 'ValidationError'});
+            }
+            // One bad key refuses the whole batch: nothing is written.
+            await rejects(link([out(`gallery/video_jobs/${job.id}/ok.mp4`), out(`gallery/${OWN_PHOTO}.jpg`)]), {errorType: 'ValidationError'});
+            assert.equal(await database('social_media_assets').where({video_job_id: job.id}).first(), undefined);
+            const photo = await database('social_media_assets').where({id: OWN_PHOTO}).first();
+            assert.equal(photo.owner_scope, 'user');
+            assert.equal(photo.video_job_id, null);
+        });
+
+        it('does not re-point a row that belongs to another job or another owner_scope', async function () {
+            const {job, link} = await start();
+            const key = `gallery/video_jobs/${job.id}/out.mp4`;
+            const hash = createHash('sha256').update(key).digest('hex');
+            const row = (id, extra) => ({
+                id, user_id: OTHER, owner_scope: 'video_jobs', storage_key: key, storage_key_hash: hash,
+                storage_url: 'https://example.test/x.mp4', asset_type: 'video', created_at: '2026-01-01 00:00:00', ...extra
+            });
+
+            await database('social_media_assets').insert(row('eeeeeeeeeeeeeeeeeeeeeee1', {video_job_id: 'fffffffffffffffffffffff1'}));
+            await rejects(link([out(key)]), {errorType: 'ConflictError'});
+            assert.equal((await database('social_media_assets').where({id: 'eeeeeeeeeeeeeeeeeeeeeee1'}).first()).video_job_id, 'fffffffffffffffffffffff1');
+
+            await database('social_media_assets').where({id: 'eeeeeeeeeeeeeeeeeeeeeee1'}).del();
+            await database('social_media_assets').insert(row('eeeeeeeeeeeeeeeeeeeeeee2', {owner_scope: 'user', video_job_id: null}));
+            await rejects(link([out(key)]), {errorType: 'ConflictError'});
+            const kept = await database('social_media_assets').where({id: 'eeeeeeeeeeeeeeeeeeeeeee2'}).first();
+            assert.equal(kept.owner_scope, 'user');
+            assert.equal(kept.video_job_id, null);
+            assert.equal((await database('social_ai_video_job_media').where({video_job_id: job.id})).length, 0);
+        });
+
+        it('accepts keys in the job area (with a tenant prefix too) and re-links them idempotently', async function () {
+            const {job, link} = await start();
+            const keys = [`gallery/video_jobs/${job.id}/out.mp4`, `tenant-a/gallery/video_jobs/${job.id}/preview/p1.jpg`];
+            const first = await link(keys.map(key => out(key)));
+            assert.equal(first.count, 2);
+            const again = await link([out(keys[0], {role: 'preview'})]);
+            assert.deepEqual(again.media_ids, [first.media_ids[0]]);
+            const rows = await database('social_media_assets').where({video_job_id: job.id});
+            assert.equal(rows.length, 2);
+            assert.ok(rows.every(media => media.owner_scope === 'video_jobs' && media.user_id === USER));
+        });
+    });
+
     describe('payload limits', function () {
         it('refuses an unknown template, too many lines and a long line', async function () {
             await rejects(jobs.add.query(addFrame(USER, {payload: basePayload({template_id: 'https://evil.test/x'})})), {code: 'VIDEO_JOB_UNKNOWN_TEMPLATE'});

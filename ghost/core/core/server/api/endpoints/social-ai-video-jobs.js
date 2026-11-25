@@ -30,7 +30,9 @@ const messages = {
     // Same spelling as chart/news: workers match this string to treat a canceled
     // job's late ticks as a quiet skip.
     invalidTransition: 'The requested job transition is not allowed.',
-    notLeaseHolder: 'This worker does not hold the job lease.'
+    notLeaseHolder: 'This worker does not hold the job lease.',
+    keyOutOfScope: 'storage_key must be under gallery/video_jobs/{jobId}/ of this job.',
+    keyOwnedElsewhere: 'storage_key belongs to another asset that this job does not own.'
 };
 
 const TABLE = 'social_ai_video_jobs';
@@ -45,6 +47,25 @@ const JOB_TYPES = new Set([DEFAULT_JOB_TYPE]);
 const TERMINAL_ITEM_STATUSES = new Set(['completed', 'failed', 'skipped']);
 const VALID_ROLES = ['input', 'source', 'material', 'intermediate', 'preview', 'output'];
 const VALID_SOURCE_KINDS = ['real', 'ai'];
+
+// link-assets only accepts keys in THIS job's gallery area:
+// [<tenant prefix>/]gallery/video_jobs/<jobId>/<path>. The same area destroy()
+// cleans, so a worker (a bug, or a wrong key) cannot pull another feature's
+// asset into the job and have it deleted with the job. No '.', '..' or empty
+// segments, no backslash.
+const isJobStorageKey = (key, id) => {
+    if (!key || key.includes('\\') || key.startsWith('/')) {
+        return false;
+    }
+    const segments = key.split('/');
+    if (segments.some(segment => !segment || segment === '.' || segment === '..')) {
+        return false;
+    }
+    const at = segments.findIndex((segment, index) => segment === 'gallery'
+        && segments[index + 1] === OWNER_SCOPE
+        && segments[index + 2] === id);
+    return at >= 0 && segments.length > at + 3;
+};
 
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const leaseExpiry = () => new Date(Date.now() + 300000).toISOString().slice(0, 19).replace('T', ' ');
@@ -642,10 +663,20 @@ const controller = {
                 ? payloadInput.removed_keys.map(String).map(key => key.trim()).filter(Boolean)
                 : [];
 
+            for (const asset of assets) {
+                const storageKey = String(asset?.storage_key || '').trim();
+                if (storageKey && !isJobStorageKey(storageKey, row.id)) {
+                    throw new errors.ValidationError({message: tpl(messages.keyOutOfScope), context: storageKey});
+                }
+            }
+
             const link = async (knex) => {
                 const mediaIds = [];
                 // Idempotency key is storage_key_hash (same rule as chart/news): a
-                // re-run reuses the existing row and re-points video_job_id.
+                // re-run reuses the existing row. Unlike news, the row is reused
+                // only when it is already this job's (owner_scope video_jobs and
+                // video_job_id this job or empty); anything else is refused, never
+                // re-pointed.
                 for (const asset of assets) {
                     const storageKey = String(asset?.storage_key || '').trim();
                     const storageUrl = String(asset?.storage_url || '').trim();
@@ -661,6 +692,10 @@ const controller = {
 
                     let mediaId;
                     const existing = await knex('social_media_assets').where({storage_key_hash: storageKeyHash}).first();
+                    if (existing && (existing.owner_scope !== OWNER_SCOPE
+                        || (existing.video_job_id && existing.video_job_id !== row.id))) {
+                        throw new errors.ConflictError({message: tpl(messages.keyOwnedElsewhere), context: storageKey});
+                    }
                     if (existing) {
                         await knex('social_media_assets').where({id: existing.id}).update({
                             storage_key: storageKey,
