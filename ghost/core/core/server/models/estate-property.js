@@ -323,6 +323,7 @@ function truncateUtf8(value, maxBytes = ESTATE_SEARCH_TEXT_MAX_BYTES) {
     if (bytes.length <= maxBytes) {
         return text;
     }
+    // Remove replacement characters introduced when a multibyte code point crosses the byte boundary.
     return bytes.subarray(0, maxBytes).toString('utf8').replace(/\uFFFD+$/g, '');
 }
 
@@ -1417,12 +1418,12 @@ const EstateProperty = ghostBookshelf.Model.extend({
                 if (await hasSearchI18nIndexTable(ghostBookshelf.knex)) {
                     await ghostBookshelf.knex(ESTATE_SEARCH_I18N_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
                 }
-                if (await ghostBookshelf.knex.schema.hasTable('estate_property_translations')) {
-                    await ghostBookshelf.knex('estate_property_translations').where({property_id: options.id}).transacting(options.transacting).del();
-                }
                 if (await ghostBookshelf.knex.schema.hasTable(ESTATE_STATION_INDEX_TABLE)) {
                     await ghostBookshelf.knex(ESTATE_STATION_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
                 }
+            }
+            if (await ghostBookshelf.knex.schema.hasTable('estate_property_translations')) {
+                await ghostBookshelf.knex('estate_property_translations').where({property_id: options.id}).transacting(options.transacting).del();
             }
             // Search index rows reference the property and must be removed before
             // deleting the parent row. Keeping this inside the same transaction
