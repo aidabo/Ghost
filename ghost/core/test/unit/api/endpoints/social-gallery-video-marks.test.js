@@ -155,6 +155,16 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
         assert.equal(rows.a6.role, null);
     });
 
+    it('a news worker mp4 in the same artifacts/video/ area (no video_job_id) gets no marks', async function () {
+        await db('social_media_assets').insert({
+            id: 'a7', owner_scope: 'news_jobs', user_id: 'other', project_id: PROJECT, news_job_id: 'nj1',
+            storage_key: `gallery/projects/${PROJECT}/artifacts/video/nj1-article.mp4`, asset_type: 'video', created_at: NOW
+        });
+        const rows = byId(await listProject('me', PROJECT));
+        assert.equal(rows.a7.video_job_id, null);
+        assert.equal(rows.a7.role, null);
+    });
+
     it('a file linked twice to its job: output wins', async function () {
         await db('social_ai_video_job_media').insert({id: 'm1b', video_job_id: JOB_BY_OTHER, media_id: 'a1', role: 'preview', created_at: NOW});
         const rows = byId(await listProject('me', PROJECT));
