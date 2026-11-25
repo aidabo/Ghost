@@ -101,6 +101,19 @@ const actualPatch = (payloadInput, row) => (payloadInput.cost_usd === undefined 
     ? {}
     : {cost_actual_micros: Math.max(budget.parseUsd(payloadInput.cost_usd, 'cost_usd'), Number(row.cost_actual_micros || 0))});
 
+// A real cost (`cost_usd`) is written under the month lock, so no budget
+// check of that month runs on an older sum. It is never refused: what was paid
+// was paid. Over the cap, the month's later adds and raises are refused.
+const withCostLock = (payloadInput, row, write) => {
+    if (payloadInput.cost_usd === undefined || payloadInput.cost_usd === null || !row.cost_month) {
+        return write(models.Base.knex);
+    }
+    return models.Base.knex.transaction(async (trx) => {
+        await budget.lockMonth(trx, row.cost_month);
+        await write(trx);
+    });
+};
+
 const getMediaStore = () => {
     try {
         return storage.getStorage('media');
@@ -692,7 +705,7 @@ const controller = {
             const status = deriveStatus(steps, row.status);
             const finished = status === 'completed' || status === 'failed';
 
-            await updateJob(frame, row, {
+            await withCostLock(payloadInput, row, trx => updateJob(frame, row, {
                 status,
                 progress: finished ? 100 : row.progress,
                 status_message: String(payloadInput.status_message || summarizeItems(items) || row.status_message || '').slice(0, 500) || null,
@@ -704,7 +717,7 @@ const controller = {
                 completed_at: finished ? timestamp : null,
                 updated_at: timestamp,
                 updated_by: row.updated_by || row.user_id
-            });
+            }, trx));
             return serialize(await loadRow(row.id));
         }
     },
@@ -725,7 +738,7 @@ const controller = {
                 step.status = 'failed';
                 step.error = errorText || step.error;
             }
-            await updateJob(frame, row, {
+            await withCostLock(payloadInput, row, trx => updateJob(frame, row, {
                 status: 'failed',
                 error_code: String(payloadInput.error_code || 'step_failed').slice(0, 100),
                 error_message: errorText ? String(errorText) : 'Video job step failed',
@@ -735,7 +748,7 @@ const controller = {
                 completed_at: timestamp,
                 updated_at: timestamp,
                 updated_by: row.updated_by || row.user_id
-            });
+            }, trx));
             return serialize(await loadRow(row.id));
         }
     },
@@ -1073,9 +1086,13 @@ const controller = {
                 .orWhereRaw('storage_key LIKE ?', [`%gallery/${OWNER_SCOPE}/${row.id}/%`])
                 .del();
 
-            // Junction rows cascade via the video_job_id FK.
+            // Junction rows cascade via the video_job_id FK. The job's cost
+            // and place stay in its month (deleting does not give them back).
             await knex(JUNCTION).where({video_job_id: row.id}).del();
-            await knex(TABLE).where({id: row.id}).del();
+            await knex.transaction(async (trx) => {
+                await budget.keepRemovedJobs(trx, [row.id]);
+                await trx(TABLE).where({id: row.id}).del();
+            });
             return serialize({...row, status: 'deleted'});
         }
     }

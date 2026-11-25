@@ -7,6 +7,7 @@ const logging = require('@tryghost/logging');
 const storage = require('../../adapters/storage');
 const socialAiProjectsUtil = require('./utils/social-ai-projects');
 const staffScope = require('./utils/staff-scope');
+const videoBudget = require('./utils/video-job-budget');
 
 const ALLOWED_INCLUDES = ['user', 'group'];
 const PROJECT_MEMBERS = 'social_ai_project_members';
@@ -805,6 +806,10 @@ const controller = {
                         .orWhereRaw(`(${galleryLikes.join(' OR ')})`, galleryParams)
                         .del();
 
+                    // A deleted video job keeps its cost and place in its month.
+                    if (family.jobsTable === 'social_ai_video_jobs') {
+                        await videoBudget.keepRemovedJobs(trx, childIds);
+                    }
                     await trx(family.jobsTable)
                         .whereIn('id', childIds)
                         .del();

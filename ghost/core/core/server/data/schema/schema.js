@@ -2660,10 +2660,14 @@ module.exports = {
 
     // One row per month of the video budget, locked (SELECT … FOR UPDATE) by every
     // budget check of that month so two checks cannot both pass
-    // (api/endpoints/utils/video-job-budget.js). Holds no totals: those are
-    // summed from social_ai_video_jobs.
+    // (api/endpoints/utils/video-job-budget.js). The month's use is the jobs'
+    // rows plus what deleted jobs left here.
     social_ai_video_cost_months: {
         month: {type: 'string', maxlength: 7, nullable: false, primary: true},
+        // What deleted jobs of the month cost and how many of them were videos:
+        // deleting a job (or its project) never gives the budget back.
+        removed_cost_micros: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
+        removed_jobs: {type: 'integer', nullable: false, unsigned: true, defaultTo: 0},
         created_at: {type: 'dateTime', nullable: false}
     },
 

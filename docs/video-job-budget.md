@@ -47,6 +47,15 @@ Ghost 1 つが 1 テナントなので、「テナントの月の合計」はこ
 
 この列を足す前の job は `cost_month` が無く、どの月にも数えない。
 
+**job を消しても枠は戻らない**: job（や project）を消す前に、その job が月に数えていた額と本数を月の行
+（`social_ai_video_cost_months.removed_cost_micros`・`removed_jobs`）に足してから行を消す。月の使った額・本数は
+「今ある job の行の合計＋月の行に残した分」。
+
+**実際の費用は断らない**: worker が `complete`・`fail`・`reserve-cost` で知らせる `cost_usd` は払った額なので、
+予約や上限より高くても断らずに記録する（払った事実は消せない）。記録は月の行を押さえた中で行うので、
+同じ月の確かめが古い合計で通ることはない。上限を超えたら、その月の以後の受け付けと予約（上げる方）は断る
+（費用 0 の job でも）。予約より高い実費が出ないようにするのは worker の役目（`reserve-cost` で先に予約する）。
+
 ## 見込み（受け付けのとき）
 
 - 声: 行の数 × `VIDEO_JOB_VOICE_LINE_COST_USD`（既定 0.002、仮）
@@ -77,14 +86,16 @@ Ghost 1 つが 1 テナントなので、「テナントの月の合計」はこ
 
 - 1 job の上限を超える → 422 `VIDEO_JOB_BUDGET_EXCEEDED`
 - 月の上限を超える → 422 `VIDEO_JOB_MONTHLY_BUDGET_EXCEEDED`。worker はその段を送らず、job を `fail`（`error_code=budget_exceeded`）にする。作り置きは残る
-- 下げるのはいつでも通る
+- 同じ月の中で下げるのは確かめずに通る。月が変わったときは下げる呼び出しでも新しい月で確かめるので、断られることがある
+  （例: 11 月に 1 USD で受け付けた job が 12 月に 0.5 USD を予約 → 12 月が満杯なら 422）
 - 答え: `{approved, reserved_usd, actual_usd, month, monthly_max_usd, month_total_usd, remaining_usd}`
 - 先月に受け付けた job が今月に予約すると、job の費用はまるごと今月に移る
 
 ## 同時に来たとき
 
-確かめはどれも 1 つのトランザクションで、先にその月の行（`social_ai_video_cost_months`、月ごとに 1 行、合計は持たない）を
+確かめはどれも 1 つのトランザクションで、先にその月の行（`social_ai_video_cost_months`、月ごとに 1 行）を
 `SELECT … FOR UPDATE` で押さえ、job の合計は `FOR SHARE` で最新を読む。同じ月の確かめは 1 つずつ進むので、2 つ同時でも上限を超えない。
+実際の費用の記録と job の削除も同じ月の行を押さえる。
 
 ## 本番イメージ
 

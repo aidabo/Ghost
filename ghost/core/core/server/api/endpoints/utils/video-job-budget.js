@@ -129,10 +129,43 @@ const monthUsage = async (trx, month, exceptJobId = null, {locking = false} = {}
         query.forShare();
     }
     const rows = await query;
+    const removed = await trx(LOCKS).where({month}).first('removed_cost_micros', 'removed_jobs');
     return {
-        micros: rows.reduce((sum, row) => sum + chargeOf(row), 0),
-        jobs: rows.filter(countsAsVideo).length
+        micros: rows.reduce((sum, row) => sum + chargeOf(row), 0) + Number(removed?.removed_cost_micros || 0),
+        jobs: rows.filter(countsAsVideo).length + Number(removed?.removed_jobs || 0)
     };
+};
+
+/**
+ * Before video jobs are deleted: adds what they count in their month to that
+ * month's row, so deleting a job (or its project) never gives the budget back.
+ * Must run inside the `trx` that deletes them.
+ *
+ * @param {import('knex').Knex.Transaction} trx
+ * @param {string[]} jobIds
+ */
+const keepRemovedJobs = async (trx, jobIds) => {
+    if (!jobIds.length) {
+        return;
+    }
+    const rows = await trx('social_ai_video_jobs')
+        .whereIn('id', jobIds)
+        .whereNotNull('cost_month')
+        .select('cost_month', 'status', 'cost_reserved_micros', 'cost_actual_micros');
+    const byMonth = new Map();
+    for (const row of rows) {
+        const entry = byMonth.get(row.cost_month) || {micros: 0, jobs: 0};
+        entry.micros += chargeOf(row);
+        entry.jobs += countsAsVideo(row) ? 1 : 0;
+        byMonth.set(row.cost_month, entry);
+    }
+    for (const [month, entry] of byMonth) {
+        await lockMonth(trx, month);
+        await trx(LOCKS).where({month}).update({
+            removed_cost_micros: trx.raw('removed_cost_micros + ?', [entry.micros]),
+            removed_jobs: trx.raw('removed_jobs + ?', [entry.jobs])
+        });
+    }
 };
 
 const summary = (month, usage, maxMicros = monthlyMaxMicros(), limits = serviceLimits()) => ({
@@ -188,6 +221,7 @@ module.exports = {
     parseUsd,
     monthlyMaxMicros,
     monthUsage,
+    keepRemovedJobs,
     assertMonthlyBudget,
     lockMonth,
     summary

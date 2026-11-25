@@ -864,6 +864,59 @@ describe('Video jobs and avatar consents', function () {
             assert.equal((await jobs.budget.query(staff(USER))).month, '2026-11');
         });
 
+        it('keeps the cost and the place of a job that is deleted (deleting does not give the budget back)', async function () {
+            oneDollarJobs('2');
+            process.env.VIDEO_JOB_MONTHLY_MAX_JOBS = '2';
+            await add();
+            const claim = await jobs.claim.query(worker({worker_id: 'video-1'}));
+            await jobs.complete.query(worker({...lease(claim), cost_usd: 1}, {id: claim.id}));
+            await jobs.destroy.query(staff(USER, {}, {id: claim.id}));
+            const usage = await jobs.budget.query(staff(USER));
+            assert.equal(usage.month_total_usd, 1);
+            assert.equal(usage.month_jobs, 1);
+            await add();
+            await rejects(add(), {code: 'VIDEO_JOB_MONTHLY_COUNT_EXCEEDED'});
+        });
+
+        it('records a real cost above the hold under the month lock, never refuses it, and stops later jobs', async function () {
+            oneDollarJobs('2');
+            await add();
+            const claim = await jobs.claim.query(worker({worker_id: 'video-1'}));
+            const sql = [];
+            const listen = query => sql.push(query.sql);
+            database.on('query', listen);
+            let done;
+            try {
+                done = await jobs.complete.query(worker({...lease(claim), cost_usd: 2.5}, {id: claim.id}));
+            } finally {
+                database.off('query', listen);
+            }
+            // Paid is paid: recorded as it is.
+            assert.equal(done.cost_actual_usd, 2.5);
+            assert.ok(sql.some(text => text.includes('social_ai_video_cost_months')), 'complete must take the month lock');
+            const usage = await jobs.budget.query(staff(USER));
+            assert.equal(usage.month_total_usd, 2.5);
+            assert.equal(usage.remaining_usd, 0);
+            // Over the cap: even a job that costs nothing is refused now.
+            await rejects(jobs.add.query(addFrame(USER, {payload: basePayload({lines: []})})), {code: 'VIDEO_JOB_MONTHLY_BUDGET_EXCEEDED'});
+        });
+
+        it('takes the month lock when fail reports a real cost too', async function () {
+            oneDollarJobs('2');
+            await add();
+            const claim = await jobs.claim.query(worker({worker_id: 'video-1'}));
+            const sql = [];
+            const listen = query => sql.push(query.sql);
+            database.on('query', listen);
+            try {
+                await jobs.fail.query(worker({...lease(claim), error_code: 'step_failed', cost_usd: 3}, {id: claim.id}));
+            } finally {
+                database.off('query', listen);
+            }
+            assert.ok(sql.some(text => text.includes('social_ai_video_cost_months')), 'fail must take the month lock');
+            assert.equal((await jobs.budget.query(staff(USER))).month_total_usd, 3);
+        });
+
         it('refuses a video longer than VIDEO_JOB_MAX_SECONDS (estimated from the text and the scenes) with its own code', async function () {
             // 70 characters of Japanese at 7 a second, tempo 0.85: 11.8 s + 0.6 s
             // in its scene; two silent scenes of 3 s each: about 19 s.
