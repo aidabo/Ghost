@@ -164,4 +164,24 @@ describe('social-ai-projects destroy: S3 cleanup only after commit', function ()
             'gallery/projects/p1/file.bin'
         ]);
     });
+
+    it('(d) removes the video results in gallery/projects/{pid}/artifacts/video/ (rows and S3), also those of a job deleted before', async function () {
+        await database('social_ai_video_jobs').insert({id: 'vj-done', project_id: 'p1', status: 'completed'});
+        await database('social_media_assets').insert([
+            {id: 'v1', storage_key: 'gallery/projects/p1/artifacts/video/vj-done-intro.mp4', project_id: 'p1', video_job_id: 'vj-done'},
+            // A result kept by H3 when its job was deleted earlier.
+            {id: 'v2', storage_key: 'gallery/projects/p1/artifacts/video/vj-gone-intro.mp4', project_id: 'p1', video_job_id: 'vj-gone'},
+            {id: 'v3', storage_key: 'gallery/video_jobs/vj-done/preview.jpg', project_id: 'p1', video_job_id: 'vj-done'},
+            {id: 'keep', storage_key: 'gallery/projects/p2/artifacts/video/other.mp4', project_id: 'p2'}
+        ]);
+        await database('social_ai_video_job_media').insert({video_job_id: 'vj-done', media_id: 'v1'});
+
+        const result = await destroy('p1');
+
+        assert.equal(result.deleted_jobs, 1);
+        assert.deepEqual((await database('social_media_assets').select('id')).map(row => row.id), ['keep']);
+        assert.equal((await database('social_ai_video_job_media')).length, 0);
+        // The project prefix covers artifacts/video/ (best-effort, after commit).
+        assert.deepEqual(listed, ['gallery/video_jobs/vj-done', 'gallery/chart_projects/p1', 'gallery/projects/p1']);
+    });
 });

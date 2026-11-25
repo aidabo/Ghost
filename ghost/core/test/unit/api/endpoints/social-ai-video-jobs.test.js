@@ -15,6 +15,11 @@ const ADMIN = 'aaaaaaaaaaaaaaaaaaaaaaa3';
 const GROUP_OK = 'bbbbbbbbbbbbbbbbbbbbbbb1';
 const GROUP_NO = 'bbbbbbbbbbbbbbbbbbbbbbb2';
 const PROJECT = 'ccccccccccccccccccccccc1';
+// The creator's own projects (no group): where most jobs of this suite live,
+// since a video job needs a project.
+const OWN_PROJECT = 'ccccccccccccccccccccccc2';
+const OWN_PROJECT_2 = 'ccccccccccccccccccccccc3';
+const PROJECT_GROUP_NO = 'ccccccccccccccccccccccc4';
 const OWN_PHOTO = 'ddddddddddddddddddddddd1';
 const OTHER_PRIVATE = 'ddddddddddddddddddddddd2';
 const OTHER_IN_GROUP = 'ddddddddddddddddddddddd3';
@@ -22,7 +27,9 @@ const MISSING_ASSET = 'ddddddddddddddddddddddd9';
 
 const staff = (user, data = {}, options = {}) => ({data, options: {...options, context: {user}}});
 const worker = (data = {}, options = {}) => ({data, options: {...options, context: {integration: {id: 'integration-1'}}}});
-const addFrame = (user, body) => staff(user, {socialaivideojobs: [body]});
+// A video job needs a project (plan 10.2): the creator's own one unless the
+// test names another (or none).
+const addFrame = (user, body) => staff(user, {socialaivideojobs: [{project_id: OWN_PROJECT, ...body}]});
 
 const basePayload = (extra = {}) => ({
     template_id: 'intro',
@@ -98,9 +105,15 @@ describe('Video jobs and avatar consents', function () {
                 canAccessGroup: async (group, actor, mode) => group.id === GROUP_OK && actor === USER && mode === 'write'
             },
             SocialAiProject: {
-                findOne: async ({id}) => (id === PROJECT
-                    ? {get: key => ({user_id: OTHER, group_id: GROUP_OK})[key]}
-                    : null)
+                findOne: async ({id}) => {
+                    const project = {
+                        [PROJECT]: {user_id: OTHER, group_id: GROUP_OK},
+                        [OWN_PROJECT]: {user_id: USER, group_id: null},
+                        [OWN_PROJECT_2]: {user_id: USER, group_id: null},
+                        [PROJECT_GROUP_NO]: {user_id: USER, group_id: GROUP_NO}
+                    }[id];
+                    return project ? {get: key => project[key]} : null;
+                }
             }
         };
         jobs = load(jobsPath);
@@ -272,7 +285,7 @@ describe('Video jobs and avatar consents', function () {
             await rejects(link([out(`gallery/${OWN_PHOTO}.jpg`)]), {
                 errorType: 'ValidationError',
                 statusCode: 422,
-                message: `storage_key must be under gallery/video_jobs/${job.id}/ (this job's gallery area).`
+                message: `storage_key must be under gallery/video_jobs/${job.id}/ or gallery/projects/${OWN_PROJECT}/artifacts/video/ (this job's gallery area or its project's video artifacts).`
             });
             for (const key of [
                 `gallery/video_jobs/${job.id}`,
@@ -320,7 +333,7 @@ describe('Video jobs and avatar consents', function () {
             const {job, claim, link} = await start();
             await rejects(link([out(`gallery/video_jobs/${job.id}/out.mp4`)]), {
                 errorType: 'ValidationError',
-                message: `storage_key must be under tenant-a/gallery/video_jobs/${job.id}/ (this job's gallery area).`
+                message: `storage_key must be under tenant-a/gallery/video_jobs/${job.id}/ or tenant-a/gallery/projects/${OWN_PROJECT}/artifacts/video/ (this job's gallery area or its project's video artifacts).`
             });
             for (const key of [
                 `tenant-b/gallery/video_jobs/${job.id}/out.mp4`,
@@ -385,6 +398,146 @@ describe('Video jobs and avatar consents', function () {
             const rows = await database('social_media_assets').where({video_job_id: job.id});
             assert.equal(rows.length, 3);
             assert.ok(rows.every(media => media.owner_scope === 'video_jobs' && media.user_id === USER));
+        });
+    });
+
+    describe('results in the project (artifacts/video/) and H3 on destroy', function () {
+        const out = (key, extra = {}) => ({storage_key: key, storage_url: `https://example.test/${key}`, asset_type: 'video', ...extra});
+        const artifact = (name, projectId = OWN_PROJECT, root = '') => `${root}gallery/projects/${projectId}/artifacts/video/${name}`;
+        const start = async (projectId = OWN_PROJECT) => {
+            const job = await jobs.add.query(addFrame(USER, {payload: basePayload(), project_id: projectId}));
+            const claim = await jobs.claim.query(worker({worker_id: 'video-1'}));
+            assert.equal(claim.id, job.id);
+            return {
+                job,
+                claim,
+                link: assets => jobs.linkAssets.query(worker({...lease(claim), assets}, {id: job.id})),
+                complete: () => jobs.complete.query(worker({...lease(claim), result: {}}, {id: job.id}))
+            };
+        };
+
+        it('links a result under this job\'s project artifacts/video/ as role=output, owned by the job', async function () {
+            const {job, link} = await start();
+            const linked = await link([out(artifact(`${'f'.repeat(24)}-intro.mp4`))]);
+            assert.equal(linked.count, 1);
+            const media = await database('social_media_assets').where({id: linked.media_ids[0]}).first();
+            assert.equal(media.video_job_id, job.id);
+            assert.equal(media.project_id, OWN_PROJECT);
+            assert.equal(media.owner_scope, 'video_jobs');
+            assert.equal(media.user_id, USER);
+            const junction = await database('social_ai_video_job_media').where({video_job_id: job.id, media_id: media.id}).first();
+            assert.equal(junction.role, 'output');
+            // An intermediate the gallery may show still goes to the job's area.
+            const preview = await link([out(`gallery/video_jobs/${job.id}/preview.jpg`, {role: 'intermediate', asset_type: 'image'})]);
+            assert.equal((await database('social_ai_video_job_media').where({media_id: preview.media_ids[0]}).first()).role, 'intermediate');
+        });
+
+        it('refuses another project, another kind and malformed keys under the project with a 422', async function () {
+            const {job, link} = await start();
+            for (const key of [
+                artifact('out.mp4', OWN_PROJECT_2),
+                artifact('out.mp4', PROJECT),
+                `gallery/projects/${OWN_PROJECT}/artifacts/chart/out.png`,
+                `gallery/projects/${OWN_PROJECT}/artifacts/videox/out.mp4`,
+                `gallery/projects/${OWN_PROJECT}/artifacts/out.mp4`,
+                `gallery/projects/${OWN_PROJECT}/video/out.mp4`,
+                `gallery/projects/${OWN_PROJECT}/out.mp4`,
+                `gallery/projects/${OWN_PROJECT}x/artifacts/video/out.mp4`,
+                `gallery/projects/${OWN_PROJECT}/artifacts/video`,
+                artifact(''),
+                artifact('sub/'),
+                artifact(`../../${OWN_PROJECT_2}/artifacts/video/out.mp4`),
+                artifact('./out.mp4'),
+                artifact('/out.mp4'),
+                `/${artifact('out.mp4')}`,
+                artifact('a\\b.mp4'),
+                `tenant-a/${artifact('out.mp4')}`,
+                // A job or gallery area below it: another job's destroy would match it.
+                artifact(`jobs/${job.id}/out.mp4`),
+                artifact('gallery/video_jobs/fffffffffffffffffffffff1/out.mp4')
+            ]) {
+                await rejects(link([out(key)]), {errorType: 'ValidationError', statusCode: 422});
+            }
+            assert.equal(await database('social_media_assets').where({video_job_id: job.id}).first(), undefined);
+        });
+
+        it('uses the S3 pathPrefix for the project area too', async function () {
+            mediaStore = {pathPrefix: 'tenant-a/'};
+            const {link} = await start();
+            await rejects(link([out(artifact('out.mp4'))]), {errorType: 'ValidationError', statusCode: 422});
+            await rejects(link([out(artifact('out.mp4', OWN_PROJECT, 'tenant-b/'))]), {errorType: 'ValidationError', statusCode: 422});
+            assert.equal((await link([out(artifact('out.mp4', OWN_PROJECT, 'tenant-a/'))])).count, 1);
+        });
+
+        it('refuses (409) a result name another job of the same project already linked, even after that job is deleted', async function () {
+            const first = await start();
+            const key = artifact('intro.mp4');
+            const linked = await first.link([out(key)]);
+            await first.complete();
+
+            const second = await start();
+            await rejects(second.link([out(key)]), {errorType: 'ConflictError', statusCode: 409});
+            await jobs.destroy.query(staff(USER, {}, {id: first.job.id}));
+            await rejects(second.link([out(key)]), {errorType: 'ConflictError', statusCode: 409});
+            const kept = await database('social_media_assets').where({id: linked.media_ids[0]}).first();
+            assert.equal(kept.video_job_id, first.job.id);
+            assert.equal((await database('social_ai_video_job_media').where({video_job_id: second.job.id})).length, 0);
+        });
+
+        it('destroy keeps the project result (row and S3 object) and removes the job area (row and S3 object)', async function () {
+            const listed = [];
+            const deleted = [];
+            mediaStore = {
+                pathPrefix: 'tenant-a',
+                list: async ({prefix}) => {
+                    listed.push(prefix);
+                    return {items: prefix.includes('/video_jobs/') ? [{key: `${prefix}preview.jpg`}] : [], nextCursor: null};
+                },
+                delete: async (name, dir) => {
+                    deleted.push(`${dir}/${name}`);
+                }
+            };
+            const {job, link, complete} = await start();
+            const resultKey = artifact('intro.mp4', OWN_PROJECT, 'tenant-a/');
+            const previewKey = `tenant-a/gallery/video_jobs/${job.id}/preview.jpg`;
+            const linked = await link([out(resultKey), out(previewKey, {role: 'intermediate', asset_type: 'image'})]);
+            await complete();
+
+            await jobs.destroy.query(staff(USER, {}, {id: job.id}));
+
+            assert.deepEqual(listed, [`tenant-a/gallery/video_jobs/${job.id}/`]);
+            assert.deepEqual(deleted, [previewKey]);
+            const result = await database('social_media_assets').where({id: linked.media_ids[0]}).first();
+            assert.equal(result.storage_key, resultKey);
+            assert.equal(result.project_id, OWN_PROJECT);
+            // Kept as it is, as chart / news keep chart_job_id / news_job_id.
+            assert.equal(result.video_job_id, job.id);
+            assert.equal(await database('social_media_assets').where({id: linked.media_ids[1]}).first(), undefined);
+            assert.equal((await database('social_ai_video_job_media').where({video_job_id: job.id})).length, 0);
+            assert.equal(await database('social_ai_video_jobs').where({id: job.id}).first(), undefined);
+        });
+
+        it('a job without a project (made before project_id was required) still loses every row it made on destroy', async function () {
+            const {job, link, complete} = await start();
+            await database('social_ai_video_jobs').where({id: job.id}).update({project_id: null});
+            // Without a project only the job's own area is accepted.
+            await rejects(link([out(artifact('out.mp4'))]), {
+                errorType: 'ValidationError',
+                statusCode: 422,
+                message: `storage_key must be under gallery/video_jobs/${job.id}/ (this job's gallery area or its project's video artifacts).`
+            });
+            const linked = await link([out(`gallery/video_jobs/${job.id}/out.mp4`)]);
+            const media = await database('social_media_assets').where({id: linked.media_ids[0]}).first();
+            assert.equal(media.project_id, null);
+            // A row of this job outside the area (written before #84) goes too.
+            await database('social_media_assets').insert({
+                id: 'eeeeeeeeeeeeeeeeeeeeeee5', user_id: USER, owner_scope: 'video_jobs', video_job_id: job.id,
+                storage_key: 'gallery/legacy/out.mp4', storage_key_hash: 'legacy-hash',
+                storage_url: 'https://example.test/legacy.mp4', asset_type: 'video', created_at: '2026-01-01 00:00:00'
+            });
+            await complete();
+            await jobs.destroy.query(staff(USER, {}, {id: job.id}));
+            assert.equal(await database('social_media_assets').where({video_job_id: job.id}).first(), undefined);
         });
     });
 
@@ -489,12 +642,25 @@ describe('Video jobs and avatar consents', function () {
 
     describe('group, project and scope_type', function () {
         it('requires write access to the group and a matching scope_type', async function () {
-            await rejects(jobs.add.query(addFrame(USER, {payload: basePayload(), group_id: GROUP_NO})), {errorType: 'NoPermissionError'});
-            await rejects(jobs.add.query(addFrame(USER, {payload: basePayload(), group_id: GROUP_OK, scope_type: 'user'})), {errorType: 'ValidationError'});
+            await rejects(jobs.add.query(addFrame(USER, {payload: basePayload(), project_id: PROJECT_GROUP_NO})), {errorType: 'NoPermissionError'});
+            await rejects(jobs.add.query(addFrame(USER, {payload: basePayload(), project_id: PROJECT, scope_type: 'user'})), {errorType: 'ValidationError'});
             await rejects(jobs.add.query(addFrame(USER, {payload: basePayload(), scope_type: 'group'})), {errorType: 'ValidationError'});
-            const job = await jobs.add.query(addFrame(USER, {payload: basePayload(), group_id: GROUP_OK}));
+            const job = await jobs.add.query(addFrame(USER, {payload: basePayload(), project_id: PROJECT, group_id: GROUP_OK}));
             assert.equal(job.group_id, GROUP_OK);
             assert.equal(job.scope_type, 'group');
+        });
+
+        it('refuses a job without a project with a 422 (the API, not only the screen)', async function () {
+            for (const projectId of [undefined, null, '', '   ']) {
+                await rejects(jobs.add.query(addFrame(USER, {payload: basePayload(), project_id: projectId})), {
+                    errorType: 'ValidationError',
+                    statusCode: 422,
+                    message: 'project_id is required for a video job.'
+                });
+            }
+            // A worker integration naming a user is refused the same way.
+            await rejects(jobs.add.query(worker({socialaivideojobs: [{user_id: USER, payload: basePayload()}]})), {errorType: 'ValidationError', statusCode: 422});
+            assert.equal(await database('social_ai_video_jobs').first(), undefined);
         });
 
         it('takes the group from the project and refuses a different one', async function () {
