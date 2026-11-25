@@ -30,7 +30,9 @@ const messages = {
     // Same spelling as chart/news: workers match this string to treat a canceled
     // job's late ticks as a quiet skip.
     invalidTransition: 'The requested job transition is not allowed.',
-    notLeaseHolder: 'This worker does not hold the job lease.'
+    notLeaseHolder: 'This worker does not hold the job lease.',
+    keyOutOfScope: 'storage_key must be under {prefix} (this job\'s gallery area).',
+    keyOwnedElsewhere: 'storage_key belongs to another asset that this job does not own.'
 };
 
 const TABLE = 'social_ai_video_jobs';
@@ -45,6 +47,41 @@ const JOB_TYPES = new Set([DEFAULT_JOB_TYPE]);
 const TERMINAL_ITEM_STATUSES = new Set(['completed', 'failed', 'skipped']);
 const VALID_ROLES = ['input', 'source', 'material', 'intermediate', 'preview', 'output'];
 const VALID_SOURCE_KINDS = ['real', 'ai'];
+
+// THIS job's gallery area as a storage key prefix:
+// [<pathPrefix>/]gallery/video_jobs/<jobId>/. pathPrefix is the S3 adapter's
+// key prefix (GHOST_STORAGE_ADAPTER_S3_PATH_PREFIX / storage.s3.pathPrefix; the
+// video worker's VIDEO_JOB_GALLERY_PREFIX must be the same value). Local storage
+// has no pathPrefix (its storagePath is a filesystem path, not part of a key),
+// so the area is plain gallery/video_jobs/<jobId>/. link-assets and destroy()
+// both use this, so what is linked is what destroy() cleans.
+const trimSlashes = value => String(value || '').replace(/^\/+|\/+$/g, '');
+const jobAreaPrefix = (mediaStore, id) => [trimSlashes(mediaStore?.pathPrefix), 'gallery', OWNER_SCOPE, id]
+    .filter(Boolean).join('/') + '/';
+const getMediaStore = () => {
+    try {
+        return storage.getStorage('media');
+    } catch (err) {
+        return null;
+    }
+};
+
+// link-assets only accepts keys in that area, so a worker (a bug, or a wrong
+// key) cannot pull another feature's asset into the job and have it deleted
+// with the job. Refused: a leading '/' (another S3 object than the one
+// destroy() lists, and a second row for the same file), '.', '..' or empty
+// segments, a backslash, and a second 'gallery/video_jobs/' inside the path
+// (destroy() of that other job would match the key with its LIKE).
+const isJobStorageKey = (key, prefix) => {
+    if (!key.startsWith(prefix) || key.includes('\\')) {
+        return false;
+    }
+    const rest = key.slice(prefix.length);
+    if (!rest || rest.split('/').some(segment => !segment || segment === '.' || segment === '..')) {
+        return false;
+    }
+    return !`/${rest}`.includes(`/gallery/${OWNER_SCOPE}/`);
+};
 
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const leaseExpiry = () => new Date(Date.now() + 300000).toISOString().slice(0, 19).replace('T', ' ');
@@ -642,10 +679,24 @@ const controller = {
                 ? payloadInput.removed_keys.map(String).map(key => key.trim()).filter(Boolean)
                 : [];
 
+            const areaPrefix = jobAreaPrefix(getMediaStore(), row.id);
+            for (const asset of assets) {
+                const storageKey = String(asset?.storage_key || '').trim();
+                if (storageKey && !isJobStorageKey(storageKey, areaPrefix)) {
+                    throw new errors.ValidationError({
+                        message: tpl(messages.keyOutOfScope, {prefix: areaPrefix}),
+                        context: storageKey
+                    });
+                }
+            }
+
             const link = async (knex) => {
                 const mediaIds = [];
                 // Idempotency key is storage_key_hash (same rule as chart/news): a
-                // re-run reuses the existing row and re-points video_job_id.
+                // re-run reuses the existing row. Unlike news, the row is reused
+                // only when it is already this job's (owner_scope video_jobs and
+                // video_job_id this job or empty); anything else is refused, never
+                // re-pointed.
                 for (const asset of assets) {
                     const storageKey = String(asset?.storage_key || '').trim();
                     const storageUrl = String(asset?.storage_url || '').trim();
@@ -661,6 +712,10 @@ const controller = {
 
                     let mediaId;
                     const existing = await knex('social_media_assets').where({storage_key_hash: storageKeyHash}).first();
+                    if (existing && (existing.owner_scope !== OWNER_SCOPE
+                        || (existing.video_job_id && existing.video_job_id !== row.id))) {
+                        throw new errors.ConflictError({message: tpl(messages.keyOwnedElsewhere), context: storageKey});
+                    }
                     if (existing) {
                         await knex('social_media_assets').where({id: existing.id}).update({
                             storage_key: storageKey,
@@ -790,8 +845,7 @@ const controller = {
             try {
                 const mediaStore = storage.getStorage('media');
                 if (mediaStore && typeof mediaStore.delete === 'function' && typeof mediaStore.list === 'function') {
-                    const root = mediaStore.pathPrefix || mediaStore.storagePath || '';
-                    const prefix = [root, 'gallery', OWNER_SCOPE, row.id].filter(Boolean).join('/').replace(/\/+/g, '/');
+                    const prefix = jobAreaPrefix(mediaStore, row.id);
                     let cursor = null;
                     do {
                         const listed = await mediaStore.list({prefix, limit: 1000, continuationToken: cursor});
