@@ -54,7 +54,8 @@ describe('Video jobs and avatar consents', function () {
     let mediaStore = null;
     const savedEnv = {};
     const ENV = ['VIDEO_JOB_FACE_ENABLED', 'VIDEO_JOB_MAX_COST_USD', 'VIDEO_JOB_TEMPLATE_IDS', 'VIDEO_JOB_MAX_LINES',
-        'VIDEO_JOB_MONTHLY_MAX_COST_USD', 'VIDEO_JOB_VOICE_LINE_COST_USD', 'VIDEO_JOB_FACE_SECOND_COST_USD'];
+        'VIDEO_JOB_MONTHLY_MAX_COST_USD', 'VIDEO_JOB_VOICE_LINE_COST_USD', 'VIDEO_JOB_FACE_SECOND_COST_USD',
+        'VIDEO_JOB_MAX_SECONDS', 'VIDEO_JOB_MONTHLY_MAX_JOBS'];
     // The site timezone (settings `timezone`) the budget month is counted in.
     let siteTimezone = 'Asia/Tokyo';
 
@@ -742,7 +743,14 @@ describe('Video jobs and avatar consents', function () {
             assert.equal(job.cost_reserved_usd, 0.002);
             assert.equal(job.cost_actual_usd, null);
             assert.deepEqual(await jobs.budget.query(staff(USER)), {
-                month: '2026-11', monthly_max_usd: 30, month_total_usd: 0.002, remaining_usd: 29.998
+                month: '2026-11',
+                max_video_seconds: 60,
+                monthly_max_jobs: 30,
+                month_jobs: 1,
+                remaining_jobs: 29,
+                monthly_max_usd: 30,
+                month_total_usd: 0.002,
+                remaining_usd: 29.998
             });
         });
 
@@ -854,6 +862,56 @@ describe('Video jobs and avatar consents', function () {
             // With the site in UTC, the same moment is still November.
             siteTimezone = 'Etc/UTC';
             assert.equal((await jobs.budget.query(staff(USER))).month, '2026-11');
+        });
+
+        it('refuses a video longer than VIDEO_JOB_MAX_SECONDS (estimated from the text and the scenes) with its own code', async function () {
+            // 70 characters of Japanese at 7 a second, tempo 0.85: 11.8 s + 0.6 s
+            // in its scene; two silent scenes of 3 s each: about 19 s.
+            const scenes = [{key: 's1'}, {key: 's2'}, {key: 's3'}];
+            const payload = basePayload({scenes, lines: [{key: 'l1', scene_key: 's1', text: 'あ'.repeat(70)}]});
+            process.env.VIDEO_JOB_MAX_SECONDS = '18';
+            await rejects(jobs.add.query(addFrame(USER, {payload})), {statusCode: 422, code: 'VIDEO_JOB_TOO_LONG'});
+            process.env.VIDEO_JOB_MAX_SECONDS = '19';
+            const job = await jobs.add.query(addFrame(USER, {payload}));
+            assert.equal(job.estimate.video_seconds, 19);
+        });
+
+        it('counts the videos of the month: exactly at VIDEO_JOB_MONTHLY_MAX_JOBS passes, one more is refused with its own code', async function () {
+            process.env.VIDEO_JOB_MONTHLY_MAX_JOBS = '2';
+            await add();
+            await add();
+            await rejects(add(), {statusCode: 422, code: 'VIDEO_JOB_MONTHLY_COUNT_EXCEEDED'});
+            const usage = await jobs.budget.query(staff(USER));
+            assert.equal(usage.month_jobs, 2);
+            assert.equal(usage.remaining_jobs, 0);
+        });
+
+        it('does not count a failed or canceled job that cost nothing, but counts completed and running ones', async function () {
+            process.env.VIDEO_JOB_MONTHLY_MAX_JOBS = '2';
+            // Canceled before any worker took it: costs nothing, frees its place.
+            const canceled = await add();
+            await jobs.cancel.query(staff(USER, {}, {id: canceled.id}));
+            // Failed with nothing spent: frees its place.
+            await add();
+            const failing = await jobs.claim.query(worker({worker_id: 'video-1'}));
+            await jobs.fail.query(worker({...lease(failing), error_code: 'budget_exceeded', cost_usd: 0}, {id: failing.id}));
+            assert.equal((await jobs.budget.query(staff(USER))).month_jobs, 0);
+
+            // Completed and running both count.
+            await add();
+            const done = await jobs.claim.query(worker({worker_id: 'video-1'}));
+            await jobs.complete.query(worker({...lease(done), cost_usd: 0}, {id: done.id}));
+            await add();
+            await jobs.claim.query(worker({worker_id: 'video-2'}));
+            assert.equal((await jobs.budget.query(staff(USER))).month_jobs, 2);
+            await rejects(add(), {code: 'VIDEO_JOB_MONTHLY_COUNT_EXCEEDED'});
+        });
+
+        it('lets requests that arrive at once take no more than the number of videos', async function () {
+            process.env.VIDEO_JOB_MONTHLY_MAX_JOBS = '2';
+            const results = await Promise.allSettled([add(), add(), add()]);
+            assert.equal(results.filter(r => r.status === 'fulfilled').length, 2);
+            assert.equal(results.find(r => r.status === 'rejected').reason.code, 'VIDEO_JOB_MONTHLY_COUNT_EXCEEDED');
         });
 
         it('refuses the budget to a request with neither a staff user nor a worker', async function () {

@@ -523,7 +523,7 @@ const controller = {
                 await assertConsent(trx, actor, validated);
                 // The estimate is held in the month until the worker reserves
                 // the real total (cached lines cost nothing) or the job ends.
-                await budget.assertMonthlyBudget(trx, {month: costMonth, chargeMicros: estimateMicros});
+                await budget.assertMonthlyBudget(trx, {month: costMonth, chargeMicros: estimateMicros, newVideo: true});
                 await trx(TABLE).insert({
                     id,
                     type,
@@ -774,7 +774,7 @@ const controller = {
                 const lowering = month === row.cost_month && charge <= budget.chargeOf(row);
                 const summary = lowering
                     ? null
-                    : await budget.assertMonthlyBudget(trx, {month, chargeMicros: charge, exceptJobId: row.id});
+                    : await budget.assertMonthlyBudget(trx, {month, chargeMicros: charge, exceptJobId: row.id, newVideo: month !== row.cost_month});
                 await updateJob(frame, row, {
                     cost_month: month,
                     cost_reserved_micros: totalMicros,
@@ -783,7 +783,7 @@ const controller = {
                     updated_at: now(),
                     updated_by: row.updated_by || row.user_id
                 }, trx);
-                const totals = summary || budget.summary(month, await budget.monthTotalMicros(trx, month));
+                const totals = summary || budget.summary(month, await budget.monthUsage(trx, month));
                 return {
                     job_id: row.id,
                     approved: true,
@@ -803,7 +803,7 @@ const controller = {
                 throw new errors.NoPermissionError({message: tpl(messages.userRequired)});
             }
             const month = currentCostMonth();
-            return budget.summary(month, await budget.monthTotalMicros(models.Base.knex, month));
+            return budget.summary(month, await budget.monthUsage(models.Base.knex, month));
         }
     },
 

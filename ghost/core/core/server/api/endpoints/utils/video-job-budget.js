@@ -34,6 +34,7 @@ const MAX_MICROS = 4000 * MICROS;
 const LOCKS = 'social_ai_video_cost_months';
 const OPEN_STATUSES = new Set(['queued', 'running']);
 const MONTHLY_BUDGET_EXCEEDED = 'VIDEO_JOB_MONTHLY_BUDGET_EXCEEDED';
+const MONTHLY_COUNT_EXCEEDED = 'VIDEO_JOB_MONTHLY_COUNT_EXCEEDED';
 
 const toMicros = usd => Math.round(Number(usd) * MICROS);
 const toUsd = micros => Math.round(Number(micros || 0)) / MICROS;
@@ -88,10 +89,36 @@ const lockMonth = async (trx, month) => {
     await trx(LOCKS).where({month}).forUpdate().first();
 };
 
-// Sum of the month without `exceptJobId` (the job being checked). `locking`
+// What a person may use, as the screen shows it: the length of one video and the
+// number of videos a month (the USD caps above are the inner guard). Read from
+// env for now; the one place to switch to the service-plan table later.
+const envCount = (name, fallback) => {
+    const raw = process.env[name];
+    if (raw === undefined || String(raw).trim() === '') {
+        return fallback;
+    }
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : fallback;
+};
+
+/**
+ * @returns {{maxVideoSeconds: number, monthlyMaxJobs: number}}
+ */
+const serviceLimits = () => ({
+    maxVideoSeconds: envCount('VIDEO_JOB_MAX_SECONDS', 60),
+    // A placeholder until the plan table exists.
+    monthlyMaxJobs: Math.floor(envCount('VIDEO_JOB_MONTHLY_MAX_JOBS', 30))
+});
+
+// A job counts as one of the month's videos while it is queued / running /
+// completed, and when it failed or was canceled after costing something. A
+// failed or canceled job that cost nothing does not count.
+const countsAsVideo = row => ['queued', 'running', 'completed'].includes(row.status) || chargeOf(row) > 0;
+
+// The month's use without `exceptJobId` (the job being checked). `locking`
 // reads the latest committed rows (FOR SHARE) instead of the transaction's
 // snapshot, so a check never sums an older view than the lock it holds.
-const monthTotalMicros = async (trx, month, exceptJobId = null, {locking = false} = {}) => {
+const monthUsage = async (trx, month, exceptJobId = null, {locking = false} = {}) => {
     const query = trx('social_ai_video_jobs')
         .where({cost_month: month})
         .select('status', 'cost_reserved_micros', 'cost_actual_micros');
@@ -101,46 +128,66 @@ const monthTotalMicros = async (trx, month, exceptJobId = null, {locking = false
     if (locking) {
         query.forShare();
     }
-    return (await query).reduce((sum, row) => sum + chargeOf(row), 0);
+    const rows = await query;
+    return {
+        micros: rows.reduce((sum, row) => sum + chargeOf(row), 0),
+        jobs: rows.filter(countsAsVideo).length
+    };
 };
 
-const summary = (month, usedMicros, maxMicros = monthlyMaxMicros()) => ({
+const summary = (month, usage, maxMicros = monthlyMaxMicros(), limits = serviceLimits()) => ({
     month,
+    max_video_seconds: limits.maxVideoSeconds,
+    monthly_max_jobs: limits.monthlyMaxJobs,
+    month_jobs: usage.jobs,
+    remaining_jobs: Math.max(0, limits.monthlyMaxJobs - usage.jobs),
     monthly_max_usd: toUsd(maxMicros),
-    month_total_usd: toUsd(usedMicros),
-    remaining_usd: toUsd(Math.max(0, maxMicros - usedMicros))
+    month_total_usd: toUsd(usage.micros),
+    remaining_usd: toUsd(Math.max(0, maxMicros - usage.micros))
 });
 
 /**
  * Locks the month and refuses when (the rest of the month) + `chargeMicros` is
- * over the monthly cap. Exactly at the cap passes. Must run inside `trx`.
+ * over the monthly USD cap, or — with `newVideo` (a job that is not yet one of
+ * this month's) — when the month already has its number of videos. Exactly at
+ * a cap passes. Must run inside `trx`.
  *
- * @returns {Promise<object>} the month summary including this charge
+ * @returns {Promise<object>} the month summary including this job
  */
-const assertMonthlyBudget = async (trx, {month, chargeMicros, exceptJobId = null}) => {
+const assertMonthlyBudget = async (trx, {month, chargeMicros, exceptJobId = null, newVideo = false}) => {
     await lockMonth(trx, month);
     const maxMicros = monthlyMaxMicros();
-    const others = await monthTotalMicros(trx, month, exceptJobId, {locking: true});
-    if (others + chargeMicros > maxMicros) {
+    const limits = serviceLimits();
+    const others = await monthUsage(trx, month, exceptJobId, {locking: true});
+    if (newVideo && others.jobs + 1 > limits.monthlyMaxJobs) {
         throw new errors.ValidationError({
-            message: `The monthly video budget of ${toUsd(maxMicros)} USD for ${month} would be exceeded: ${toUsd(others)} USD is used or reserved and this needs ${toUsd(chargeMicros)} USD.`,
-            code: MONTHLY_BUDGET_EXCEEDED,
-            context: JSON.stringify(summary(month, others, maxMicros))
+            message: `This month (${month}) already has ${others.jobs} of ${limits.monthlyMaxJobs} videos.`,
+            code: MONTHLY_COUNT_EXCEEDED,
+            context: JSON.stringify(summary(month, others, maxMicros, limits))
         });
     }
-    return summary(month, others + chargeMicros, maxMicros);
+    if (others.micros + chargeMicros > maxMicros) {
+        throw new errors.ValidationError({
+            message: `The monthly video budget of ${toUsd(maxMicros)} USD for ${month} would be exceeded: ${toUsd(others.micros)} USD is used or reserved and this needs ${toUsd(chargeMicros)} USD.`,
+            code: MONTHLY_BUDGET_EXCEEDED,
+            context: JSON.stringify(summary(month, others, maxMicros, limits))
+        });
+    }
+    return summary(month, {micros: others.micros + chargeMicros, jobs: others.jobs + 1}, maxMicros, limits);
 };
 
 module.exports = {
     MICROS,
     MONTHLY_BUDGET_EXCEEDED,
+    MONTHLY_COUNT_EXCEEDED,
+    serviceLimits,
     toMicros,
     toUsd,
     monthOf,
     chargeOf,
     parseUsd,
     monthlyMaxMicros,
-    monthTotalMicros,
+    monthUsage,
     assertMonthlyBudget,
     lockMonth,
     summary

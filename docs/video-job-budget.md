@@ -3,6 +3,25 @@
 計画: front の `docs/planning/video-job-runner-plan.md` 7.1（1 job 3 USD・テナントの月 30 USD）。
 Ghost 1 つが 1 テナントなので、「テナントの月の合計」はこの DB の動画の job の合計。
 
+## 使う人向けの上限（画面に出すもの）
+
+使う人に見せる上限は「1 本の長さ」と「月の本数」。ドルの上限は中の守りとしてそのまま残す。
+今は env で決める。あとでサービス利用の表から読むので、読む所は `video-job-budget.js` の `serviceLimits()` 1 つにまとめた（差し替えはここだけ）。
+
+| env | 既定 | 超えたら |
+|---|---|---|
+| `VIDEO_JOB_MAX_SECONDS` | 60 | 受け付けで 422 `VIDEO_JOB_TOO_LONG` |
+| `VIDEO_JOB_MONTHLY_MAX_JOBS` | 30（仮） | 受け付けで 422 `VIDEO_JOB_MONTHLY_COUNT_EXCEEDED` |
+
+- **1 本の長さ**は worker の並べ方（front `tools/video-worker/src/templates.js` の `sceneSeconds`）と同じ式で見積もる:
+  場面ごとに max（その場面の行の声の秒＋0.6 秒, 見出しと説明を読む秒〔字数×0.12＋1.5〕, 3 秒）、場面の上限 60 秒、その合計を切り上げ。
+  声の秒は下の「1 秒の字数」から。job の `estimate.video_seconds` に出る。
+- **月の本数**は、queued・running・completed の job と、費用がかかった failed・canceled の job を数える。
+  費用 0 の failed・canceled（worker が `cost_usd: 0` を付けて fail した job、取っていない queued の取り消し）は数えない。
+  worker が `cost_usd` を付けずに fail すると予約が残るので 1 本に数える。
+- 先月の job が今月に予約し直すと（下の `reserve-cost`）、今月の 1 本として数え直す。
+- `GET /social/ai/video/budget` は `max_video_seconds`・`monthly_max_jobs`・`month_jobs`・`remaining_jobs` も返す（画面で「今月あと ◯ 本・1 本 1 分まで」）。
+
 ## 決めたこと
 
 | こと | 決め |
@@ -48,10 +67,10 @@ Ghost 1 つが 1 テナントなので、「テナントの月の合計」はこ
 
 | 道 | だれ | 中身 |
 |---|---|---|
-| `POST /social/ai/video/jobs`（受け付け） | スタッフ | 月の合計＋見込み > 上限なら 422 `VIDEO_JOB_MONTHLY_BUDGET_EXCEEDED` |
+| `POST /social/ai/video/jobs`（受け付け） | スタッフ | 長すぎる → `VIDEO_JOB_TOO_LONG`、月の本数 → `VIDEO_JOB_MONTHLY_COUNT_EXCEEDED`、月の合計＋見込み > 上限 → `VIDEO_JOB_MONTHLY_BUDGET_EXCEEDED`（どれも 422） |
 | `POST /social/ai/video/jobs/:id/reserve-cost` | worker（lease を持つ者） | body `{claim_*, total_usd, cost_usd?}`。下を見る |
 | `POST .../complete`・`.../fail` | worker | `cost_usd`（それまでの実際の合計）を付けられる |
-| `GET /social/ai/video/budget` | スタッフ・worker | `{month, monthly_max_usd, month_total_usd, remaining_usd}` |
+| `GET /social/ai/video/budget` | スタッフ・worker | `{month, max_video_seconds, monthly_max_jobs, month_jobs, remaining_jobs, monthly_max_usd, month_total_usd, remaining_usd}` |
 
 `reserve-cost` は有料の段（とくに顔）を送る前に呼ぶ。`total_usd` は「この段を終えたときの job の費用の合計」
 （使った分＋この段、作り置きの行は 0）。同じ値で何度呼んでも同じ答え。
