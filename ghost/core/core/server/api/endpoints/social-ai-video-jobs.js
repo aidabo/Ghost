@@ -10,6 +10,7 @@ const staffScope = require('./utils/staff-scope');
 const {validateVideoJobPayload, estimate} = require('./utils/video-job-payload');
 const {assertAssetsUsable} = require('./utils/video-asset-access');
 const {isIntegrationRequest} = require('./utils/integration-context');
+const galleryKeyScope = require('./utils/gallery-key-scope');
 
 // Video family — job endpoint (front repo docs/planning/video-job-runner-plan.md).
 //
@@ -23,6 +24,15 @@ const {isIntegrationRequest} = require('./utils/integration-context');
 // A SEPARATE FAMILY: one table, one asset link column (video_job_id), one
 // junction, one owner_scope ('video_jobs'), one S3 prefix. The news and media
 // workers never see these jobs (their claim endpoints read other tables).
+//
+// Results live in the PROJECT, the job keeps only intermediates (plan 3.4 /
+// 10.2): a video job needs a project (add refuses one without), the worker puts
+// the result video at [pathPrefix/]gallery/projects/<pid>/artifacts/video/<name>
+// (as chart / news artifacts) and links it as role=output, and destroy keeps it
+// (H3). Intermediates are in the jobs bucket video-jobs/<jobId>/ (the host
+// cleans those), or — only one the gallery should show, e.g. a preview — in
+// [pathPrefix/]gallery/video_jobs/<jobId>/ as role=intermediate, which destroy
+// removes.
 const messages = {
     userRequired: 'A user is required.',
     workerRequired: 'Worker integration is required.',
@@ -31,8 +41,11 @@ const messages = {
     // job's late ticks as a quiet skip.
     invalidTransition: 'The requested job transition is not allowed.',
     notLeaseHolder: 'This worker does not hold the job lease.',
-    keyOutOfScope: 'storage_key must be under {prefix} (this job\'s gallery area).',
-    keyOwnedElsewhere: 'storage_key belongs to another asset that this job does not own.'
+    projectRequired: 'project_id is required for a video job.',
+    keyOutOfScope: 'storage_key must be under {prefixes} (this job\'s gallery area or its project\'s video artifacts).',
+    keyOwnedElsewhere: 'storage_key belongs to another asset that this job does not own.',
+    unknownRole: 'role must be one of {roles}.',
+    roleOutsideArea: 'role {role} is not allowed under {prefix}: a result (output) goes to the project\'s video artifacts, anything else to this job\'s gallery area.'
 };
 
 const TABLE = 'social_ai_video_jobs';
@@ -48,16 +61,25 @@ const TERMINAL_ITEM_STATUSES = new Set(['completed', 'failed', 'skipped']);
 const VALID_ROLES = ['input', 'source', 'material', 'intermediate', 'preview', 'output'];
 const VALID_SOURCE_KINDS = ['real', 'ai'];
 
-// THIS job's gallery area as a storage key prefix:
-// [<pathPrefix>/]gallery/video_jobs/<jobId>/. pathPrefix is the S3 adapter's
-// key prefix (GHOST_STORAGE_ADAPTER_S3_PATH_PREFIX / storage.s3.pathPrefix; the
-// video worker's VIDEO_JOB_GALLERY_PREFIX must be the same value). Local storage
-// has no pathPrefix (its storagePath is a filesystem path, not part of a key),
-// so the area is plain gallery/video_jobs/<jobId>/. link-assets and destroy()
-// both use this, so what is linked is what destroy() cleans.
-const trimSlashes = value => String(value || '').replace(/^\/+|\/+$/g, '');
-const jobAreaPrefix = (mediaStore, id) => [trimSlashes(mediaStore?.pathPrefix), 'gallery', OWNER_SCOPE, id]
-    .filter(Boolean).join('/') + '/';
+// The key areas, as storage key prefixes. <root> is the S3 adapter's key prefix
+// (GHOST_STORAGE_ADAPTER_S3_PATH_PREFIX / storage.s3.pathPrefix; the video
+// worker's VIDEO_JOB_GALLERY_PREFIX must be the same value). Local storage has
+// no pathPrefix (its storagePath is a filesystem path, not part of a key), so
+// there the areas start at gallery/ — unlike gallery-key-scope's mediaRootOf,
+// pathPrefix ONLY.
+//   - THIS job's area [<root>/]gallery/video_jobs/<jobId>/ (intermediates the
+//     gallery shows). link-assets and destroy() both use it, so what is linked
+//     there is what destroy() cleans.
+//   - the job's PROJECT's video artifacts
+//     [<root>/]gallery/projects/<pid>/artifacts/video/ (results). destroy()
+//     keeps them (H3); deleting the project removes them.
+const keyRoot = mediaStore => galleryKeyScope.trimSlashes(mediaStore?.pathPrefix);
+const jobAreaPrefix = (mediaStore, id) => galleryKeyScope.buildAreaPrefix(keyRoot(mediaStore), 'gallery', OWNER_SCOPE, id);
+const projectVideoPrefix = (mediaStore, projectId) => galleryKeyScope.buildAreaPrefix(keyRoot(mediaStore), 'gallery', 'projects', projectId, 'artifacts', 'video');
+const linkAreaPrefixes = (mediaStore, row) => [
+    jobAreaPrefix(mediaStore, row.id),
+    ...(row.project_id ? [projectVideoPrefix(mediaStore, row.project_id)] : [])
+];
 const getMediaStore = () => {
     try {
         return storage.getStorage('media');
@@ -66,21 +88,34 @@ const getMediaStore = () => {
     }
 };
 
-// link-assets only accepts keys in that area, so a worker (a bug, or a wrong
-// key) cannot pull another feature's asset into the job and have it deleted
-// with the job. Refused: a leading '/' (another S3 object than the one
-// destroy() lists, and a second row for the same file), '.', '..' or empty
-// segments, a backslash, and a second 'gallery/video_jobs/' inside the path
-// (destroy() of that other job would match the key with its LIKE).
-const isJobStorageKey = (key, prefix) => {
-    if (!key.startsWith(prefix) || key.includes('\\')) {
-        return false;
+// link-assets only accepts keys in those areas, so a worker (a bug, or a wrong
+// key) cannot pull another feature's asset (or another project's) into the job
+// and have it deleted with the job. Refused (gallery-key-scope): '.', '..' or
+// empty segments, a backslash, a trailing '/', and a 'gallery' or 'jobs'
+// directory below the area (a job destroy matches keys with LIKE
+// '%gallery/<scope>/<id>/%' or '%/jobs/<id>/%' and would sweep it up). Refused
+// here as well: a leading '/' (another S3 object than the one destroy() lists,
+// and a second row for the same file).
+const isLinkableKey = (key, prefixes) => !key.startsWith('/') && galleryKeyScope.isKeyInAreas(key, prefixes);
+
+// Role and area go together, so destroy() can never delete a result (H3):
+//
+//   area                                                | roles          | no role
+//   project  gallery/projects/<pid>/artifacts/video/    | output only    | output
+//   job      gallery/video_jobs/<jobId>/                | all but output | intermediate
+//
+// A role that is not one of VALID_ROLES is refused (not taken as output).
+// Returns the role to record, or throws a 422.
+const roleForArea = (asset, inProject, prefix) => {
+    const given = asset?.role;
+    if (given !== undefined && given !== null && !VALID_ROLES.includes(given)) {
+        throw new errors.ValidationError({message: tpl(messages.unknownRole, {roles: VALID_ROLES.join(', ')}), context: String(given)});
     }
-    const rest = key.slice(prefix.length);
-    if (!rest || rest.split('/').some(segment => !segment || segment === '.' || segment === '..')) {
-        return false;
+    const role = given ?? (inProject ? 'output' : 'intermediate');
+    if ((role === 'output') !== inProject) {
+        throw new errors.ValidationError({message: tpl(messages.roleOutsideArea, {role, prefix})});
     }
-    return !`/${rest}`.includes(`/gallery/${OWNER_SCOPE}/`);
+    return role;
 };
 
 const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -432,6 +467,11 @@ const controller = {
             if (!actor) {
                 throw new errors.NoPermissionError({message: tpl(messages.userRequired)});
             }
+            // Results go to the project (plan 10.2), so the API refuses a job
+            // without one — not only the screen (MCP, scripts and AI calls too).
+            if (!String(payloadInput.project_id ?? '').trim()) {
+                throw new errors.ValidationError({message: tpl(messages.projectRequired), code: 'VIDEO_JOB_PROJECT_REQUIRED'});
+            }
             const type = validateType(payloadInput.type);
             const validated = validateVideoJobPayload(payloadInput.payload);
             const owner = await models.Base.knex('users').where({id: actor}).first('id');
@@ -713,16 +753,23 @@ const controller = {
                 ? payloadInput.removed_keys.map(String).map(key => key.trim()).filter(Boolean)
                 : [];
 
-            const areaPrefix = jobAreaPrefix(getMediaStore(), row.id);
-            for (const asset of assets) {
+            const areaPrefixes = linkAreaPrefixes(getMediaStore(), row);
+            const [jobPrefix, projectPrefix] = areaPrefixes;
+            // Checked for the whole batch before anything is written.
+            const roles = assets.map((asset) => {
                 const storageKey = String(asset?.storage_key || '').trim();
-                if (storageKey && !isJobStorageKey(storageKey, areaPrefix)) {
+                if (!storageKey) {
+                    return null;
+                }
+                if (!isLinkableKey(storageKey, areaPrefixes)) {
                     throw new errors.ValidationError({
-                        message: tpl(messages.keyOutOfScope, {prefix: areaPrefix}),
+                        message: tpl(messages.keyOutOfScope, {prefixes: areaPrefixes.join(' or ')}),
                         context: storageKey
                     });
                 }
-            }
+                const inProject = Boolean(projectPrefix) && isLinkableKey(storageKey, [projectPrefix]);
+                return roleForArea(asset, inProject, inProject ? projectPrefix : jobPrefix);
+            });
 
             const link = async (knex) => {
                 const mediaIds = [];
@@ -730,8 +777,10 @@ const controller = {
                 // re-run reuses the existing row. Unlike news, the row is reused
                 // only when it is already this job's (owner_scope video_jobs and
                 // video_job_id this job or empty); anything else is refused, never
-                // re-pointed.
-                for (const asset of assets) {
+                // re-pointed. So two jobs of one project writing the same result
+                // name get a 409 (the row stays the first job's, also after that
+                // job is deleted): the worker puts the job id in the name.
+                for (const [index, asset] of assets.entries()) {
                     const storageKey = String(asset?.storage_key || '').trim();
                     const storageUrl = String(asset?.storage_url || '').trim();
                     if (!storageKey || !storageUrl) {
@@ -739,7 +788,7 @@ const controller = {
                     }
                     const storageKeyHash = socialMediaAssets.buildStorageKeyHash(storageKey);
                     const assetType = String(asset.asset_type || 'file').trim().toLowerCase();
-                    const role = VALID_ROLES.includes(asset.role) ? asset.role : 'output';
+                    const role = roles[index];
                     const sourceKind = VALID_SOURCE_KINDS.includes(asset.source_kind) ? asset.source_kind : null;
                     const sortOrder = Number.isFinite(Number(asset.sort_order)) ? Math.max(0, Number(asset.sort_order)) : 0;
                     const timestamp = now();
@@ -898,9 +947,16 @@ const controller = {
                 logging.warn(`[social-ai-video-jobs] gallery S3 cleanup failed for job ${row.id}: ${err?.message || err}`);
             }
 
-            // video_job_id is a plain link (no FK), so delete rows explicitly. As
-            // for news: a project-scoped job removes only its working area
-            // (…/jobs/{jobId}/…); a job without a project owns every row it made.
+            // video_job_id is a plain link (no FK), so delete rows explicitly.
+            // H3 (as chart / news): a project-scoped job removes only its own
+            // areas (gallery/video_jobs/{jobId}/, and …/jobs/{jobId}/… as the
+            // other families); its results under
+            // gallery/projects/{pid}/artifacts/video/ stay — rows and S3
+            // objects (the S3 cleanup above lists the job area only) — with
+            // video_job_id left as it is, until the project is deleted
+            // (social-ai-projects destroy: project_id rows and the
+            // gallery/projects/{pid}/ prefix). A job without a project (made
+            // before project_id was required) owns every row it made.
             await knex('social_media_assets')
                 .where(function () {
                     if (row.project_id) {
