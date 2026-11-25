@@ -536,7 +536,7 @@ async function upsertEstateSearchI18nIndex(knex, propertyId, baseRow, options = 
         ? await knex('estate_property_translations').where({property_id: propertyId}).select(['locale', 'field', 'text'])
         : [];
     const postRows = await knex('estate_property_posts as epp')
-        .leftJoin('posts as p', 'epp.post_id', 'p.id')
+        .innerJoin('posts as p', 'epp.post_id', 'p.id')
         .where('epp.property_id', propertyId)
         .where('p.status', 'published')
         .select(['epp.locale', 'p.title', 'p.custom_excerpt', 'p.plaintext']);
@@ -545,11 +545,10 @@ async function upsertEstateSearchI18nIndex(knex, propertyId, baseRow, options = 
         const translations = translationRows
             .filter(row => String(row.locale || '').toLowerCase() === locale)
             .map(row => `${row.field || ''} ${row.text || ''}`);
-        const posts = postRows
-            .filter(row => String(row.locale || '').toLowerCase() === locale)
+        const localePostRows = postRows.filter(row => String(row.locale || '').toLowerCase() === locale);
+        const posts = localePostRows
             .flatMap(row => [row.title, row.custom_excerpt, row.plaintext]);
-        const postTitles = postRows
-            .filter(row => String(row.locale || '').toLowerCase() === locale)
+        const postTitles = localePostRows
             .map(row => row.title);
         const searchableText = truncateUtf8(compactText([baseRow.searchable_text, translations, posts]));
         return {
@@ -1417,6 +1416,9 @@ const EstateProperty = ghostBookshelf.Model.extend({
                 await ghostBookshelf.knex(ESTATE_SEARCH_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
                 if (await hasSearchI18nIndexTable(ghostBookshelf.knex)) {
                     await ghostBookshelf.knex(ESTATE_SEARCH_I18N_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
+                }
+                if (await ghostBookshelf.knex.schema.hasTable('estate_property_translations')) {
+                    await ghostBookshelf.knex('estate_property_translations').where({property_id: options.id}).transacting(options.transacting).del();
                 }
                 if (await ghostBookshelf.knex.schema.hasTable(ESTATE_STATION_INDEX_TABLE)) {
                     await ghostBookshelf.knex(ESTATE_STATION_INDEX_TABLE).where({property_id: options.id}).transacting(options.transacting).del();
