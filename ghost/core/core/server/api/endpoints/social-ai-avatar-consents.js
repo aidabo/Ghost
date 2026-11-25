@@ -232,6 +232,10 @@ const controller = {
                     .where({avatar_consent_id: row.id})
                     .whereIn('status', ['queued', 'running'])
                     .update({
+                        // A job no worker claimed releases its monthly budget hold
+                        // (as the job cancel does, utils/video-job-budget.js).
+                        // Before `status`: MySQL reads an already-updated column in later SET items.
+                        cost_reserved_micros: trx.raw('CASE WHEN status = ? THEN 0 ELSE cost_reserved_micros END', ['queued']),
                         status: 'canceled',
                         error_code: 'consent_revoked',
                         error_message: 'The avatar consent was revoked.',

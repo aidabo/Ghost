@@ -313,6 +313,7 @@ module.exports = function customApiRoutes(router) {
     router.get('/social/ai/video/jobs', mw.authAdminApi, http(api.socialAiVideoJobs.browse));
     router.post('/social/ai/video/jobs', mw.authAdminApi, http(api.socialAiVideoJobs.add));
     router.post('/social/ai/video/jobs/claim', mw.authAdminApi, http(api.socialAiVideoJobs.claim));
+    router.get('/social/ai/video/budget', mw.authAdminApi, http(api.socialAiVideoJobs.budget));
     router.get('/social/ai/video/consents', mw.authAdminApi, http(api.socialAiAvatarConsents.browse));
     router.post('/social/ai/video/consents', mw.authAdminApi, http(api.socialAiAvatarConsents.add));
     router.get('/social/ai/video/consents/:id', mw.authAdminApi, http(api.socialAiAvatarConsents.read));
@@ -323,6 +324,7 @@ module.exports = function customApiRoutes(router) {
     router.post('/social/ai/video/jobs/:id/fail', mw.authAdminApi, http(api.socialAiVideoJobs.fail));
     router.post('/social/ai/video/jobs/:id/link-assets', mw.authAdminApi, http(api.socialAiVideoJobs.linkAssets));
     router.post('/social/ai/video/jobs/:id/input-assets', mw.authAdminApi, http(api.socialAiVideoJobs.inputAssets));
+    router.post('/social/ai/video/jobs/:id/reserve-cost', mw.authAdminApi, http(api.socialAiVideoJobs.reserveCost));
     router.post('/social/ai/video/jobs/:id/cancel', mw.authAdminApi, http(api.socialAiVideoJobs.cancel));
     router.del('/social/ai/video/jobs/:id', mw.authAdminApi, http(api.socialAiVideoJobs.destroy));
     // Staff read (NewsAgent / desk), drafts included. Kept outside

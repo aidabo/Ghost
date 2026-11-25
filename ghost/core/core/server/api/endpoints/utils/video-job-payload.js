@@ -34,11 +34,14 @@ const limits = () => ({
     maxLines: envNumber('VIDEO_JOB_MAX_LINES', 40),
     maxFaceLines: envNumber('VIDEO_JOB_MAX_FACE_LINES', 20),
     maxLineChars: envNumber('VIDEO_JOB_MAX_LINE_CHARS', 300),
-    // Cost estimate (USD). The per-line rates are placeholders until PR 5 measures
-    // a real Wan3 line (plan §9.2); the cap is the plan's recommended 3 USD.
+    // Cost estimate (USD). The rates are placeholders until a real Wan3 call is
+    // measured (plan §9.2); the cap is the plan's recommended 3 USD. The face is
+    // billed by the SECOND of speech it lip-syncs (the worker sends the voice in
+    // 12-15 second chunks, not line by line), so its rate is per second — the
+    // same env name as the worker's.
     maxCostUsd: envNumber('VIDEO_JOB_MAX_COST_USD', 3),
     voiceLineCostUsd: envNumber('VIDEO_JOB_VOICE_LINE_COST_USD', 0.002),
-    faceLineCostUsd: envNumber('VIDEO_JOB_FACE_LINE_COST_USD', 0.1),
+    faceSecondCostUsd: envNumber('VIDEO_JOB_FACE_SECOND_COST_USD', 0.02),
     faceEnabled: String(process.env.VIDEO_JOB_FACE_ENABLED || '').toLowerCase() === 'true'
 });
 
@@ -85,12 +88,42 @@ const uniqueKeys = (list, field) => {
     return keys;
 };
 
-const faceLineCount = (payload) => {
+const lipsyncLines = (payload) => {
     const avatar = payload.avatar;
-    if (!isObject(avatar) || avatar.lipsync !== true) {
+    if (!isObject(avatar) || avatar.lipsync !== true || !Array.isArray(payload.lines)) {
+        return [];
+    }
+    return payload.lines;
+};
+
+// At add time the voice is not made yet, so its length is estimated from the
+// text: characters per second of speech at tempo 1, by language (rough, on the
+// generous side so the estimate stays an upper bound). Japanese ~7 (kana and
+// kanji mixed), Chinese ~4.5, Korean ~6, anything else (Latin script,
+// spaces and punctuation counted) ~14. A slower tempo means more seconds.
+const CHARS_PER_SECOND = {ja: 7, zh: 4.5, ko: 6};
+const DEFAULT_CHARS_PER_SECOND = 14;
+
+const charsPerSecond = (lang) => {
+    const base = String(lang || '').toLowerCase().split(/[-_]/)[0];
+    return CHARS_PER_SECOND[base] || DEFAULT_CHARS_PER_SECOND;
+};
+
+/**
+ * Estimated seconds of speech to lip-sync (whole seconds, rounded up).
+ * @param {object} payload
+ */
+const faceSeconds = (payload) => {
+    const lines = lipsyncLines(payload);
+    if (!lines.length) {
         return 0;
     }
-    return Array.isArray(payload.lines) ? payload.lines.length : 0;
+    const tempo = isObject(payload.voice) && typeof payload.voice.tempo === 'number' && payload.voice.tempo > 0
+        ? payload.voice.tempo
+        : 1;
+    const rate = charsPerSecond(payload.lang) * tempo;
+    const chars = lines.reduce((sum, line) => sum + (isObject(line) && typeof line.text === 'string' ? [...line.text.trim()].length : 0), 0);
+    return Math.ceil(chars / rate);
 };
 
 // The estimate is what the job WOULD cost if nothing were cached (the worker
@@ -98,11 +131,13 @@ const faceLineCount = (payload) => {
 const estimate = (payload) => {
     const cfg = limits();
     const lines = isObject(payload) && Array.isArray(payload.lines) ? payload.lines.length : 0;
-    const faceLines = isObject(payload) ? faceLineCount(payload) : 0;
-    const cost = (lines * cfg.voiceLineCostUsd) + (faceLines * cfg.faceLineCostUsd);
+    const faceLines = isObject(payload) ? lipsyncLines(payload).length : 0;
+    const seconds = isObject(payload) ? faceSeconds(payload) : 0;
+    const cost = (lines * cfg.voiceLineCostUsd) + (seconds * cfg.faceSecondCostUsd);
     return {
         voice_lines: lines,
         face_lines: faceLines,
+        face_seconds: seconds,
         cost_usd: Math.round(cost * 10000) / 10000,
         max_cost_usd: cfg.maxCostUsd
     };
@@ -244,5 +279,6 @@ const validateVideoJobPayload = (payload) => {
 module.exports = {
     validateVideoJobPayload,
     estimate,
+    faceSeconds,
     limits
 };
