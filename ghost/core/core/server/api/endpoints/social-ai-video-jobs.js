@@ -683,19 +683,21 @@ const controller = {
                 ...(Array.isArray(payload.scenes) ? payload.scenes.map(scene => scene?.image_asset_id) : []),
                 payload.avatar?.photo_asset_id
             ].filter(Boolean))];
-            if (ids.length) {
-                await assertAssetsUsable({
-                    knex: models.Base.knex,
-                    // @ts-ignore
-                    SocialGroup: models.SocialGroup,
-                    isSystemAdmin
-                }, row.user_id, ids);
-            }
-            const rows = ids.length
-                ? await models.Base.knex('social_media_assets').whereIn('id', ids)
-                    .select('id', 'storage_key', 'storage_url', 'asset_type', 'original_filename')
-                : [];
-            return {job_id: row.id, assets: rows};
+            // Return the rows that were checked, not a second read of them.
+            const checked = await assertAssetsUsable({
+                knex: models.Base.knex,
+                // @ts-ignore
+                SocialGroup: models.SocialGroup,
+                isSystemAdmin
+            }, row.user_id, ids);
+            const assets = checked.map(asset => ({
+                id: asset.id,
+                storage_key: asset.storage_key,
+                storage_url: asset.storage_url,
+                asset_type: asset.asset_type,
+                original_filename: asset.original_filename
+            }));
+            return {job_id: row.id, assets};
         }
     },
 

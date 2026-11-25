@@ -465,6 +465,26 @@ describe('Video jobs and avatar consents', function () {
             await database('social_media_assets').where({id: OTHER_IN_GROUP}).update({group_id: GROUP_NO});
             await rejects(jobs.inputAssets.query(worker(lease(claim), {id: job.id})), {errorType: 'NoPermissionError'});
         });
+
+        it('returns the very row it checked, even if the asset moves groups right after the check', async function () {
+            const {job, claim} = await start(basePayload({scenes: [{key: 's1', image_asset_id: OTHER_IN_GROUP}]}));
+            const original = models.SocialGroup.canAccessGroup;
+            models.SocialGroup.canAccessGroup = async (...args) => {
+                const allowed = await original(...args);
+                // the access check has passed; now the asset moves to a group the creator cannot use
+                await database('social_media_assets').where({id: OTHER_IN_GROUP}).update({group_id: GROUP_NO, storage_key: 'gallery/moved.jpg'});
+                return allowed;
+            };
+            try {
+                const result = await jobs.inputAssets.query(worker(lease(claim), {id: job.id}));
+                // the checked row, not a second read that would see the change
+                assert.equal(result.assets[0].storage_key, `gallery/${OTHER_IN_GROUP}.jpg`);
+            } finally {
+                models.SocialGroup.canAccessGroup = original;
+            }
+            // the next call checks again and refuses
+            await rejects(jobs.inputAssets.query(worker(lease(claim), {id: job.id})), {errorType: 'NoPermissionError'});
+        });
     });
 
     describe('group, project and scope_type', function () {
