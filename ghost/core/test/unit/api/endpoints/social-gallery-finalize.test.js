@@ -338,6 +338,38 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             await assert.rejects(finalize(ME, {storage_key: fixed.storage_key, storage_url: fixed.storage_url, target: 'deepzoom', dzi_job_id: signed.job_id}), {errorType: 'ValidationError'});
         });
 
+        it('/editor (Koenig): a large video / file goes presign -> finalize in the post\'s group', async function () {
+            const video = (await presign(ME, {group_id: GROUP, filename: 'talk.mp4', content_type: 'video/mp4'})).data[0];
+            await finalize(ME, {storage_key: video.storage_key, storage_url: video.storage_url, thumbnail_storage_key: video.thumbnail_storage_key, thumbnail_storage_url: video.thumbnail_storage_url, asset_type: 'video', group_id: GROUP});
+            assert.equal((await rowOf(video.storage_key)).group_id, GROUP);
+            const file = (await presign(ME, {group_id: GROUP, filename: 'minutes.pdf', content_type: 'application/pdf'})).data[0];
+            await finalize(ME, {storage_key: file.storage_key, storage_url: file.storage_url, asset_type: 'file', group_id: GROUP});
+            const row = await rowOf(file.storage_key);
+            assert.equal(row.asset_type, 'file');
+            assert.equal(row.owner_scope, 'group');
+        });
+
+        it('rows made by /images, /media, /files upload (editor\'s small files, no finalize): the uploader may finalize the same key again, others may not take it', async function () {
+            // Same shape images.js / media.js / files.js write through upsertAsset:
+            // <root>/gallery/users|groups/<alias>/YYYY/MM/<name>, owner_scope from group_id.
+            const mine = `${ROOT}/gallery/users/me-alias/${YM}/photo.jpg`;
+            const groupFile = `${ROOT}/gallery/groups/group-alias/${YM}/minutes.pdf`;
+            await db('social_media_assets').insert([
+                {id: '0000000000000000000000f3', storage_key: mine, storage_url: `${HOST}/${mine}`, owner_scope: 'user', user_id: ME, asset_type: 'image'},
+                {id: '0000000000000000000000f4', storage_key: groupFile, storage_url: `${HOST}/${groupFile}`, owner_scope: 'group', user_id: OTHER, group_id: GROUP, asset_type: 'file'}
+            ]);
+            const again = (await finalize(ME, {...keyed(mine), asset_type: 'image'})).data[0];
+            assert.equal(again.id, '0000000000000000000000f3');
+            await assert.rejects(finalize(OTHER, keyed(mine)), {errorType: 'ValidationError'});
+            assert.equal((await rowOf(mine)).user_id, ME);
+
+            // A group member is not the uploader of the group file: 409, row unchanged.
+            await assert.rejects(finalize(ME, {...keyed(groupFile), group_id: GROUP}), {errorType: 'ConflictError'});
+            assert.equal((await rowOf(groupFile)).user_id, OTHER);
+            const own = (await finalize(OTHER, {...keyed(groupFile), group_id: GROUP, asset_type: 'file'})).data[0];
+            assert.equal(own.id, '0000000000000000000000f4');
+        });
+
         it('a store without pathPrefix (root \'\') and a key sent with a leading slash', async function () {
             delete store.pathPrefix;
             const signed = (await presign(ME, {})).data[0];
