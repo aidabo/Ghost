@@ -2421,14 +2421,29 @@ const controller = {
             // The resolver only returns newsJobId when the job belongs to the
             // project, so its answer wins over the raw frame value.
             const newsJobId = uploadContext.newsJobId || String(getFrameValue(frame, 'news_job_id') || '').trim() || null;
-            const rowProjectId = uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null;
+            let rowProjectId = uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null;
             // The project gallery shows a chart / news job's results to everyone
             // who can read its project, also after the job is deleted (H3: the
             // row keeps the old job id). So a browser upload may only link an
             // existing job of the row's own project, and the caller must be able
-            // to read that project (no project: own the job). The worker
-            // (integration) links its own results.
+            // to read that project (no project: own the job). A row without a
+            // project_id (target chart_jobs / news_jobs) takes the job's project;
+            // the key stays where presign put it. The worker (integration) links
+            // its own results.
             if (!getCurrentIntegrationId(frame)) {
+                // A project_id sent in the request (not the project target's own,
+                // which resolveUploadContext already checked) puts the row in that
+                // project's gallery (and the public one of a published project):
+                // the project must exist and the caller must be able to read it.
+                if (rowProjectId && !uploadContext.projectId) {
+                    const sentProject = await models.Base.knex('social_ai_projects')
+                        .where({id: rowProjectId})
+                        .first('id', 'user_id', 'group_id');
+                    if (!sentProject) {
+                        throw new errors.ValidationError({message: tpl(messages.projectNotFound, {projectId: rowProjectId})});
+                    }
+                    await assertCanReadRow({frame, row: sentProject});
+                }
                 for (const [table, field, linkedJobId] of [
                     ['social_ai_chart_jobs', 'chart_job_id', chartJobId],
                     ['social_ai_news_jobs', 'news_job_id', newsJobId]
@@ -2439,6 +2454,9 @@ const controller = {
                     const linkedJob = await models.Base.knex(table)
                         .where({id: linkedJobId})
                         .first('id', 'user_id', 'project_id');
+                    if (linkedJob && !rowProjectId) {
+                        rowProjectId = linkedJob.project_id || null;
+                    }
                     if (!linkedJob || String(linkedJob.project_id || '') !== String(rowProjectId || '')) {
                         throw new errors.ValidationError({message: `${field} does not belong to project_id.`});
                     }
