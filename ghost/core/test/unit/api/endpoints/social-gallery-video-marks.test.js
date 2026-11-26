@@ -14,6 +14,9 @@ const PROJECT = '0000000000000000000000p1';
 const OTHER_PROJECT = '0000000000000000000000p2';
 const JOB_BY_OTHER = '0000000000000000000000v1';
 const JOB_BY_ME = '0000000000000000000000v2';
+const GROUP_PROJECT = '0000000000000000000000p3';
+const GROUP = '0000000000000000000000g1';
+const JOB_IN_GROUP = '0000000000000000000000v3';
 const NOW = new Date('2026-11-25T00:00:00Z');
 
 // Only the columns (no foreign keys / indexes): enough for the listing queries.
@@ -173,5 +176,172 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
 
     it('the visibility rules stay: a draft project of someone else is still refused', async function () {
         await assert.rejects(() => listProject('other', OTHER_PROJECT));
+    });
+
+    describe('a group project (the family\'s default project: group_id + draft)', function () {
+        beforeEach(async function () {
+            // Group members: me and other. stranger is not a member.
+            sinon.stub(models.SocialGroup, 'findOne').callsFake(async ({id}) => (id === GROUP ? {id: GROUP} : null));
+            sinon.stub(models.SocialGroup, 'canAccessGroup').callsFake(async (group, userId) => ['me', 'other'].includes(userId));
+
+            await db('social_ai_projects').insert({id: GROUP_PROJECT, name: 'family', user_id: 'owner', group_id: GROUP, status: 'draft'});
+            await db('social_ai_video_jobs').insert({id: JOB_IN_GROUP, user_id: 'other', group_id: GROUP, project_id: GROUP_PROJECT, payload: '{}', status: 'completed', created_at: NOW, updated_at: NOW, created_by: 'other', updated_by: 'other'});
+            const asset = (id, fields) => ({
+                id,
+                storage_key: `gallery/projects/${GROUP_PROJECT}/artifacts/video/${id}`,
+                storage_url: `https://cdn.example/${id}`,
+                asset_type: 'video',
+                created_at: NOW,
+                project_id: GROUP_PROJECT,
+                group_id: GROUP,
+                user_id: 'other',
+                ...fields
+            });
+            await db('social_media_assets').insert([
+                asset('g1', {owner_scope: 'video_jobs', video_job_id: JOB_IN_GROUP}),
+                asset('g2', {owner_scope: 'video_jobs', video_job_id: JOB_IN_GROUP, asset_type: 'audio', storage_key: `gallery/video_jobs/${JOB_IN_GROUP}/line-1.wav`}),
+                // Another member's direct upload: not a video job row, the rule for it is unchanged.
+                asset('g3', {owner_scope: 'chart_jobs', original_filename: 'upload.mp4'}),
+                // A row claiming this project but made by a video job of another project: not shown.
+                asset('g4', {owner_scope: 'video_jobs', video_job_id: JOB_BY_OTHER})
+            ]);
+            await db('social_ai_video_job_media').insert([
+                {id: 'mg1', video_job_id: JOB_IN_GROUP, media_id: 'g1', role: 'output', created_at: NOW},
+                {id: 'mg2', video_job_id: JOB_IN_GROUP, media_id: 'g2', role: 'intermediate', created_at: NOW}
+            ]);
+        });
+
+        it('a member sees another member\'s video job rows with their marks', async function () {
+            const rows = byId(await listProject('me', GROUP_PROJECT));
+            assert.deepEqual(Object.keys(rows).sort(), ['g1', 'g2']);
+            assert.equal(rows.g1.video_job_id, JOB_IN_GROUP);
+            assert.equal(rows.g1.role, 'output');
+            assert.equal(rows.g2.role, 'intermediate');
+        });
+
+        it('the creator sees them too', async function () {
+            const rows = byId(await listProject('other', GROUP_PROJECT));
+            assert.ok(rows.g1 && rows.g2);
+        });
+
+        it('someone who cannot read the project gets nothing', async function () {
+            await assert.rejects(() => listProject('stranger', GROUP_PROJECT));
+        });
+
+        describe('results of the other job families (written as the job\'s user, as linkAssets does)', function () {
+            beforeEach(async function () {
+                const job = (id, projectId) => ({id, user_id: 'other', group_id: GROUP, project_id: projectId, status: 'completed', created_at: NOW, updated_at: NOW, created_by: 'other', updated_by: 'other'});
+                await db('social_ai_chart_jobs').insert([job('cj1', GROUP_PROJECT), job('cj2', OTHER_PROJECT)]);
+                await db('social_ai_content_bundle_jobs').insert(job('cb1', GROUP_PROJECT));
+                await db('social_ai_media_jobs').insert(job('mj1', GROUP_PROJECT));
+                await db('social_ai_news_jobs').insert(job('nj1', GROUP_PROJECT));
+                // dzi jobs have no project_id: they join projects through a junction.
+                await db('social_ai_dzi_jobs').insert([{id: 'dz1', user_id: 'other'}, {id: 'dz2', user_id: 'other'}]);
+                await db('social_ai_dzi_job_projects').insert([
+                    {id: 'dp1', dzi_job_id: 'dz1', project_id: GROUP_PROJECT},
+                    {id: 'dp2', dzi_job_id: 'dz2', project_id: OTHER_PROJECT}
+                ]);
+                const asset = (id, fields) => ({
+                    id,
+                    storage_key: `gallery/projects/${GROUP_PROJECT}/artifacts/${id}`,
+                    storage_url: `https://cdn.example/${id}`,
+                    asset_type: 'image',
+                    created_at: NOW,
+                    project_id: GROUP_PROJECT,
+                    user_id: 'other',
+                    ...fields
+                });
+                await db('social_media_assets').insert([
+                    asset('c1', {owner_scope: 'chart_jobs', chart_job_id: 'cj1'}),
+                    asset('b1', {owner_scope: 'content_bundles', content_bundle_job_id: 'cb1'}),
+                    asset('j1', {owner_scope: 'media_jobs', job_id: 'mj1'}),
+                    asset('n1', {owner_scope: 'news_jobs', news_job_id: 'nj1'}),
+                    asset('d1', {owner_scope: 'deepzoom', dzi_job_id: 'dz1'}),
+                    // Tagged with this project but made by a dzi job of another project: not shown.
+                    asset('d2', {owner_scope: 'deepzoom', dzi_job_id: 'dz2'}),
+                    // Tagged with this project but made by a chart job of another project: not shown.
+                    asset('c2', {owner_scope: 'chart_jobs', chart_job_id: 'cj2'})
+                ]);
+            });
+
+            afterEach(async function () {
+                for (const name of ['social_ai_chart_jobs', 'social_ai_content_bundle_jobs', 'social_ai_media_jobs', 'social_ai_news_jobs', 'social_ai_dzi_jobs', 'social_ai_dzi_job_projects']) {
+                    await db(name).del();
+                }
+            });
+
+            it('a member sees another member\'s chart / content bundle / media / news / dzi job results', async function () {
+                const rows = byId(await listProject('me', GROUP_PROJECT));
+                assert.deepEqual(Object.keys(rows).sort(), ['b1', 'c1', 'd1', 'g1', 'g2', 'j1', 'n1']);
+            });
+
+            it('a row someone else linked to a member\'s media / content bundle / dzi job is not shown', async function () {
+                // These links are not checked on upload (job_id, content_bundle_job_id,
+                // dzi_job_id), so the job's rows are the ones written as the job's user.
+                const linked = (id, fields) => ({id, storage_key: `gallery/users/x/${id}`, storage_url: `https://cdn.example/${id}`, asset_type: 'image', created_at: NOW, project_id: GROUP_PROJECT, user_id: 'stranger', ...fields});
+                await db('social_media_assets').insert([
+                    // e.g. a chart_jobs-target upload (job_id = its folder id) or a deepzoom one.
+                    linked('x1', {owner_scope: 'chart_jobs', job_id: 'mj1'}),
+                    linked('x2', {owner_scope: 'chart_jobs', content_bundle_job_id: 'cb1'}),
+                    linked('x3', {owner_scope: 'deepzoom', dzi_job_id: 'dz1'})
+                ]);
+                const rows = byId(await listProject('me', GROUP_PROJECT));
+                assert.deepEqual(Object.keys(rows).sort(), ['b1', 'c1', 'd1', 'g1', 'g2', 'j1', 'n1']);
+            });
+
+            it('someone who cannot read the project still gets nothing', async function () {
+                await assert.rejects(() => listProject('stranger', GROUP_PROJECT));
+            });
+        });
+
+        it('results kept after their job was deleted (H3) stay visible to the members', async function () {
+            // What chart / news / video destroy leave in a project: the job is gone,
+            // the result row keeps the old job id and the project.
+            const row = (id, fields) => ({
+                id,
+                storage_key: `gallery/projects/${GROUP_PROJECT}/artifacts/${id}`,
+                storage_url: `https://cdn.example/${id}`,
+                asset_type: 'video',
+                created_at: NOW,
+                project_id: GROUP_PROJECT,
+                ...fields
+            });
+            await db('social_media_assets').insert([
+                // video rows carry the job's user_id.
+                row('h1', {owner_scope: 'video_jobs', user_id: 'other', video_job_id: 'vj-gone', storage_key: `gallery/projects/${GROUP_PROJECT}/artifacts/video/vj-gone.mp4`}),
+                // chart / news linkAssets write the job creator as user_id too.
+                row('h2', {owner_scope: 'chart_jobs', user_id: 'other', chart_job_id: 'cj-gone'}),
+                row('h3', {owner_scope: 'news_jobs', user_id: 'other', news_job_id: 'nj-gone'}),
+                // A row of an integration-made job (null user_id).
+                row('h5', {owner_scope: 'chart_jobs', user_id: null, chart_job_id: 'cj-gone-2'}),
+                // Tagged with another project: not in this listing.
+                row('h6', {owner_scope: 'chart_jobs', user_id: 'other', chart_job_id: 'cj-gone', project_id: OTHER_PROJECT})
+            ]);
+            const rows = byId(await listProject('me', GROUP_PROJECT));
+            assert.deepEqual(Object.keys(rows).sort(), ['g1', 'g2', 'h1', 'h2', 'h3', 'h5']);
+            assert.equal(rows.h1.role, 'output');
+        });
+
+        describe('on a database without the thumbnail columns (the fallback query)', function () {
+            before(async function () {
+                await db.schema.alterTable('social_media_assets', (t) => {
+                    t.dropColumn('thumbnail_url');
+                    t.dropColumn('thumbnail_storage_key');
+                });
+            });
+
+            after(async function () {
+                await db.schema.alterTable('social_media_assets', (t) => {
+                    t.text('thumbnail_url');
+                    t.text('thumbnail_storage_key');
+                });
+            });
+
+            it('applies the same rules as the normal query (the members see the job rows, project only)', async function () {
+                const rows = byId(await listProject('me', GROUP_PROJECT));
+                assert.deepEqual(Object.keys(rows).sort(), ['g1', 'g2']);
+                assert.equal(rows.g1.role, 'output');
+            });
+        });
     });
 });

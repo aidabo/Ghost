@@ -841,8 +841,8 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                     // Video family (social-ai-video-jobs linkAssets): the rows carry
                     // the job's user_id / group_id / project_id, so the user, group
                     // and project filters below pick them up as they are (the
-                    // project listing shows the caller's own rows, as for direct
-                    // uploads; no video-job ownership join yet). There is
+                    // project listing also shows every row of a video job of that
+                    // project, see the chart_jobs scope below). There is
                     // no per-job listing (no 'video_jobs' target / 'videojobs'
                     // action) yet: the video screen (front PR 5) adds one if it
                     // needs it. A browser upload never writes these rows: an
@@ -857,149 +857,10 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
         return query;
     };
 
-    let query = buildAssetTableQuery(true);
-
-    if (scope === 'group') {
-        query = query.andWhere('sma.group_id', groupId).whereNotExists(function () {
-            this.select(1)
-                .from('estate_property_media as epm')
-                .whereRaw('epm.media_id = sma.id');
-        });
-    } else if (scope === 'chart_jobs') {
-        // Chart-job artifacts are written by the worker (Admin JWT) with a null
-        // user_id, so ownership is scoped through the OWNING chart job (user_id).
-        // Also allow rows the caller uploaded directly. Without this, any signed-in
-        // user could enumerate every user's chart-job artifacts (IDOR).
-        query = query
-            .where(function () {
-                this.where('sma.user_id', userId).orWhereExists(function () {
-                    this.select(1)
-                        .from('social_ai_chart_jobs as caj')
-                        .whereRaw('caj.id = sma.chart_job_id')
-                        .andWhere('caj.user_id', userId);
-                }).orWhereExists(function () {
-                    this.select(1)
-                        .from('social_ai_content_bundle_jobs as cbj')
-                        .whereRaw('cbj.id = sma.content_bundle_job_id')
-                        .andWhere('cbj.user_id', userId);
-                }).orWhereExists(function () {
-                    this.select(1)
-                        .from('social_ai_media_jobs as mj')
-                        .whereRaw('mj.id = sma.job_id')
-                        .andWhere('mj.user_id', userId);
-                }).orWhereExists(function () {
-                    this.select(1)
-                        .from('social_ai_dzi_jobs as dzj')
-                        .whereRaw('dzj.id = sma.dzi_job_id')
-                        .andWhere('dzj.user_id', userId);
-                }).orWhereExists(function () {
-                    // News Agent family — same reasoning as chart: the worker
-                    // writes artifacts with a null user_id, so ownership is
-                    // resolved through the OWNING news job.
-                    this.select(1)
-                        .from('social_ai_news_jobs as nj')
-                        .whereRaw('nj.id = sma.news_job_id')
-                        .andWhere('nj.user_id', userId);
-                });
-                if (newsroomScope) {
-                    this.orWhere(function () {
-                        staffScope.whereNewsroomAsset(this, newsroomScope);
-                    });
-                }
-            })
-            .whereNotExists(function () {
-                this.select(1)
-                    .from('estate_property_media as epm')
-                    .whereRaw('epm.media_id = sma.id');
-            });
-    } else {
-        query = query.andWhere(function () {
-            this.where(function () {
-                this.where('sma.user_id', userId).whereNull('sma.group_id');
-            });
-            if (newsroomScope) {
-                this.orWhere(function () {
-                    staffScope.whereNewsroomAsset(this, newsroomScope);
-                });
-            }
-        }).whereNotExists(function () {
-            this.select(1)
-                .from('estate_property_media as epm')
-                .whereRaw('epm.media_id = sma.id');
-        });
-    }
-
-    if (type !== TYPE_ALL) {
-        query = query.andWhere('sma.asset_type', type);
-    }
-
-    if (jobId) {
-        query = query.andWhere('sma.job_id', jobId);
-    }
-
-    if (chartJobId) {
-        query = query.andWhere('sma.chart_job_id', chartJobId);
-    }
-
-    // News Agent family: one job = many articles, so the artifacts of a single
-    // article are picked out of the junction by item_key (handled by the caller);
-    // this filters to one job.
-    if (newsJobId) {
-        query = query.andWhere('sma.news_job_id', newsJobId);
-    }
-
-    if (projectId) {
-        // Project artifacts = rows tagged directly (project_id, e.g. direct
-        // uploads) OR produced by a job of this project (chart_job_id -> project).
-        query = query.andWhere(function () {
-            this.where('sma.project_id', projectId).orWhereExists(function () {
-                this.select(1)
-                    .from('social_ai_chart_jobs as pcaj')
-                    .whereRaw('pcaj.id = sma.chart_job_id')
-                    .andWhere('pcaj.project_id', projectId);
-            }).orWhereExists(function () {
-                this.select(1)
-                    .from('social_ai_content_bundle_jobs as pcbj')
-                    .whereRaw('pcbj.id = sma.content_bundle_job_id')
-                    .andWhere('pcbj.project_id', projectId);
-            }).orWhereExists(function () {
-                this.select(1)
-                    .from('social_ai_media_jobs as pmj')
-                    .whereRaw('pmj.id = sma.job_id')
-                    .andWhere('pmj.project_id', projectId);
-            }).orWhereExists(function () {
-                this.select(1)
-                    .from('social_ai_dzi_job_projects as pdjp')
-                    .whereRaw('pdjp.dzi_job_id = sma.dzi_job_id')
-                    .andWhere('pdjp.project_id', projectId);
-            }).orWhereExists(function () {
-                this.select(1)
-                    .from('social_ai_news_jobs as pnj')
-                    .whereRaw('pnj.id = sma.news_job_id')
-                    .andWhere('pnj.project_id', projectId);
-            });
-        });
-    }
-
-    if (cursor) {
-        query = query.andWhere(function () {
-            this.where(`sma.${sortField}`, sortDirection === 'asc' ? '>' : '<', cursor.createdAt)
-                .orWhere(function () {
-                    this.where(`sma.${sortField}`, '=', cursor.createdAt)
-                        .andWhere('sma.id', sortDirection === 'asc' ? '>' : '<', cursor.id);
-                });
-        });
-    }
-
-    let rows;
-    try {
-        rows = await query;
-    } catch (err) {
-        if (!isMissingThumbnailColumnError(err)) {
-            throw err;
-        }
-
-        query = buildAssetTableQuery(false);
+    // The visibility and filter rules, applied to the normal query and to the
+    // fallback query for a database without the thumbnail columns alike.
+    const applyListFilters = (baseQuery) => {
+        let query = baseQuery;
 
         if (scope === 'group') {
             query = query.andWhere('sma.group_id', groupId).whereNotExists(function () {
@@ -1007,6 +868,127 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                     .from('estate_property_media as epm')
                     .whereRaw('epm.media_id = sma.id');
             });
+        } else if (scope === 'chart_jobs') {
+            // Chart-job artifacts are written by the worker (Admin JWT) with a null
+            // user_id, so ownership is scoped through the OWNING chart job (user_id).
+            // Also allow rows the caller uploaded directly. Without this, any signed-in
+            // user could enumerate every user's chart-job artifacts (IDOR).
+            query = query
+                .where(function () {
+                    this.where('sma.user_id', userId).orWhereExists(function () {
+                        this.select(1)
+                            .from('social_ai_chart_jobs as caj')
+                            .whereRaw('caj.id = sma.chart_job_id')
+                            .andWhere('caj.user_id', userId);
+                    }).orWhereExists(function () {
+                        this.select(1)
+                            .from('social_ai_content_bundle_jobs as cbj')
+                            .whereRaw('cbj.id = sma.content_bundle_job_id')
+                            .andWhere('cbj.user_id', userId);
+                    }).orWhereExists(function () {
+                        this.select(1)
+                            .from('social_ai_media_jobs as mj')
+                            .whereRaw('mj.id = sma.job_id')
+                            .andWhere('mj.user_id', userId);
+                    }).orWhereExists(function () {
+                        this.select(1)
+                            .from('social_ai_dzi_jobs as dzj')
+                            .whereRaw('dzj.id = sma.dzi_job_id')
+                            .andWhere('dzj.user_id', userId);
+                    }).orWhereExists(function () {
+                        // News Agent family — same reasoning as chart: the worker
+                        // writes artifacts with a null user_id, so ownership is
+                        // resolved through the OWNING news job.
+                        this.select(1)
+                            .from('social_ai_news_jobs as nj')
+                            .whereRaw('nj.id = sma.news_job_id')
+                            .andWhere('nj.user_id', userId);
+                    });
+                    if (projectId) {
+                        // Project listing only (the caller already passed the project
+                        // read check): a job of THIS project shows its result rows to
+                        // everyone who can read the project, e.g. the other members of
+                        // a group project, not only to the job's creator.
+                        // chart_job_id / news_job_id are checked on upload (finalize:
+                        // an existing job of the row's project the caller can read)
+                        // and video_job_id is written by video-jobs linkAssets only.
+                        // job_id / content_bundle_job_id / dzi_job_id are not checked
+                        // on upload, so for those the row must be written as the
+                        // job's user (the job's own rows; null for both from an
+                        // integration).
+                        const sameUserAsJob = function (jobAlias) {
+                            this.whereRaw(`sma.user_id = ${jobAlias}.user_id`).orWhere(function () {
+                                this.whereNull('sma.user_id').whereNull(`${jobAlias}.user_id`);
+                            });
+                        };
+                        [
+                            ['social_ai_chart_jobs', 'chart_job_id', false],
+                            ['social_ai_content_bundle_jobs', 'content_bundle_job_id', true],
+                            ['social_ai_media_jobs', 'job_id', true],
+                            ['social_ai_news_jobs', 'news_job_id', false],
+                            ['social_ai_video_jobs', 'video_job_id', false]
+                        ].forEach(([jobTable, assetColumn, checkUser]) => {
+                            this.orWhereExists(function () {
+                                this.select(1)
+                                    .from(`${jobTable} as pj`)
+                                    .whereRaw(`pj.id = sma.${assetColumn}`)
+                                    .andWhere('pj.project_id', projectId);
+                                if (checkUser) {
+                                    this.andWhere(function () {
+                                        sameUserAsJob.call(this, 'pj');
+                                    });
+                                }
+                            });
+                        });
+                        // dzi jobs have no project_id column: they join projects
+                        // through the social_ai_dzi_job_projects junction.
+                        this.orWhereExists(function () {
+                            this.select(1)
+                                .from('social_ai_dzi_job_projects as pjp')
+                                .join('social_ai_dzi_jobs as pdj', 'pdj.id', 'pjp.dzi_job_id')
+                                .whereRaw('pjp.dzi_job_id = sma.dzi_job_id')
+                                .andWhere('pjp.project_id', projectId)
+                                .andWhere(function () {
+                                    sameUserAsJob.call(this, 'pdj');
+                                });
+                        });
+                        // H3: a chart / news / video job's results in a project stay
+                        // after the job is deleted, with the old job id (linkAssets
+                        // writes them as the job's user). Such a row is shown when it
+                        // is tagged with this project and its job no longer exists.
+                        // These three links cannot name a job that never existed or a
+                        // job of another project (see above), so a row like this was
+                        // the deleted job's.
+                        this.orWhere(function () {
+                            this.where('sma.project_id', projectId)
+                                .where(function () {
+                                    [
+                                        ['social_ai_chart_jobs', 'chart_job_id'],
+                                        ['social_ai_news_jobs', 'news_job_id'],
+                                        ['social_ai_video_jobs', 'video_job_id']
+                                    ].forEach(([jobTable, assetColumn]) => {
+                                        this.orWhere(function () {
+                                            this.whereNotNull(`sma.${assetColumn}`).whereNotExists(function () {
+                                                this.select(1)
+                                                    .from(`${jobTable} as gj`)
+                                                    .whereRaw(`gj.id = sma.${assetColumn}`);
+                                            });
+                                        });
+                                    });
+                                });
+                        });
+                    }
+                    if (newsroomScope) {
+                        this.orWhere(function () {
+                            staffScope.whereNewsroomAsset(this, newsroomScope);
+                        });
+                    }
+                })
+                .whereNotExists(function () {
+                    this.select(1)
+                        .from('estate_property_media as epm')
+                        .whereRaw('epm.media_id = sma.id');
+                });
         } else {
             query = query.andWhere(function () {
                 this.where(function () {
@@ -1032,6 +1014,50 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
             query = query.andWhere('sma.job_id', jobId);
         }
 
+        if (chartJobId) {
+            query = query.andWhere('sma.chart_job_id', chartJobId);
+        }
+
+        // News Agent family: one job = many articles, so the artifacts of a single
+        // article are picked out of the junction by item_key (handled by the caller);
+        // this filters to one job.
+        if (newsJobId) {
+            query = query.andWhere('sma.news_job_id', newsJobId);
+        }
+
+        if (projectId) {
+            // Project artifacts = rows tagged directly (project_id, e.g. direct
+            // uploads) OR produced by a job of this project (chart_job_id -> project).
+            query = query.andWhere(function () {
+                this.where('sma.project_id', projectId).orWhereExists(function () {
+                    this.select(1)
+                        .from('social_ai_chart_jobs as pcaj')
+                        .whereRaw('pcaj.id = sma.chart_job_id')
+                        .andWhere('pcaj.project_id', projectId);
+                }).orWhereExists(function () {
+                    this.select(1)
+                        .from('social_ai_content_bundle_jobs as pcbj')
+                        .whereRaw('pcbj.id = sma.content_bundle_job_id')
+                        .andWhere('pcbj.project_id', projectId);
+                }).orWhereExists(function () {
+                    this.select(1)
+                        .from('social_ai_media_jobs as pmj')
+                        .whereRaw('pmj.id = sma.job_id')
+                        .andWhere('pmj.project_id', projectId);
+                }).orWhereExists(function () {
+                    this.select(1)
+                        .from('social_ai_dzi_job_projects as pdjp')
+                        .whereRaw('pdjp.dzi_job_id = sma.dzi_job_id')
+                        .andWhere('pdjp.project_id', projectId);
+                }).orWhereExists(function () {
+                    this.select(1)
+                        .from('social_ai_news_jobs as pnj')
+                        .whereRaw('pnj.id = sma.news_job_id')
+                        .andWhere('pnj.project_id', projectId);
+                });
+            });
+        }
+
         if (cursor) {
             query = query.andWhere(function () {
                 this.where(`sma.${sortField}`, sortDirection === 'asc' ? '>' : '<', cursor.createdAt)
@@ -1041,6 +1067,20 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                     });
             });
         }
+        return query;
+    };
+
+    let query = applyListFilters(buildAssetTableQuery(true));
+
+    let rows;
+    try {
+        rows = await query;
+    } catch (err) {
+        if (!isMissingThumbnailColumnError(err)) {
+            throw err;
+        }
+
+        query = applyListFilters(buildAssetTableQuery(false));
 
         rows = await query;
     }
@@ -2381,6 +2421,40 @@ const controller = {
             // The resolver only returns newsJobId when the job belongs to the
             // project, so its answer wins over the raw frame value.
             const newsJobId = uploadContext.newsJobId || String(getFrameValue(frame, 'news_job_id') || '').trim() || null;
+            const rowProjectId = uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null;
+            // The project gallery shows a chart / news job's results to everyone
+            // who can read its project, also after the job is deleted (H3: the
+            // row keeps the old job id). So a browser upload may only link an
+            // existing job of the row's own project, and the caller must be able
+            // to read that project (no project: own the job). The worker
+            // (integration) links its own results.
+            if (!getCurrentIntegrationId(frame)) {
+                for (const [table, field, linkedJobId] of [
+                    ['social_ai_chart_jobs', 'chart_job_id', chartJobId],
+                    ['social_ai_news_jobs', 'news_job_id', newsJobId]
+                ]) {
+                    if (!linkedJobId) {
+                        continue;
+                    }
+                    const linkedJob = await models.Base.knex(table)
+                        .where({id: linkedJobId})
+                        .first('id', 'user_id', 'project_id');
+                    if (!linkedJob || String(linkedJob.project_id || '') !== String(rowProjectId || '')) {
+                        throw new errors.ValidationError({message: `${field} does not belong to project_id.`});
+                    }
+                    if (linkedJob.project_id) {
+                        const linkedProject = await models.Base.knex('social_ai_projects')
+                            .where({id: linkedJob.project_id})
+                            .first('id', 'user_id', 'group_id');
+                        if (!linkedProject) {
+                            throw new errors.ValidationError({message: `${field} does not belong to project_id.`});
+                        }
+                        await assertCanReadRow({frame, row: linkedProject});
+                    } else if (String(linkedJob.user_id || '') !== String(uploadContext.userId || '') && !(await isAdminUser(uploadContext.userId))) {
+                        throw new errors.NoPermissionError({message: tpl(messages.noJobPermission)});
+                    }
+                }
+            }
             const assetType = [TYPE_IMAGE, TYPE_VIDEO, TYPE_AUDIO, TYPE_FILE].includes(requestedAssetType)
                 ? requestedAssetType
                 : inferAssetTypeByKey(storageKey);
@@ -2409,7 +2483,7 @@ const controller = {
                         chartJobId,
                         contentBundleJobId,
                         newsJobId,
-                        projectId: uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null,
+                        projectId: rowProjectId,
                         socialChartId,
                         userId: uploadContext.userId,
                         groupId: uploadContext.groupId,

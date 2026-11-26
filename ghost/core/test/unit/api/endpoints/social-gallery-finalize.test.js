@@ -70,6 +70,11 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             t.string('user_id');
             t.string('group_id');
         });
+        for (const name of ['social_ai_chart_jobs', 'social_ai_news_jobs']) {
+            await db.schema.createTable(name, (t) => {
+                ['id', 'user_id', 'project_id', 'group_id'].forEach(c => t.string(c));
+            });
+        }
         await db.schema.createTable('estate_property_media', (t) => {
             t.string('id').primary();
             ['property_id', 'media_id', 'media_type'].forEach(c => t.string(c));
@@ -101,6 +106,10 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
         await db('social_ai_projects').del();
         await db('estate_property_media').del();
         await db('social_ai_projects').insert({id: PROJECT, user_id: ME, group_id: null});
+        for (const name of ['social_ai_chart_jobs', 'social_ai_news_jobs']) {
+            await db(name).del();
+        }
+        await db('social_ai_chart_jobs').insert({id: CHART_JOB, user_id: ME, project_id: null});
     });
 
     afterEach(function () {
@@ -236,6 +245,53 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
 
         it('a signed-out caller', async function () {
             await assert.rejects(finalize(null, keyed(MINE)), {errorType: 'NoPermissionError'});
+        });
+    });
+
+    describe('a job link (chart_job_id / news_job_id) names an existing job of the row\'s project', function () {
+        // The project gallery shows a job's results, also after the job is deleted
+        // (H3), to everyone who can read the project. So an upload may not name a
+        // job that does not exist, a job of another project, or a job of a project
+        // the caller cannot read.
+        const OTHERS_PROJECT = '00000000000000000000dd02';
+        const PROJECT_JOB = '00000000000000000000ee11';
+        const OTHERS_JOB = '00000000000000000000ee12';
+        const projectUpload = async (user, extra) => {
+            const signed = (await presign(user, {target: 'project', project_id: PROJECT, subfolder: 'artifacts'})).data[0];
+            return finalize(user, {...keyed(signed.storage_key), target: 'project', project_id: PROJECT, ...extra});
+        };
+
+        beforeEach(async function () {
+            await db('social_ai_projects').insert({id: OTHERS_PROJECT, user_id: OTHER, group_id: null});
+            await db('social_ai_chart_jobs').insert([
+                {id: PROJECT_JOB, user_id: OTHER, project_id: PROJECT},
+                {id: OTHERS_JOB, user_id: OTHER, project_id: OTHERS_PROJECT}
+            ]);
+            await db('social_ai_news_jobs').insert({id: OTHERS_JOB, user_id: OTHER, project_id: OTHERS_PROJECT});
+        });
+
+        it('a job of this project is linked (the chart job page\'s upload)', async function () {
+            const result = (await projectUpload(ME, {chart_job_id: PROJECT_JOB})).data[0];
+            assert.equal((await db('social_media_assets').where({id: result.id}).first()).chart_job_id, PROJECT_JOB);
+        });
+
+        it('a job that does not exist is refused', async function () {
+            await assert.rejects(projectUpload(ME, {chart_job_id: '00000000000000000000ee99'}), {errorType: 'ValidationError'});
+        });
+
+        it('a job of another project is refused', async function () {
+            await assert.rejects(projectUpload(ME, {chart_job_id: OTHERS_JOB}), {errorType: 'ValidationError'});
+        });
+
+        it('a job of a project the caller cannot read is refused, even with that project_id', async function () {
+            const signed = (await presign(ME, {})).data[0];
+            await assert.rejects(finalize(ME, {...keyed(signed.storage_key), project_id: OTHERS_PROJECT, chart_job_id: OTHERS_JOB}), {errorType: 'NoPermissionError'});
+            await assert.rejects(finalize(ME, {...keyed(signed.storage_key), project_id: OTHERS_PROJECT, news_job_id: OTHERS_JOB}), {errorType: 'NoPermissionError'});
+        });
+
+        it('a news job that does not exist is refused too', async function () {
+            const signed = (await presign(ME, {})).data[0];
+            await assert.rejects(finalize(ME, {...keyed(signed.storage_key), news_job_id: '00000000000000000000ee99'}), {errorType: 'ValidationError'});
         });
     });
 
