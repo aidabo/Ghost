@@ -2431,6 +2431,19 @@ const controller = {
             // the key stays where presign put it. The worker (integration) links
             // its own results.
             if (!getCurrentIntegrationId(frame)) {
+                // A project_id sent in the request (not the project target's own,
+                // which resolveUploadContext already checked) puts the row in that
+                // project's gallery (and the public one of a published project):
+                // the project must exist and the caller must be able to read it.
+                if (rowProjectId && !uploadContext.projectId) {
+                    const sentProject = await models.Base.knex('social_ai_projects')
+                        .where({id: rowProjectId})
+                        .first('id', 'user_id', 'group_id');
+                    if (!sentProject) {
+                        throw new errors.ValidationError({message: tpl(messages.projectNotFound, {projectId: rowProjectId})});
+                    }
+                    await assertCanReadRow({frame, row: sentProject});
+                }
                 for (const [table, field, linkedJobId] of [
                     ['social_ai_chart_jobs', 'chart_job_id', chartJobId],
                     ['social_ai_news_jobs', 'news_job_id', newsJobId]

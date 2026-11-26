@@ -345,7 +345,7 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
                 assert.ok(listed);
                 assert.equal(listed.project_id, HEX_PROJECT);
             } finally {
-                await db('social_ai_chart_jobs').del();
+                await db('social_ai_chart_jobs').where({id: CHART_JOB}).del();
             }
         });
 
