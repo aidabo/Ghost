@@ -744,6 +744,46 @@ const galleryItemName = row => String(row.display_name || '').trim() ||
     String(row.key || row.storage_key || '').split('/').filter(Boolean).pop() ||
     null;
 
+// social_ai_video_job_media.role of each listed row that belongs to a video
+// job (media_id -> role). Read for the rows already listed, so the visibility
+// rules of the listing decide which rows get a role. 'output' wins when one
+// file is linked more than once.
+const loadVideoJobRoles = async (rows) => {
+    const roles = new Map();
+    const ids = rows.filter(row => row.video_job_id).map(row => String(row.id));
+    if (!ids.length) {
+        return roles;
+    }
+    const links = await models.Base.knex('social_ai_video_job_media as vjm')
+        .join('social_media_assets as vsma', function () {
+            this.on('vsma.id', 'vjm.media_id').andOn('vsma.video_job_id', 'vjm.video_job_id');
+        })
+        .whereIn('vjm.media_id', ids)
+        .select('vjm.media_id as media_id', 'vjm.role as role');
+    links.forEach((link) => {
+        const id = String(link.media_id);
+        if (!roles.has(id) || link.role === 'output') {
+            roles.set(id, link.role || null);
+        }
+    });
+    return roles;
+};
+
+// A video job's result stays after the job is deleted (H3 in
+// social-ai-video-jobs destroy), but its junction row goes with the job. The
+// project video area [<root>/]gallery/projects/<pid>/artifacts/video/ only ever
+// holds results (roleForArea there: output only), so a row left there without
+// a junction row is still the output.
+const videoJobRole = (row, roles) => {
+    const linked = roles.get(String(row.id));
+    if (linked) {
+        return linked;
+    }
+    const key = String(row.key || '');
+    const area = row.project_id ? `gallery/projects/${row.project_id}/artifacts/video/` : null;
+    return area && (key.startsWith(area) || key.includes(`/${area}`)) ? 'output' : null;
+};
+
 const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, newsJobId, projectId, limit, nextCursor, type, orderBy, newsroomScope = null }) => {
     const knex = models.Base.knex;
     const cursor = parseDbNextCursor(nextCursor);
@@ -765,6 +805,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
             'sma.content_bundle_job_id as content_bundle_job_id',
             'sma.news_job_id as news_job_id',
             'sma.dzi_job_id as dzi_job_id',
+            'sma.video_job_id as video_job_id',
             'sma.project_id as project_id',
             'njm.post_id as post_id',
             'np.title as post_title',
@@ -1005,6 +1046,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
     }
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const videoRoles = await loadVideoJobRoles(pageRows);
 
     const items = pageRows.map((row) => ({
         id: row.id,
@@ -1023,6 +1065,12 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
         asset_type: row.asset_type || null,
         job_id: row.job_id || null,
         dzi_job_id: row.dzi_job_id || null,
+        // Video job mark: lets the project page tell a video job's result
+        // (role 'output') from its parts without reading the job, which only
+        // its creator and a site admin may read. Only the id and the role; the
+        // job itself (payload, …) is never returned here.
+        video_job_id: row.video_job_id || null,
+        role: row.video_job_id ? videoJobRole(row, videoRoles) : null,
         project_id: row.project_id || null,
         post_id: row.post_id || null,
         post_title: row.post_title || null,
