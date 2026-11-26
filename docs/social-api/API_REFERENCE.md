@@ -248,6 +248,8 @@ All routes below are based on `custom-routes.js`.
   - `GET /social/gallery/group/:id`
   - `POST /social/gallery/presign`
   - `POST /social/gallery/finalize`
+    - `chart_job_id`・`news_job_id` を付けられるのは、行の project の今あるジョブで、呼んだ人がその project を読めるものだけ（project の無いジョブは持ち主か管理者）。違えば 422 か 403。
+      `project_id` を省いたとき（`target: "chart_jobs"`・`"news_jobs"` など）は、ジョブの project を行の `project_id` にする（S3 の置き場所はそのまま）。integration（worker）の finalize は確かめない。
   - `POST /social/gallery/sync-tags`
   - `PUT /social/gallery/assets/:id/name` — 表示の名前（別名）を付ける。body `{display_name}`（200 文字まで、空なら消す）。
     変えるのは `social_media_assets.display_name` だけ（S3・`storage_key`・`original_filename` はそのまま）。

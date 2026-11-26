@@ -8,6 +8,7 @@ const sinon = require('sinon');
 const knex = require('knex');
 const models = require('../../../../core/server/models');
 const staffScope = require('../../../../core/server/api/endpoints/utils/staff-scope');
+const storage = require('../../../../core/server/adapters/storage');
 const {tables: schema} = require('../../../../core/server/data/schema');
 
 const PROJECT = '0000000000000000000000p1';
@@ -320,6 +321,32 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
             const rows = byId(await listProject('me', GROUP_PROJECT));
             assert.deepEqual(Object.keys(rows).sort(), ['g1', 'g2', 'h1', 'h2', 'h3', 'h5']);
             assert.equal(rows.h1.role, 'output');
+        });
+
+        it('an upload to a member\'s chart job without project_id (target chart_jobs) is listed in the job\'s project (the row takes it)', async function () {
+            const CHART_JOB = '0000000000000000000000c9';
+            // Hex ids: upsertAsset keeps only 24-char hex ids in the id columns.
+            const HEX_PROJECT = '00000000000000000000aa03';
+            await db('social_ai_projects').insert({id: HEX_PROJECT, name: 'family 2', user_id: 'owner', group_id: GROUP, status: 'draft'});
+            await db('social_ai_chart_jobs').insert({id: CHART_JOB, user_id: 'other', group_id: GROUP, project_id: HEX_PROJECT});
+            const host = 'https://cdn.example.com';
+            sinon.stub(storage, 'getStorage').returns({
+                pathPrefix: 'content/media',
+                getTargetDir: base => base,
+                urlToPath: url => url.replace(`${host}/`, '')
+            });
+            const key = `content/media/gallery/chart_jobs/${CHART_JOB}/chart-0000aaaa.png`;
+            try {
+                await endpoint.finalize.query({
+                    options: {context: {user: 'other'}},
+                    data: {storage_key: key, storage_url: `${host}/${key}`, target: 'chart_jobs', job_id: CHART_JOB, chart_job_id: CHART_JOB, asset_type: 'image'}
+                });
+                const listed = (await listProject('me', HEX_PROJECT)).data.find(row => row.key === key);
+                assert.ok(listed);
+                assert.equal(listed.project_id, HEX_PROJECT);
+            } finally {
+                await db('social_ai_chart_jobs').del();
+            }
         });
 
         describe('on a database without the thumbnail columns (the fallback query)', function () {

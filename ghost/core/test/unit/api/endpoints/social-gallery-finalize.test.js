@@ -293,6 +293,47 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             const signed = (await presign(ME, {})).data[0];
             await assert.rejects(finalize(ME, {...keyed(signed.storage_key), news_job_id: '00000000000000000000ee99'}), {errorType: 'ValidationError'});
         });
+
+        describe('without project_id (target chart_jobs / news_jobs): the job\'s project is used', function () {
+            const NEWS_PROJECT_JOB = '00000000000000000000ee13';
+            const jobUpload = async (user, target, jobId, link) => {
+                const signed = (await presign(user, {target, job_id: jobId})).data[0];
+                await finalize(user, {...keyed(signed.storage_key), target, job_id: jobId, ...link});
+                return {signed, row: await rowOf(signed.storage_key)};
+            };
+
+            beforeEach(async function () {
+                await db('social_ai_news_jobs').insert({id: NEWS_PROJECT_JOB, user_id: OTHER, project_id: PROJECT});
+            });
+
+            it('a chart job of a project the caller can read: the row gets that project, the key stays in the job folder', async function () {
+                const {signed, row} = await jobUpload(ME, 'chart_jobs', PROJECT_JOB, {chart_job_id: PROJECT_JOB});
+                assert.ok(signed.storage_key.startsWith(`${ROOT}/gallery/chart_jobs/${PROJECT_JOB}/`));
+                assert.equal(row.chart_job_id, PROJECT_JOB);
+                assert.equal(row.project_id, PROJECT);
+            });
+
+            it('a news job of a project the caller can read: the same', async function () {
+                const {signed, row} = await jobUpload(ME, 'news_jobs', NEWS_PROJECT_JOB, {news_job_id: NEWS_PROJECT_JOB});
+                assert.ok(signed.storage_key.startsWith(`${ROOT}/gallery/news_jobs/${NEWS_PROJECT_JOB}/`));
+                assert.equal(row.news_job_id, NEWS_PROJECT_JOB);
+                assert.equal(row.project_id, PROJECT);
+            });
+
+            it('a job of a project the caller cannot read is refused', async function () {
+                await assert.rejects(jobUpload(ME, 'chart_jobs', OTHERS_JOB, {chart_job_id: OTHERS_JOB}), {errorType: 'NoPermissionError'});
+                await assert.rejects(jobUpload(ME, 'news_jobs', OTHERS_JOB, {news_job_id: OTHERS_JOB}), {errorType: 'NoPermissionError'});
+            });
+        });
+
+        it('the worker (integration) links its own results without these checks', async function () {
+            const key = `${ROOT}/gallery/projects/${PROJECT}/artifacts/chart-0000aaaa.png`;
+            await endpoint.finalize.query({
+                options: {context: {integration: {id: 'worker-1'}}},
+                data: {...keyed(key), target: 'project', project_id: PROJECT, chart_job_id: '00000000000000000000ee99'}
+            });
+            assert.equal((await rowOf(key)).chart_job_id, '00000000000000000000ee99');
+        });
     });
 
     describe('normal uploads keep working (presign -> finalize with the same scope values)', function () {
