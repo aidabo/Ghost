@@ -905,8 +905,7 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                     // Project listing only (the caller already passed the project
                     // read check): a job of THIS project shows its result rows to
                     // everyone who can read the project, e.g. the other members of
-                    // a group project, not only to the job's creator. dzi jobs have
-                    // no project_id column (only a junction) and are not included.
+                    // a group project, not only to the job's creator.
                     [
                         ['social_ai_chart_jobs', 'chart_job_id'],
                         ['social_ai_content_bundle_jobs', 'content_bundle_job_id'],
@@ -920,6 +919,14 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                                 .whereRaw(`pj.id = sma.${assetColumn}`)
                                 .andWhere('pj.project_id', projectId);
                         });
+                    });
+                    // dzi jobs have no project_id column: they join projects
+                    // through the social_ai_dzi_job_projects junction.
+                    this.orWhereExists(function () {
+                        this.select(1)
+                            .from('social_ai_dzi_job_projects as pjp')
+                            .whereRaw('pjp.dzi_job_id = sma.dzi_job_id')
+                            .andWhere('pjp.project_id', projectId);
                     });
                 }
                 if (newsroomScope) {

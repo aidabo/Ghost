@@ -235,6 +235,12 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
                 await db('social_ai_content_bundle_jobs').insert(job('cb1', GROUP_PROJECT));
                 await db('social_ai_media_jobs').insert(job('mj1', GROUP_PROJECT));
                 await db('social_ai_news_jobs').insert(job('nj1', GROUP_PROJECT));
+                // dzi jobs have no project_id: they join projects through a junction.
+                await db('social_ai_dzi_jobs').insert([{id: 'dz1', user_id: 'other'}, {id: 'dz2', user_id: 'other'}]);
+                await db('social_ai_dzi_job_projects').insert([
+                    {id: 'dp1', dzi_job_id: 'dz1', project_id: GROUP_PROJECT},
+                    {id: 'dp2', dzi_job_id: 'dz2', project_id: OTHER_PROJECT}
+                ]);
                 const asset = (id, fields) => ({
                     id,
                     storage_key: `gallery/projects/${GROUP_PROJECT}/artifacts/${id}`,
@@ -250,20 +256,23 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
                     asset('b1', {owner_scope: 'content_bundles', content_bundle_job_id: 'cb1'}),
                     asset('j1', {owner_scope: 'media_jobs', job_id: 'mj1'}),
                     asset('n1', {owner_scope: 'news_jobs', news_job_id: 'nj1'}),
+                    asset('d1', {owner_scope: 'deepzoom', dzi_job_id: 'dz1'}),
+                    // Tagged with this project but made by a dzi job of another project: not shown.
+                    asset('d2', {owner_scope: 'deepzoom', dzi_job_id: 'dz2'}),
                     // Tagged with this project but made by a chart job of another project: not shown.
                     asset('c2', {owner_scope: 'chart_jobs', chart_job_id: 'cj2'})
                 ]);
             });
 
             afterEach(async function () {
-                for (const name of ['social_ai_chart_jobs', 'social_ai_content_bundle_jobs', 'social_ai_media_jobs', 'social_ai_news_jobs']) {
+                for (const name of ['social_ai_chart_jobs', 'social_ai_content_bundle_jobs', 'social_ai_media_jobs', 'social_ai_news_jobs', 'social_ai_dzi_jobs', 'social_ai_dzi_job_projects']) {
                     await db(name).del();
                 }
             });
 
-            it('a member sees another member\'s chart / content bundle / media / news job results', async function () {
+            it('a member sees another member\'s chart / content bundle / media / news / dzi job results', async function () {
                 const rows = byId(await listProject('me', GROUP_PROJECT));
-                assert.deepEqual(Object.keys(rows).sort(), ['b1', 'c1', 'g1', 'g2', 'j1', 'n1']);
+                assert.deepEqual(Object.keys(rows).sort(), ['b1', 'c1', 'd1', 'g1', 'g2', 'j1', 'n1']);
             });
 
             it('someone who cannot read the project still gets nothing', async function () {
