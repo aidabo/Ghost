@@ -7,10 +7,12 @@ const ObjectId = require('bson-objectid').default;
 const storage = require('../../adapters/storage');
 const socialMediaAssets = require('./utils/social-media-assets');
 const staffScope = require('./utils/staff-scope');
-const {validateVideoJobPayload, estimate} = require('./utils/video-job-payload');
+const {validateVideoJobPayload, estimate, limits} = require('./utils/video-job-payload');
 const {assertAssetsUsable} = require('./utils/video-asset-access');
 const {isIntegrationRequest} = require('./utils/integration-context');
 const galleryKeyScope = require('./utils/gallery-key-scope');
+const budget = require('./utils/video-job-budget');
+const settingsCache = require('../../../shared/settings-cache');
 
 // Video family — job endpoint (front repo docs/planning/video-job-runner-plan.md).
 //
@@ -80,6 +82,38 @@ const linkAreaPrefixes = (mediaStore, row) => [
     jobAreaPrefix(mediaStore, row.id),
     ...(row.project_id ? [projectVideoPrefix(mediaStore, row.project_id)] : [])
 ];
+// The month a cost counts in: the SITE timezone (settings `timezone`), so the
+// month turns over at the tenant's midnight (video-job-budget.js).
+const currentCostMonth = () => budget.monthOf(new Date(), settingsCache.get('timezone'));
+
+const costFields = row => ({
+    cost_month: row.cost_month || null,
+    cost_estimate_usd: budget.toUsd(row.cost_estimate_micros),
+    cost_reserved_usd: budget.toUsd(row.cost_reserved_micros),
+    cost_actual_usd: row.cost_actual_micros === null || row.cost_actual_micros === undefined
+        ? null
+        : budget.toUsd(row.cost_actual_micros)
+});
+
+// The worker's cumulative spend for the job (`cost_usd` on complete / fail /
+// reserve-cost). Absent = keep what was reported before.
+const actualPatch = (payloadInput, row) => (payloadInput.cost_usd === undefined || payloadInput.cost_usd === null
+    ? {}
+    : {cost_actual_micros: Math.max(budget.parseUsd(payloadInput.cost_usd, 'cost_usd'), Number(row.cost_actual_micros || 0))});
+
+// A real cost (`cost_usd`) is written under the month lock, so no budget
+// check of that month runs on an older sum. It is never refused: what was paid
+// was paid. Over the cap, the month's later adds and raises are refused.
+const withCostLock = (payloadInput, row, write) => {
+    if (payloadInput.cost_usd === undefined || payloadInput.cost_usd === null || !row.cost_month) {
+        return write(models.Base.knex);
+    }
+    return models.Base.knex.transaction(async (trx) => {
+        await budget.lockMonth(trx, row.cost_month);
+        await write(trx);
+    });
+};
+
 const getMediaStore = () => {
     try {
         return storage.getStorage('media');
@@ -244,6 +278,7 @@ const serialize = (row) => {
         result: parseJson(row.result, {}),
         artifacts: parseJson(row.artifacts, []),
         estimate: estimate(payload),
+        ...costFields(row),
         error_code: row.error_code || null,
         error_message: row.error_message || null,
         project_id: row.project_id || null,
@@ -494,8 +529,14 @@ const controller = {
             const steps = buildSteps(type, validated.payload);
             const items = itemsFromLines(validated.payload);
 
+            const costMonth = currentCostMonth();
+            const estimateMicros = budget.toMicros(validated.estimate.cost_usd);
+
             await models.Base.knex.transaction(async (trx) => {
                 await assertConsent(trx, actor, validated);
+                // The estimate is held in the month until the worker reserves
+                // the real total (cached lines cost nothing) or the job ends.
+                await budget.assertMonthlyBudget(trx, {month: costMonth, chargeMicros: estimateMicros, newVideo: true});
                 await trx(TABLE).insert({
                     id,
                     type,
@@ -511,6 +552,9 @@ const controller = {
                     project_id: ownership.projectId,
                     base_job_id: validated.baseJobId,
                     avatar_consent_id: validated.consentId,
+                    cost_month: costMonth,
+                    cost_estimate_micros: estimateMicros,
+                    cost_reserved_micros: estimateMicros,
                     user_id: actor,
                     group_id: ownership.groupId,
                     scope_type: ownership.scopeType,
@@ -661,7 +705,7 @@ const controller = {
             const status = deriveStatus(steps, row.status);
             const finished = status === 'completed' || status === 'failed';
 
-            await updateJob(frame, row, {
+            await withCostLock(payloadInput, row, trx => updateJob(frame, row, {
                 status,
                 progress: finished ? 100 : row.progress,
                 status_message: String(payloadInput.status_message || summarizeItems(items) || row.status_message || '').slice(0, 500) || null,
@@ -669,10 +713,11 @@ const controller = {
                 items: JSON.stringify(items),
                 result: payloadInput.result ? JSON.stringify(payloadInput.result) : row.result,
                 artifacts: payloadInput.artifacts ? JSON.stringify(payloadInput.artifacts) : row.artifacts,
+                ...actualPatch(payloadInput, row),
                 completed_at: finished ? timestamp : null,
                 updated_at: timestamp,
                 updated_by: row.updated_by || row.user_id
-            });
+            }, trx));
             return serialize(await loadRow(row.id));
         }
     },
@@ -693,17 +738,85 @@ const controller = {
                 step.status = 'failed';
                 step.error = errorText || step.error;
             }
-            await updateJob(frame, row, {
+            await withCostLock(payloadInput, row, trx => updateJob(frame, row, {
                 status: 'failed',
                 error_code: String(payloadInput.error_code || 'step_failed').slice(0, 100),
                 error_message: errorText ? String(errorText) : 'Video job step failed',
                 result: payloadInput.result ? JSON.stringify(payloadInput.result) : row.result,
+                ...actualPatch(payloadInput, row),
                 steps: JSON.stringify(steps),
                 completed_at: timestamp,
                 updated_at: timestamp,
                 updated_by: row.updated_by || row.user_id
-            });
+            }, trx));
             return serialize(await loadRow(row.id));
+        }
+    },
+
+    // Before a paid stage (the talking face above all), the worker asks to raise
+    // or lower the job's hold to `total_usd`: everything the job will have spent
+    // once this stage is done (spent so far + this stage, cached lines at 0).
+    // Idempotent (a retry with the same total is the same answer). Refused with
+    // VIDEO_JOB_BUDGET_EXCEEDED over the per-job cap (VIDEO_JOB_MAX_COST_USD) and
+    // VIDEO_JOB_MONTHLY_BUDGET_EXCEEDED over the month (then the worker does NOT
+    // send the stage; it fails the job, keeping what is cached). Lowering always
+    // passes. `cost_usd` (optional) reports the real spend so far.
+    //
+    // The month is the current one: a job accepted last month moves to this
+    // month with all of its cost when it reserves.
+    reserveCost: {
+        options: ['id'],
+        permissions: false,
+        async query(frame) {
+            const payloadInput = getActionPayload(frame);
+            const row = await loadRow(jobId(frame));
+            assertWorker(frame, row);
+            const totalMicros = budget.parseUsd(payloadInput.total_usd, 'total_usd');
+            const patchActual = actualPatch(payloadInput, row);
+            const actualMicros = patchActual.cost_actual_micros ?? Number(row.cost_actual_micros || 0);
+            const maxJobMicros = budget.toMicros(limits().maxCostUsd);
+            if (totalMicros > maxJobMicros) {
+                throw new errors.ValidationError({
+                    message: `A video job may cost at most ${limits().maxCostUsd} USD (asked ${budget.toUsd(totalMicros)} USD).`,
+                    code: 'VIDEO_JOB_BUDGET_EXCEEDED'
+                });
+            }
+            const month = currentCostMonth();
+            return models.Base.knex.transaction(async (trx) => {
+                const charge = Math.max(totalMicros, actualMicros);
+                const lowering = month === row.cost_month && charge <= budget.chargeOf(row);
+                const summary = lowering
+                    ? null
+                    : await budget.assertMonthlyBudget(trx, {month, chargeMicros: charge, exceptJobId: row.id, newVideo: month !== row.cost_month});
+                await updateJob(frame, row, {
+                    cost_month: month,
+                    cost_reserved_micros: totalMicros,
+                    ...patchActual,
+                    claim_expires_at: leaseExpiry(),
+                    updated_at: now(),
+                    updated_by: row.updated_by || row.user_id
+                }, trx);
+                const totals = summary || budget.summary(month, await budget.monthUsage(trx, month));
+                return {
+                    job_id: row.id,
+                    approved: true,
+                    reserved_usd: budget.toUsd(totalMicros),
+                    actual_usd: budget.toUsd(actualMicros),
+                    ...totals
+                };
+            });
+        }
+    },
+
+    // This month's use of the tenant budget (for the screen and the worker).
+    budget: {
+        permissions: false,
+        async query(frame) {
+            if (!isIntegrationRequest(frame) && !currentUser(frame)) {
+                throw new errors.NoPermissionError({message: tpl(messages.userRequired)});
+            }
+            const month = currentCostMonth();
+            return budget.summary(month, await budget.monthUsage(models.Base.knex, month));
         }
     },
 
@@ -894,7 +1007,12 @@ const controller = {
             const row = await loadRow(jobId(frame));
             await assertAccess(frame, row, true);
             const timestamp = now();
+            // A job no worker has claimed spent nothing: its hold is released.
+            // A running one keeps it (a call already sent is paid, plan §7.1)
+            // unless the worker reports what it really spent.
             const affected = await models.Base.knex(TABLE).where({id: row.id}).whereIn('status', ['queued', 'running']).update({
+                // Before `status`: MySQL reads an already-updated column in later SET items.
+                cost_reserved_micros: models.Base.knex.raw('CASE WHEN status = ? THEN 0 ELSE cost_reserved_micros END', ['queued']),
                 status: 'canceled',
                 claim_token: null,
                 claim_worker_id: null,
@@ -968,9 +1086,13 @@ const controller = {
                 .orWhereRaw('storage_key LIKE ?', [`%gallery/${OWNER_SCOPE}/${row.id}/%`])
                 .del();
 
-            // Junction rows cascade via the video_job_id FK.
+            // Junction rows cascade via the video_job_id FK. The job's cost
+            // and place stay in its month (deleting does not give them back).
             await knex(JUNCTION).where({video_job_id: row.id}).del();
-            await knex(TABLE).where({id: row.id}).del();
+            await knex.transaction(async (trx) => {
+                await budget.keepRemovedJobs(trx, [row.id]);
+                await trx(TABLE).where({id: row.id}).del();
+            });
             return serialize({...row, status: 'deleted'});
         }
     }

@@ -2,6 +2,8 @@ const assert = require('assert/strict');
 const Module = require('module');
 const sinon = require('sinon');
 const knex = require('knex');
+const commands = require('../../../../core/server/data/schema/commands');
+const schema = require('../../../../core/server/data/schema/schema');
 
 const projectsPath = require.resolve('../../../../core/server/api/endpoints/social-ai-projects');
 
@@ -72,8 +74,14 @@ describe('social-ai-projects destroy: S3 cleanup only after commit', function ()
             await database.schema.createTable(name, (table) => {
                 table.string('id').primary();
                 ['project_id', 'status', 'user_id', 'group_id'].forEach(column => table.string(column));
+                if (name === 'social_ai_video_jobs') {
+                    table.string('cost_month');
+                    ['cost_estimate_micros', 'cost_reserved_micros'].forEach(column => table.integer(column).defaultTo(0));
+                    table.integer('cost_actual_micros');
+                }
             });
         }
+        await commands.createTable('social_ai_video_cost_months', database, schema.social_ai_video_cost_months);
         await database.schema.createTable('social_media_assets', (table) => {
             table.string('id').primary();
             ['storage_key', 'project_id', 'job_id', 'chart_job_id', 'news_job_id', 'video_job_id']
@@ -163,6 +171,19 @@ describe('social-ai-projects destroy: S3 cleanup only after commit', function ()
             'gallery/chart_projects/p1/file.bin',
             'gallery/projects/p1/file.bin'
         ]);
+    });
+
+    it('(e) keeps the month\'s video cost and count of the jobs it deletes (the budget is not given back)', async function () {
+        await database('social_ai_video_jobs').insert([
+            {id: 'vj-paid', project_id: 'p1', status: 'completed', cost_month: '2026-11', cost_reserved_micros: 1000000, cost_actual_micros: 400000},
+            {id: 'vj-free', project_id: 'p1', status: 'failed', cost_month: '2026-11', cost_reserved_micros: 1000000, cost_actual_micros: 0}
+        ]);
+        await destroy('p1');
+        assert.equal((await database('social_ai_video_jobs')).length, 0);
+        const month = await database('social_ai_video_cost_months').where({month: '2026-11'}).first();
+        assert.equal(Number(month.removed_cost_micros), 400000);
+        // A failed job that cost nothing is not one of the month's videos.
+        assert.equal(Number(month.removed_jobs), 1);
     });
 
     it('(d) removes the video results in gallery/projects/{pid}/artifacts/video/ (rows and S3), also those of a job deleted before', async function () {

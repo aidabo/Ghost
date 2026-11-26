@@ -1,4 +1,5 @@
 const errors = require('@tryghost/errors');
+const {serviceLimits} = require('./video-job-budget');
 
 // Minimal validation of a video job's `payload` (front repo
 // docs/planning/video-job-runner-plan.md §4, §7). Ghost only refuses what must
@@ -34,11 +35,14 @@ const limits = () => ({
     maxLines: envNumber('VIDEO_JOB_MAX_LINES', 40),
     maxFaceLines: envNumber('VIDEO_JOB_MAX_FACE_LINES', 20),
     maxLineChars: envNumber('VIDEO_JOB_MAX_LINE_CHARS', 300),
-    // Cost estimate (USD). The per-line rates are placeholders until PR 5 measures
-    // a real Wan3 line (plan §9.2); the cap is the plan's recommended 3 USD.
+    // Cost estimate (USD). The rates are placeholders until a real Wan3 call is
+    // measured (plan §9.2); the cap is the plan's recommended 3 USD. The face is
+    // billed by the SECOND of speech it lip-syncs (the worker sends the voice in
+    // 12-15 second chunks, not line by line), so its rate is per second — the
+    // same env name as the worker's.
     maxCostUsd: envNumber('VIDEO_JOB_MAX_COST_USD', 3),
     voiceLineCostUsd: envNumber('VIDEO_JOB_VOICE_LINE_COST_USD', 0.002),
-    faceLineCostUsd: envNumber('VIDEO_JOB_FACE_LINE_COST_USD', 0.1),
+    faceSecondCostUsd: envNumber('VIDEO_JOB_FACE_SECOND_COST_USD', 0.02),
     faceEnabled: String(process.env.VIDEO_JOB_FACE_ENABLED || '').toLowerCase() === 'true'
 });
 
@@ -85,12 +89,79 @@ const uniqueKeys = (list, field) => {
     return keys;
 };
 
-const faceLineCount = (payload) => {
+const lipsyncLines = (payload) => {
     const avatar = payload.avatar;
-    if (!isObject(avatar) || avatar.lipsync !== true) {
+    if (!isObject(avatar) || avatar.lipsync !== true || !Array.isArray(payload.lines)) {
+        return [];
+    }
+    return payload.lines;
+};
+
+// At add time the voice is not made yet, so its length is estimated from the
+// text: characters per second of speech at tempo 1, by language (rough, on the
+// generous side so the estimate stays an upper bound). Japanese ~7 (kana and
+// kanji mixed), Chinese ~4.5, Korean ~6, anything else (Latin script,
+// spaces and punctuation counted) ~14. A slower tempo means more seconds.
+const CHARS_PER_SECOND = {ja: 7, zh: 4.5, ko: 6};
+const DEFAULT_CHARS_PER_SECOND = 14;
+
+const charsPerSecond = (lang) => {
+    const base = String(lang || '').toLowerCase().split(/[-_]/)[0];
+    return CHARS_PER_SECOND[base] || DEFAULT_CHARS_PER_SECOND;
+};
+
+const lineSeconds = (line, rate) => (isObject(line) && typeof line.text === 'string' ? [...line.text.trim()].length / rate : 0);
+
+const speechRate = (payload) => {
+    const tempo = isObject(payload.voice) && typeof payload.voice.tempo === 'number' && payload.voice.tempo > 0
+        ? payload.voice.tempo
+        : 1;
+    return charsPerSecond(payload.lang) * tempo;
+};
+
+// The length of the finished video, as the worker lays it out (front
+// tools/video-worker/src/templates.js sceneSeconds): each scene lasts
+// max(its lines' speech + 0.6 s, time to read its title and body, 3 s), at most
+// 60 s; the video is the sum of its scenes. Speech is estimated from the text.
+const SCENE_GAP_SECONDS = 0.6;
+const MIN_SCENE_SECONDS = 3;
+const MAX_SCENE_SECONDS = 60;
+const readingSeconds = scene => ([...`${scene.title || ''}${scene.body || ''}`.replace(/\s+/g, '')].length * 0.12) + 1.5;
+
+/**
+ * Estimated length of the video in whole seconds (rounded up).
+ * @param {object} payload
+ */
+const videoSeconds = (payload) => {
+    if (!isObject(payload) || !Array.isArray(payload.scenes)) {
         return 0;
     }
-    return Array.isArray(payload.lines) ? payload.lines.length : 0;
+    const rate = speechRate(payload);
+    const lines = Array.isArray(payload.lines) ? payload.lines : [];
+    const total = payload.scenes.reduce((sum, scene) => {
+        if (!isObject(scene)) {
+            return sum;
+        }
+        const spoken = lines.filter(line => isObject(line) && line.scene_key === scene.key)
+            .reduce((acc, line) => acc + lineSeconds(line, rate), 0);
+        const seconds = Math.max(spoken > 0 ? spoken + SCENE_GAP_SECONDS : 0, readingSeconds(scene), MIN_SCENE_SECONDS);
+        return sum + Math.min(MAX_SCENE_SECONDS, seconds);
+    }, 0);
+    return Math.ceil(Math.round(total * 10) / 10);
+};
+
+/**
+ * Estimated seconds of speech to lip-sync (whole seconds, rounded up).
+ * @param {object} payload
+ */
+const faceSeconds = (payload) => {
+    const lines = lipsyncLines(payload);
+    if (!lines.length) {
+        return 0;
+    }
+    const rate = speechRate(payload);
+    const chars = lines.reduce((sum, line) => sum + (isObject(line) && typeof line.text === 'string' ? [...line.text.trim()].length : 0), 0);
+    return Math.ceil(chars / rate);
 };
 
 // The estimate is what the job WOULD cost if nothing were cached (the worker
@@ -98,11 +169,14 @@ const faceLineCount = (payload) => {
 const estimate = (payload) => {
     const cfg = limits();
     const lines = isObject(payload) && Array.isArray(payload.lines) ? payload.lines.length : 0;
-    const faceLines = isObject(payload) ? faceLineCount(payload) : 0;
-    const cost = (lines * cfg.voiceLineCostUsd) + (faceLines * cfg.faceLineCostUsd);
+    const faceLines = isObject(payload) ? lipsyncLines(payload).length : 0;
+    const seconds = isObject(payload) ? faceSeconds(payload) : 0;
+    const cost = (lines * cfg.voiceLineCostUsd) + (seconds * cfg.faceSecondCostUsd);
     return {
         voice_lines: lines,
         face_lines: faceLines,
+        face_seconds: seconds,
+        video_seconds: videoSeconds(payload),
         cost_usd: Math.round(cost * 10000) / 10000,
         max_cost_usd: cfg.maxCostUsd
     };
@@ -230,6 +304,10 @@ const validateVideoJobPayload = (payload) => {
     const baseJobId = optionalAssetId(payload.base_job_id, 'base_job_id');
 
     const cost = estimate(payload);
+    const maxVideoSeconds = serviceLimits().maxVideoSeconds;
+    if (cost.video_seconds > maxVideoSeconds) {
+        fail(`The video would be about ${cost.video_seconds} seconds; at most ${maxVideoSeconds} seconds are allowed.`, 'VIDEO_JOB_TOO_LONG');
+    }
     if (cost.cost_usd > cfg.maxCostUsd) {
         fail(`Estimated cost ${cost.cost_usd} USD is over the limit of ${cfg.maxCostUsd} USD.`, 'VIDEO_JOB_BUDGET_EXCEEDED');
     }
@@ -244,5 +322,7 @@ const validateVideoJobPayload = (payload) => {
 module.exports = {
     validateVideoJobPayload,
     estimate,
+    faceSeconds,
+    videoSeconds,
     limits
 };
