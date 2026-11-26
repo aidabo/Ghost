@@ -110,6 +110,7 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             await db(name).del();
         }
         await db('social_ai_chart_jobs').insert({id: CHART_JOB, user_id: ME, project_id: null});
+        await db('social_ai_news_jobs').insert({id: NEWS_JOB, user_id: ME, project_id: null});
     });
 
     afterEach(function () {
@@ -338,6 +339,53 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             });
         });
 
+        describe('target chart_jobs / news_jobs: job_id names the job (written to chart_job_id / news_job_id, not job_id)', function () {
+            // job_id on the row is the media-jobs FK; a chart / news job id there
+            // was a 500 on MySQL (ER_NO_REFERENCED_ROW_2). Found by upload smoke B8・B9.
+            const NEWS_PROJECT_JOB = '00000000000000000000ee14';
+            const byJobId = async (user, target, jobId, extra = {}) => {
+                const signed = (await presign(user, {target, job_id: jobId})).data[0];
+                const result = (await finalize(user, {...keyed(signed.storage_key), target, job_id: jobId, ...extra})).data[0];
+                return {result, row: await rowOf(signed.storage_key)};
+            };
+
+            beforeEach(async function () {
+                await db('social_ai_news_jobs').insert({id: NEWS_PROJECT_JOB, user_id: OTHER, project_id: PROJECT});
+            });
+
+            it('chart_jobs + job_id: the row gets chart_job_id and the job\'s project, job_id stays empty', async function () {
+                const {result, row} = await byJobId(ME, 'chart_jobs', PROJECT_JOB);
+                assert.equal(row.chart_job_id, PROJECT_JOB);
+                assert.equal(row.job_id, null);
+                assert.equal(row.project_id, PROJECT);
+                assert.equal(result.job_id, null);
+            });
+
+            it('news_jobs + job_id: the same with news_job_id', async function () {
+                const {result, row} = await byJobId(ME, 'news_jobs', NEWS_PROJECT_JOB);
+                assert.equal(row.news_job_id, NEWS_PROJECT_JOB);
+                assert.equal(row.job_id, null);
+                assert.equal(row.project_id, PROJECT);
+                assert.equal(result.news_job_id, NEWS_PROJECT_JOB);
+            });
+
+            it('job_id and chart_job_id / news_job_id naming different jobs is refused (422)', async function () {
+                const signed = (await presign(ME, {target: 'chart_jobs', job_id: PROJECT_JOB})).data[0];
+                await assert.rejects(finalize(ME, {...keyed(signed.storage_key), target: 'chart_jobs', job_id: PROJECT_JOB, chart_job_id: CHART_JOB}), {errorType: 'ValidationError'});
+                const newsSigned = (await presign(ME, {target: 'news_jobs', job_id: NEWS_PROJECT_JOB})).data[0];
+                await assert.rejects(finalize(ME, {...keyed(newsSigned.storage_key), target: 'news_jobs', job_id: NEWS_PROJECT_JOB, news_job_id: NEWS_JOB}), {errorType: 'ValidationError'});
+                assert.equal(await rowOf(signed.storage_key), undefined);
+                assert.equal(await rowOf(newsSigned.storage_key), undefined);
+            });
+
+            it('the job checks apply through job_id too: a job of a project the caller cannot read (403), a job that does not exist (422)', async function () {
+                await assert.rejects(byJobId(ME, 'chart_jobs', OTHERS_JOB), {errorType: 'NoPermissionError'});
+                await assert.rejects(byJobId(ME, 'news_jobs', OTHERS_JOB), {errorType: 'NoPermissionError'});
+                await assert.rejects(byJobId(ME, 'chart_jobs', '00000000000000000000ee99'), {errorType: 'ValidationError'});
+                await assert.rejects(byJobId(ME, 'news_jobs', '00000000000000000000ee99'), {errorType: 'ValidationError'});
+            });
+        });
+
         describe('a project_id sent without a job link is checked too', function () {
             it('a project the caller cannot read is refused (target chart_jobs, no job link)', async function () {
                 const signed = (await presign(ME, {target: 'chart_jobs', job_id: PROJECT_JOB})).data[0];
@@ -440,6 +488,8 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             const news = await roundTrip(ME, {target: 'news_jobs', job_id: NEWS_JOB});
             assert.ok(news.signed.storage_key.startsWith(`${ROOT}/gallery/news_jobs/${NEWS_JOB}/${YM}/`));
             assert.equal(news.row.owner_scope, 'news_jobs');
+            assert.equal(news.row.news_job_id, NEWS_JOB);
+            assert.equal(news.row.job_id, null);
         });
 
         it('a chart (social_chart_id) and a person', async function () {

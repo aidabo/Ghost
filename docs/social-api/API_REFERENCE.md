@@ -252,6 +252,7 @@ All routes below are based on `custom-routes.js`.
     - `chart_job_id`・`news_job_id` を付けられるのは、行の project の今あるジョブで、呼んだ人がその project を読めるものだけ（project の無いジョブは持ち主か管理者）。違えば 422 か 403。
       `project_id` を省いたとき（`target: "chart_jobs"`・`"news_jobs"` など）は、ジョブの project を行の `project_id` にする（S3 の置き場所はそのまま）。integration（worker）の finalize はどちらも確かめない。
     - 例: `{"target":"chart_jobs","job_id":"<jobId>","chart_job_id":"<jobId>","storage_key":"…/gallery/chart_jobs/<jobId>/a.png","storage_url":"…"}` → 行の `project_id` はそのジョブの project になり、その project の一覧（`GET /social/gallery/project`）に出る（finalize の応答には `project_id` は入らない）。
+    - `target: "chart_jobs"`・`"news_jobs"` の `job_id` はそのジョブの id として扱い、行の `chart_job_id`・`news_job_id` に入れる（行の `job_id` 欄＝メディアジョブには入れない。確かめは上と同じ）。`job_id` と `chart_job_id`・`news_job_id` が食い違えば 422。
   - `POST /social/gallery/sync-tags`
   - `PUT /social/gallery/assets/:id/name` — 表示の名前（別名）を付ける。body `{display_name}`（200 文字まで、空なら消す）。
     変えるのは `social_media_assets.display_name` だけ（S3・`storage_key`・`original_filename` はそのまま）。
