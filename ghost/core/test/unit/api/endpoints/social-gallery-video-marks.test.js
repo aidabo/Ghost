@@ -279,5 +279,53 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
                 await assert.rejects(() => listProject('stranger', GROUP_PROJECT));
             });
         });
+
+        it('results kept after their job was deleted (H3) stay visible to the members', async function () {
+            // What chart / news / video destroy leave in a project: the job is gone,
+            // the result row keeps the old job id and the project.
+            const row = (id, fields) => ({
+                id,
+                storage_key: `gallery/projects/${GROUP_PROJECT}/artifacts/${id}`,
+                storage_url: `https://cdn.example/${id}`,
+                asset_type: 'video',
+                created_at: NOW,
+                project_id: GROUP_PROJECT,
+                ...fields
+            });
+            await db('social_media_assets').insert([
+                // video rows carry the job's user_id.
+                row('h1', {owner_scope: 'video_jobs', user_id: 'other', video_job_id: 'vj-gone', storage_key: `gallery/projects/${GROUP_PROJECT}/artifacts/video/vj-gone.mp4`}),
+                // chart / news results are written by the worker with a null user_id.
+                row('h2', {owner_scope: 'chart_jobs', user_id: null, chart_job_id: 'cj-gone'}),
+                row('h3', {owner_scope: 'news_jobs', user_id: null, news_job_id: 'nj-gone'}),
+                // A member's own upload naming a job that does not exist: still their own row only.
+                row('h4', {owner_scope: 'chart_jobs', user_id: 'other', chart_job_id: 'cj-fake'})
+            ]);
+            const rows = byId(await listProject('me', GROUP_PROJECT));
+            assert.deepEqual(Object.keys(rows).sort(), ['g1', 'g2', 'h1', 'h2', 'h3']);
+            assert.equal(rows.h1.role, 'output');
+        });
+
+        describe('on a database without the thumbnail columns (the fallback query)', function () {
+            before(async function () {
+                await db.schema.alterTable('social_media_assets', (t) => {
+                    t.dropColumn('thumbnail_url');
+                    t.dropColumn('thumbnail_storage_key');
+                });
+            });
+
+            after(async function () {
+                await db.schema.alterTable('social_media_assets', (t) => {
+                    t.text('thumbnail_url');
+                    t.text('thumbnail_storage_key');
+                });
+            });
+
+            it('applies the same rules as the normal query (the members see the job rows, project only)', async function () {
+                const rows = byId(await listProject('me', GROUP_PROJECT));
+                assert.deepEqual(Object.keys(rows).sort(), ['g1', 'g2']);
+                assert.equal(rows.g1.role, 'output');
+            });
+        });
     });
 });
