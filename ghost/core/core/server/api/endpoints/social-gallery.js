@@ -909,18 +909,35 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                         // read check): a job of THIS project shows its result rows to
                         // everyone who can read the project, e.g. the other members of
                         // a group project, not only to the job's creator.
+                        // chart_job_id / news_job_id are checked on upload (finalize:
+                        // an existing job of the row's project the caller can read)
+                        // and video_job_id is written by video-jobs linkAssets only.
+                        // job_id / content_bundle_job_id / dzi_job_id are not checked
+                        // on upload, so for those the row must be written as the
+                        // job's user (the job's own rows; null for both from an
+                        // integration).
+                        const sameUserAsJob = function (jobAlias) {
+                            this.whereRaw(`sma.user_id = ${jobAlias}.user_id`).orWhere(function () {
+                                this.whereNull('sma.user_id').whereNull(`${jobAlias}.user_id`);
+                            });
+                        };
                         [
-                            ['social_ai_chart_jobs', 'chart_job_id'],
-                            ['social_ai_content_bundle_jobs', 'content_bundle_job_id'],
-                            ['social_ai_media_jobs', 'job_id'],
-                            ['social_ai_news_jobs', 'news_job_id'],
-                            ['social_ai_video_jobs', 'video_job_id']
-                        ].forEach(([jobTable, assetColumn]) => {
+                            ['social_ai_chart_jobs', 'chart_job_id', false],
+                            ['social_ai_content_bundle_jobs', 'content_bundle_job_id', true],
+                            ['social_ai_media_jobs', 'job_id', true],
+                            ['social_ai_news_jobs', 'news_job_id', false],
+                            ['social_ai_video_jobs', 'video_job_id', false]
+                        ].forEach(([jobTable, assetColumn, checkUser]) => {
                             this.orWhereExists(function () {
                                 this.select(1)
                                     .from(`${jobTable} as pj`)
                                     .whereRaw(`pj.id = sma.${assetColumn}`)
                                     .andWhere('pj.project_id', projectId);
+                                if (checkUser) {
+                                    this.andWhere(function () {
+                                        sameUserAsJob.call(this, 'pj');
+                                    });
+                                }
                             });
                         });
                         // dzi jobs have no project_id column: they join projects
@@ -928,20 +945,22 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                         this.orWhereExists(function () {
                             this.select(1)
                                 .from('social_ai_dzi_job_projects as pjp')
+                                .join('social_ai_dzi_jobs as pdj', 'pdj.id', 'pjp.dzi_job_id')
                                 .whereRaw('pjp.dzi_job_id = sma.dzi_job_id')
-                                .andWhere('pjp.project_id', projectId);
+                                .andWhere('pjp.project_id', projectId)
+                                .andWhere(function () {
+                                    sameUserAsJob.call(this, 'pdj');
+                                });
                         });
                         // H3: a chart / news / video job's results in a project stay
-                        // after the job is deleted, with the old job id. Such a row is
-                        // shown when it is tagged with this project and was written by
-                        // the job, not by a browser upload: chart / news workers write
-                        // with a null user_id (an upload always has one), and only
-                        // video-jobs linkAssets writes owner_scope 'video_jobs'.
+                        // after the job is deleted, with the old job id (linkAssets
+                        // writes them as the job's user). Such a row is shown when it
+                        // is tagged with this project and its job no longer exists.
+                        // These three links cannot name a job that never existed or a
+                        // job of another project (see above), so a row like this was
+                        // the deleted job's.
                         this.orWhere(function () {
                             this.where('sma.project_id', projectId)
-                                .where(function () {
-                                    this.whereNull('sma.user_id').orWhere('sma.owner_scope', 'video_jobs');
-                                })
                                 .where(function () {
                                     [
                                         ['social_ai_chart_jobs', 'chart_job_id'],
@@ -2402,6 +2421,40 @@ const controller = {
             // The resolver only returns newsJobId when the job belongs to the
             // project, so its answer wins over the raw frame value.
             const newsJobId = uploadContext.newsJobId || String(getFrameValue(frame, 'news_job_id') || '').trim() || null;
+            const rowProjectId = uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null;
+            // The project gallery shows a chart / news job's results to everyone
+            // who can read its project, also after the job is deleted (H3: the
+            // row keeps the old job id). So a browser upload may only link an
+            // existing job of the row's own project, and the caller must be able
+            // to read that project (no project: own the job). The worker
+            // (integration) links its own results.
+            if (!getCurrentIntegrationId(frame)) {
+                for (const [table, field, linkedJobId] of [
+                    ['social_ai_chart_jobs', 'chart_job_id', chartJobId],
+                    ['social_ai_news_jobs', 'news_job_id', newsJobId]
+                ]) {
+                    if (!linkedJobId) {
+                        continue;
+                    }
+                    const linkedJob = await models.Base.knex(table)
+                        .where({id: linkedJobId})
+                        .first('id', 'user_id', 'project_id');
+                    if (!linkedJob || String(linkedJob.project_id || '') !== String(rowProjectId || '')) {
+                        throw new errors.ValidationError({message: `${field} does not belong to project_id.`});
+                    }
+                    if (linkedJob.project_id) {
+                        const linkedProject = await models.Base.knex('social_ai_projects')
+                            .where({id: linkedJob.project_id})
+                            .first('id', 'user_id', 'group_id');
+                        if (!linkedProject) {
+                            throw new errors.ValidationError({message: `${field} does not belong to project_id.`});
+                        }
+                        await assertCanReadRow({frame, row: linkedProject});
+                    } else if (String(linkedJob.user_id || '') !== String(uploadContext.userId || '') && !(await isAdminUser(uploadContext.userId))) {
+                        throw new errors.NoPermissionError({message: tpl(messages.noJobPermission)});
+                    }
+                }
+            }
             const assetType = [TYPE_IMAGE, TYPE_VIDEO, TYPE_AUDIO, TYPE_FILE].includes(requestedAssetType)
                 ? requestedAssetType
                 : inferAssetTypeByKey(storageKey);
@@ -2430,7 +2483,7 @@ const controller = {
                         chartJobId,
                         contentBundleJobId,
                         newsJobId,
-                        projectId: uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null,
+                        projectId: rowProjectId,
                         socialChartId,
                         userId: uploadContext.userId,
                         groupId: uploadContext.groupId,

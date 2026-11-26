@@ -228,7 +228,7 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
             await assert.rejects(() => listProject('stranger', GROUP_PROJECT));
         });
 
-        describe('results of the other job families (written by the worker, user_id null)', function () {
+        describe('results of the other job families (written as the job\'s user, as linkAssets does)', function () {
             beforeEach(async function () {
                 const job = (id, projectId) => ({id, user_id: 'other', group_id: GROUP, project_id: projectId, status: 'completed', created_at: NOW, updated_at: NOW, created_by: 'other', updated_by: 'other'});
                 await db('social_ai_chart_jobs').insert([job('cj1', GROUP_PROJECT), job('cj2', OTHER_PROJECT)]);
@@ -248,7 +248,7 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
                     asset_type: 'image',
                     created_at: NOW,
                     project_id: GROUP_PROJECT,
-                    user_id: null,
+                    user_id: 'other',
                     ...fields
                 });
                 await db('social_media_assets').insert([
@@ -275,6 +275,20 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
                 assert.deepEqual(Object.keys(rows).sort(), ['b1', 'c1', 'd1', 'g1', 'g2', 'j1', 'n1']);
             });
 
+            it('a row someone else linked to a member\'s media / content bundle / dzi job is not shown', async function () {
+                // These links are not checked on upload (job_id, content_bundle_job_id,
+                // dzi_job_id), so the job's rows are the ones written as the job's user.
+                const linked = (id, fields) => ({id, storage_key: `gallery/users/x/${id}`, storage_url: `https://cdn.example/${id}`, asset_type: 'image', created_at: NOW, project_id: GROUP_PROJECT, user_id: 'stranger', ...fields});
+                await db('social_media_assets').insert([
+                    // e.g. a chart_jobs-target upload (job_id = its folder id) or a deepzoom one.
+                    linked('x1', {owner_scope: 'chart_jobs', job_id: 'mj1'}),
+                    linked('x2', {owner_scope: 'chart_jobs', content_bundle_job_id: 'cb1'}),
+                    linked('x3', {owner_scope: 'deepzoom', dzi_job_id: 'dz1'})
+                ]);
+                const rows = byId(await listProject('me', GROUP_PROJECT));
+                assert.deepEqual(Object.keys(rows).sort(), ['b1', 'c1', 'd1', 'g1', 'g2', 'j1', 'n1']);
+            });
+
             it('someone who cannot read the project still gets nothing', async function () {
                 await assert.rejects(() => listProject('stranger', GROUP_PROJECT));
             });
@@ -295,14 +309,16 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
             await db('social_media_assets').insert([
                 // video rows carry the job's user_id.
                 row('h1', {owner_scope: 'video_jobs', user_id: 'other', video_job_id: 'vj-gone', storage_key: `gallery/projects/${GROUP_PROJECT}/artifacts/video/vj-gone.mp4`}),
-                // chart / news results are written by the worker with a null user_id.
-                row('h2', {owner_scope: 'chart_jobs', user_id: null, chart_job_id: 'cj-gone'}),
-                row('h3', {owner_scope: 'news_jobs', user_id: null, news_job_id: 'nj-gone'}),
-                // A member's own upload naming a job that does not exist: still their own row only.
-                row('h4', {owner_scope: 'chart_jobs', user_id: 'other', chart_job_id: 'cj-fake'})
+                // chart / news linkAssets write the job creator as user_id too.
+                row('h2', {owner_scope: 'chart_jobs', user_id: 'other', chart_job_id: 'cj-gone'}),
+                row('h3', {owner_scope: 'news_jobs', user_id: 'other', news_job_id: 'nj-gone'}),
+                // A row of an integration-made job (null user_id).
+                row('h5', {owner_scope: 'chart_jobs', user_id: null, chart_job_id: 'cj-gone-2'}),
+                // Tagged with another project: not in this listing.
+                row('h6', {owner_scope: 'chart_jobs', user_id: 'other', chart_job_id: 'cj-gone', project_id: OTHER_PROJECT})
             ]);
             const rows = byId(await listProject('me', GROUP_PROJECT));
-            assert.deepEqual(Object.keys(rows).sort(), ['g1', 'g2', 'h1', 'h2', 'h3']);
+            assert.deepEqual(Object.keys(rows).sort(), ['g1', 'g2', 'h1', 'h2', 'h3', 'h5']);
             assert.equal(rows.h1.role, 'output');
         });
 
