@@ -1293,6 +1293,17 @@ const assertPathSafeId = (value, name) => {
     }
 };
 
+// Target chart_jobs / news_jobs: job_id or chart_job_id / news_job_id names the
+// job (docs: gallery-upload-paths 3.2). Both sent and different is refused.
+const getTargetJobId = (frame, field) => {
+    const viaJobId = String(getFrameValue(frame, 'job_id') || '').trim();
+    const viaField = String(getFrameValue(frame, field) || '').trim();
+    if (viaJobId && viaField && viaJobId !== viaField) {
+        throw new errors.ValidationError({message: `job_id and ${field} name different jobs.`});
+    }
+    return viaJobId || viaField;
+};
+
 const resolveUploadContext = async (frame) => {
     const mediaStore = storage.getStorage('media');
     const userId = frame.options?.context?.user;
@@ -1479,7 +1490,9 @@ const resolveUploadContext = async (frame) => {
 
         // The chart job id is issued by the backend (job model); an upload must reference an
         // existing job. Do NOT invent a random id here — that orphans the artifacts.
-        const jobId = String(getFrameValue(frame, 'job_id') || getFrameValue(frame, 'chart_job_id') || '').trim();
+        // job_id here names the chart job (chart_job_id), not a media job: finalize
+        // writes it to the row's chart_job_id (job_id there is the media-jobs FK).
+        const jobId = getTargetJobId(frame, 'chart_job_id');
         if (!/^[a-f0-9]{24}$/i.test(jobId)) {
             throw new errors.BadRequestError({
                 message: 'job_id (24-char chart job id) is required for chart_jobs uploads.'
@@ -1492,6 +1505,8 @@ const resolveUploadContext = async (frame) => {
             userId,
             groupId: null,
             jobId,
+            jobIdIsTargetJob: true,
+            chartJobId: jobId,
             ownerScope: 'chart_jobs',
             areaPrefixes: [galleryKeyScope.buildAreaPrefix(baseDir)],
             tag
@@ -1508,7 +1523,9 @@ const resolveUploadContext = async (frame) => {
 
         // The job id is issued by the backend; an upload must reference an
         // existing news job. Inventing an id here would orphan the artifacts.
-        const jobId = String(getFrameValue(frame, 'job_id') || getFrameValue(frame, 'news_job_id') || '').trim();
+        // job_id here names the news job (news_job_id), not a media job: finalize
+        // writes it to the row's news_job_id (job_id there is the media-jobs FK).
+        const jobId = getTargetJobId(frame, 'news_job_id');
         if (!/^[a-f0-9]{24}$/i.test(jobId)) {
             throw new errors.BadRequestError({
                 message: 'job_id (24-char news job id) is required for news_jobs uploads.'
@@ -1521,6 +1538,8 @@ const resolveUploadContext = async (frame) => {
             userId,
             groupId: null,
             jobId,
+            jobIdIsTargetJob: true,
+            newsJobId: jobId,
             ownerScope: 'news_jobs',
             areaPrefixes: [galleryKeyScope.buildAreaPrefix(baseDir)],
             tag
@@ -2375,11 +2394,9 @@ const controller = {
             const originalFilename = preserveOriginalFilename(getFrameValue(frame, 'original_filename'));
             const target = String(getFrameValue(frame, 'target') || '').trim().toLowerCase();
             const requestedJobId = String(getFrameValue(frame, 'job_id') || '').trim() || null;
-            const jobId = target === 'deepzoom' ? null : requestedJobId;
             const dziJobId = target === 'deepzoom'
                 ? getDeepzoomJobId(frame)
                 : String(getFrameValue(frame, 'dzi_job_id') || '').trim() || null;
-            const chartJobId = String(getFrameValue(frame, 'chart_job_id') || '').trim() || null;
             const contentBundleJobId = String(getFrameValue(frame, 'content_bundle_job_id') || '').trim() || null;
             const socialChartId = String(getFrameValue(frame, 'social_chart_id') || '').trim() || null;
 
@@ -2395,6 +2412,10 @@ const controller = {
             }
 
             const uploadContext = await resolveUploadContext(frame);
+            // job_id is the media-jobs FK, except for deepzoom (the DZI job) and
+            // target chart_jobs / news_jobs (the chart / news job, see getTargetJobId).
+            const jobId = target === 'deepzoom' || uploadContext.jobIdIsTargetJob ? null : requestedJobId;
+            const chartJobId = uploadContext.chartJobId || String(getFrameValue(frame, 'chart_job_id') || '').trim() || null;
             // The row's key is the one taken from storage_url (upsertAsset), so both
             // the key and the URL must name the same file inside the area presign
             // hands out for these scope values; the thumbnail too (destroyAsset
@@ -2418,8 +2439,9 @@ const controller = {
                     urlField: 'thumbnail_storage_url'
                 });
             }
-            // The resolver only returns newsJobId when the job belongs to the
-            // project, so its answer wins over the raw frame value.
+            // The resolver returns newsJobId only when the job belongs to the
+            // project (target project) or is the target news job, so its answer
+            // wins over the raw frame value; the job checks below still run.
             const newsJobId = uploadContext.newsJobId || String(getFrameValue(frame, 'news_job_id') || '').trim() || null;
             let rowProjectId = uploadContext.projectId || String(getFrameValue(frame, 'project_id') || '').trim() || null;
             // The project gallery shows a chart / news job's results to everyone
