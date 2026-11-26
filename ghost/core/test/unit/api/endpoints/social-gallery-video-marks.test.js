@@ -14,6 +14,9 @@ const PROJECT = '0000000000000000000000p1';
 const OTHER_PROJECT = '0000000000000000000000p2';
 const JOB_BY_OTHER = '0000000000000000000000v1';
 const JOB_BY_ME = '0000000000000000000000v2';
+const GROUP_PROJECT = '0000000000000000000000p3';
+const GROUP = '0000000000000000000000g1';
+const JOB_IN_GROUP = '0000000000000000000000v3';
 const NOW = new Date('2026-11-25T00:00:00Z');
 
 // Only the columns (no foreign keys / indexes): enough for the listing queries.
@@ -173,5 +176,56 @@ describe('Social gallery: project listing marks video job rows (video_job_id, ro
 
     it('the visibility rules stay: a draft project of someone else is still refused', async function () {
         await assert.rejects(() => listProject('other', OTHER_PROJECT));
+    });
+
+    describe('a group project (the family\'s default project: group_id + draft)', function () {
+        beforeEach(async function () {
+            // Group members: me and other. stranger is not a member.
+            sinon.stub(models.SocialGroup, 'findOne').callsFake(async ({id}) => (id === GROUP ? {id: GROUP} : null));
+            sinon.stub(models.SocialGroup, 'canAccessGroup').callsFake(async (group, userId) => ['me', 'other'].includes(userId));
+
+            await db('social_ai_projects').insert({id: GROUP_PROJECT, name: 'family', user_id: 'owner', group_id: GROUP, status: 'draft'});
+            await db('social_ai_video_jobs').insert({id: JOB_IN_GROUP, user_id: 'other', group_id: GROUP, project_id: GROUP_PROJECT, payload: '{}', status: 'completed', created_at: NOW, updated_at: NOW, created_by: 'other', updated_by: 'other'});
+            const asset = (id, fields) => ({
+                id,
+                storage_key: `gallery/projects/${GROUP_PROJECT}/artifacts/video/${id}`,
+                storage_url: `https://cdn.example/${id}`,
+                asset_type: 'video',
+                created_at: NOW,
+                project_id: GROUP_PROJECT,
+                group_id: GROUP,
+                user_id: 'other',
+                ...fields
+            });
+            await db('social_media_assets').insert([
+                asset('g1', {owner_scope: 'video_jobs', video_job_id: JOB_IN_GROUP}),
+                asset('g2', {owner_scope: 'video_jobs', video_job_id: JOB_IN_GROUP, asset_type: 'audio', storage_key: `gallery/video_jobs/${JOB_IN_GROUP}/line-1.wav`}),
+                // Another member's direct upload: not a video job row, the rule for it is unchanged.
+                asset('g3', {owner_scope: 'chart_jobs', original_filename: 'upload.mp4'}),
+                // A row claiming this project but made by a video job of another project: not shown.
+                asset('g4', {owner_scope: 'video_jobs', video_job_id: JOB_BY_OTHER})
+            ]);
+            await db('social_ai_video_job_media').insert([
+                {id: 'mg1', video_job_id: JOB_IN_GROUP, media_id: 'g1', role: 'output', created_at: NOW},
+                {id: 'mg2', video_job_id: JOB_IN_GROUP, media_id: 'g2', role: 'intermediate', created_at: NOW}
+            ]);
+        });
+
+        it('a member sees another member\'s video job rows with their marks', async function () {
+            const rows = byId(await listProject('me', GROUP_PROJECT));
+            assert.deepEqual(Object.keys(rows).sort(), ['g1', 'g2']);
+            assert.equal(rows.g1.video_job_id, JOB_IN_GROUP);
+            assert.equal(rows.g1.role, 'output');
+            assert.equal(rows.g2.role, 'intermediate');
+        });
+
+        it('the creator sees them too', async function () {
+            const rows = byId(await listProject('other', GROUP_PROJECT));
+            assert.ok(rows.g1 && rows.g2);
+        });
+
+        it('someone who cannot read the project gets nothing', async function () {
+            await assert.rejects(() => listProject('stranger', GROUP_PROJECT));
+        });
     });
 });

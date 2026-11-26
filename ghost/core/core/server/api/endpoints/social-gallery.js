@@ -841,8 +841,8 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                     // Video family (social-ai-video-jobs linkAssets): the rows carry
                     // the job's user_id / group_id / project_id, so the user, group
                     // and project filters below pick them up as they are (the
-                    // project listing shows the caller's own rows, as for direct
-                    // uploads; no video-job ownership join yet). There is
+                    // project listing also shows every row of a video job of that
+                    // project, see the chart_jobs scope below). There is
                     // no per-job listing (no 'video_jobs' target / 'videojobs'
                     // action) yet: the video screen (front PR 5) adds one if it
                     // needs it. A browser upload never writes these rows: an
@@ -901,6 +901,18 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                         .whereRaw('nj.id = sma.news_job_id')
                         .andWhere('nj.user_id', userId);
                 });
+                if (projectId) {
+                    // Project listing only (the caller already passed the project
+                    // read check): a video job of THIS project shows its rows to
+                    // everyone who can read the project, e.g. the other members of
+                    // a group project, not only to the job's creator.
+                    this.orWhereExists(function () {
+                        this.select(1)
+                            .from('social_ai_video_jobs as vj')
+                            .whereRaw('vj.id = sma.video_job_id')
+                            .andWhere('vj.project_id', projectId);
+                    });
+                }
                 if (newsroomScope) {
                     this.orWhere(function () {
                         staffScope.whereNewsroomAsset(this, newsroomScope);
