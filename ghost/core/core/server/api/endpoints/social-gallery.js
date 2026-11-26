@@ -903,14 +903,23 @@ const listByAssetTable = async ({ scope, userId, groupId, jobId, chartJobId, new
                 });
                 if (projectId) {
                     // Project listing only (the caller already passed the project
-                    // read check): a video job of THIS project shows its rows to
+                    // read check): a job of THIS project shows its result rows to
                     // everyone who can read the project, e.g. the other members of
-                    // a group project, not only to the job's creator.
-                    this.orWhereExists(function () {
-                        this.select(1)
-                            .from('social_ai_video_jobs as vj')
-                            .whereRaw('vj.id = sma.video_job_id')
-                            .andWhere('vj.project_id', projectId);
+                    // a group project, not only to the job's creator. dzi jobs have
+                    // no project_id column (only a junction) and are not included.
+                    [
+                        ['social_ai_chart_jobs', 'chart_job_id'],
+                        ['social_ai_content_bundle_jobs', 'content_bundle_job_id'],
+                        ['social_ai_media_jobs', 'job_id'],
+                        ['social_ai_news_jobs', 'news_job_id'],
+                        ['social_ai_video_jobs', 'video_job_id']
+                    ].forEach(([jobTable, assetColumn]) => {
+                        this.orWhereExists(function () {
+                            this.select(1)
+                                .from(`${jobTable} as pj`)
+                                .whereRaw(`pj.id = sma.${assetColumn}`)
+                                .andWhere('pj.project_id', projectId);
+                        });
                     });
                 }
                 if (newsroomScope) {
