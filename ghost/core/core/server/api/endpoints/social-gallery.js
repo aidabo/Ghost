@@ -506,6 +506,7 @@ const syncAssetsFromPost = async (frame) => {
     let skipped = 0;
     let outOfArea = 0;
     const callerId = frame.options?.context?.user;
+    const authorId = post.get('created_by');
     // A URL with no row becomes a row only when its key is in the post author's own area or the post's group's area
     // (the areas presign / finalize hand out for them, same check as finalize): a key of someone else's area written
     // into the post must not become a row that the author owns.
@@ -516,7 +517,6 @@ const syncAssetsFromPost = async (frame) => {
         }
         const root = galleryKeyScope.mediaRootOf(mediaStore);
         newRowAreas = [];
-        const authorId = post.get('created_by');
         if (authorId) {
             // @ts-ignore
             newRowAreas.push(galleryKeyScope.buildAreaPrefix(root, 'gallery', 'users', await models.User.ensureMediaFolderAlias(authorId)));
@@ -536,9 +536,10 @@ const syncAssetsFromPost = async (frame) => {
         };
 
         if (existing) {
-            // only rows the caller may retag (its uploader, the owner of its chart job, an admin): someone else's file
-            // shown in the post keeps its tag, also when the caller wrote the post or may write its group
-            if (!(await canRetagAsset(knex, existing, callerId))) {
+            // only rows the caller may retag, or the post author's own: someone else's file shown in the post keeps its tag
+            const writable = (authorId && String(existing.user_id || '') === String(authorId)) ||
+                await canRetagAsset(knex, existing, callerId);
+            if (!writable) {
                 skipped += 1;
                 continue;
             }
@@ -806,8 +807,7 @@ const canRenameAsset = (row, userId) => {
 };
 
 // Who may change a gallery row's tag (sync-tags, PUT /social/gallery/tag): who may rename it (the uploader, the owner
-// of the chart job that made it), or a system admin. A group is shared, but writing the group only lets a member add
-// new rows to it: a row someone else uploaded is changed by its uploader alone.
+// of the chart job that made it), a member who may write the row's group, or a system admin.
 const canRetagAsset = async (knex, row, userId) => {
     if (!userId) {
         return false;
@@ -819,6 +819,14 @@ const canRetagAsset = async (knex, row, userId) => {
     }
     if (canRenameAsset({...row, chart_job_user_id: chartJobUserId}, userId)) {
         return true;
+    }
+    if (row.group_id) {
+        // @ts-ignore
+        const group = await models.SocialGroup.findOne({id: row.group_id});
+        // @ts-ignore
+        if (group && await models.SocialGroup.canAccessGroup(group, userId, 'write')) {
+            return true;
+        }
     }
     return isAdminUser(userId);
 };
