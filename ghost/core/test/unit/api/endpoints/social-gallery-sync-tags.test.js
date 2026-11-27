@@ -1,8 +1,11 @@
 // ギャラリーの行に Post の主タグを付ける道（sync-tags）と、行のタグを 1 つ変える道（PUT /social/gallery/tag）。
 // - sync-tags: Post を直せる人だけ（グループの Post はグループに書ける人、それ以外は Ghost の Post の編集の権限）。
-//   body の urls は Post に入っているものだけを使う。すでにある行は、書ける人の行（上げた本人・Post の作者・
-//   chart job の持ち主・グループに書けるメンバー・管理者）だけタグを変え、ほかの人の行はそのまま（skipped_count）。
-// - tag: 変えられるのは上の「書ける人」だけ。鍵（integration）だけ・ログイン無しは断る。
+//   body の urls は Post に入っているものだけを使う。すでにある行は、呼んだ人が変えられる行（上げた本人・
+//   chart job の持ち主・管理者）だけタグを変え、ほかの人の行はそのまま（skipped_count）。グループに書けることも、
+//   Post の作者であることも、他人の行を変える理由にならない。
+//   行の無い URL は、Post の作者の置き場所（gallery/users/<作者>/）か Post のグループの置き場所
+//   （gallery/groups/<グループ>/）の中の key だけ行を作る。外の key は作らず out_of_area_count に数える。
+// - tag: 変えられるのは上の「変えられる人」だけ。鍵（integration）だけ・ログイン無しは断る。
 const assert = require('assert/strict');
 const sinon = require('sinon');
 const knex = require('knex');
@@ -30,6 +33,11 @@ const NEW_KEY = 'content/media/gallery/users/me/2026/11/new.png';
 const STRAY_KEY = 'content/media/gallery/users/other/2026/11/stray.png';
 const CHART_KEY = 'content/media/gallery/chart_jobs/c1/out.png';
 const GROUP_KEY = 'content/media/gallery/groups/g/2026/11/group.png';
+// files with no row yet: someone else's area, the group's area, the caller's own area
+const PLANTED_KEY = 'content/media/gallery/users/other/2026/11/planted.png';
+const NEW_GROUP_KEY = 'content/media/gallery/groups/g/2026/11/new-group.png';
+const OTHER_GROUP_KEY = 'content/media/gallery/groups/h/2026/11/other-group.png';
+const ALIASES = {[ME]: 'me', [OTHER]: 'other', [EDITOR]: 'editor', [ADMIN]: 'admin', [GROUP]: 'g'};
 const url = key => `${HOST}/${key}`;
 
 const makePost = ({id, createdBy, groupId = null, html}) => ({
@@ -81,6 +89,7 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
     beforeEach(async function () {
         const store = {
             host: HOST,
+            pathPrefix: 'content/media',
             list: async () => [],
             urlToPath: value => value.replace(`${HOST}/`, '')
         };
@@ -104,6 +113,8 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
         }));
         sinon.stub(models.SocialGroup, 'findOne').callsFake(async ({id}) => (id === GROUP ? {id} : null));
         sinon.stub(models.SocialGroup, 'canAccessGroup').callsFake(async (group, userId) => [ME, OTHER].includes(userId));
+        sinon.stub(models.User, 'ensureMediaFolderAlias').callsFake(async id => ALIASES[id]);
+        sinon.stub(models.SocialGroup, 'ensureMediaFolderAlias').callsFake(async id => ALIASES[id]);
         sinon.stub(staffScope, 'getStaffScope').callsFake(async userId => ({isSystemAdmin: userId === ADMIN}));
         await db('social_media_assets').del();
         await db('social_ai_chart_jobs').del();
@@ -149,10 +160,37 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
             assert.equal(result.data[0].synced_count, 1);
         });
 
-        it('an editor syncing someone\'s post retags the author\'s rows (the post author\'s rows count as writable)', async function () {
+        it('an editor syncing someone\'s post does not retag the author\'s rows (only the row\'s own uploader may)', async function () {
             posts[POST] = makePost({id: POST, createdBy: OTHER, html: `<img src="${url(OTHERS_KEY)}">`});
-            await sync(EDITOR, {post_id: POST, mode: 'primary'});
+            const result = await sync(EDITOR, {post_id: POST, mode: 'primary'});
+            assert.equal(await tagOf(OTHERS_KEY), 'family');
+            assert.equal(result.data[0].skipped_count, 1);
+        });
+
+        it('an admin syncing someone\'s post retags the rows', async function () {
+            posts[POST] = makePost({id: POST, createdBy: OTHER, html: `<img src="${url(OTHERS_KEY)}">`});
+            await sync(ADMIN, {post_id: POST, mode: 'primary'});
             assert.equal(await tagOf(OTHERS_KEY), 'travel');
+        });
+
+        it('a URL with no row outside the author\'s area (someone else\'s or a group\'s) makes no row and is counted', async function () {
+            posts[POST] = makePost({id: POST, createdBy: ME, html: `<img src="${url(NEW_KEY)}"><img src="${url(PLANTED_KEY)}"><img src="${url(NEW_GROUP_KEY)}">`});
+            const result = await sync(ME, {post_id: POST, mode: 'primary'});
+            assert.equal((await rowOf(NEW_KEY)).user_id, ME);
+            assert.equal(await rowOf(PLANTED_KEY), undefined);
+            assert.equal(await rowOf(NEW_GROUP_KEY), undefined);
+            assert.equal(result.data[0].inserted_count, 1);
+            assert.equal(result.data[0].out_of_area_count, 2);
+        });
+
+        it('an editor syncing someone\'s post: a new URL in the author\'s area becomes the author\'s row, one in the editor\'s own area does not', async function () {
+            const editorKey = 'content/media/gallery/users/editor/2026/11/e.png';
+            const authorKey = 'content/media/gallery/users/other/2026/11/a.png';
+            posts[POST] = makePost({id: POST, createdBy: OTHER, html: `<img src="${url(editorKey)}"><img src="${url(authorKey)}">`});
+            const result = await sync(EDITOR, {post_id: POST, mode: 'primary'});
+            assert.equal((await rowOf(authorKey)).user_id, OTHER);
+            assert.equal(await rowOf(editorKey), undefined);
+            assert.equal(result.data[0].out_of_area_count, 1);
         });
 
         it('a post outside any group that the caller may not edit is refused, and nothing changes', async function () {
@@ -162,12 +200,24 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
             assert.ok(canEditPost.called);
         });
 
-        it('a group post: a member who may write the group syncs it; group rows and the post author\'s rows get the tag', async function () {
+        it('a group post: a member who may write the group syncs it, but rows uploaded by someone else keep their tag', async function () {
             const result = await sync(ME, {post_id: GROUP_POST, mode: 'primary'});
+            // both rows are OTHER's (a group row and OTHER's own): writing the group does not let ME change them
+            assert.equal(await tagOf(GROUP_KEY), null);
+            assert.equal(await tagOf(OTHERS_KEY), 'family');
+            assert.equal(result.data[0].skipped_count, 2);
+        });
+
+        it('a group post: the uploader retags own rows; a new URL in the group\'s area becomes a group row, another group\'s is not made', async function () {
+            posts[GROUP_POST] = makePost({id: GROUP_POST, createdBy: OTHER, groupId: GROUP, html: `<img src="${url(GROUP_KEY)}"><img src="${url(OTHERS_KEY)}"><img src="${url(NEW_GROUP_KEY)}"><img src="${url(OTHER_GROUP_KEY)}">`});
+            const result = await sync(OTHER, {post_id: GROUP_POST, mode: 'primary'});
             assert.equal(await tagOf(GROUP_KEY), 'travel');
-            // OTHERS_KEY belongs to OTHER, who is also the post's author: the author's rows count
             assert.equal(await tagOf(OTHERS_KEY), 'travel');
-            assert.equal(result.data[0].skipped_count, 0);
+            const inserted = await rowOf(NEW_GROUP_KEY);
+            assert.equal(inserted.group_id, GROUP);
+            assert.equal(inserted.user_id, OTHER);
+            assert.equal(await rowOf(OTHER_GROUP_KEY), undefined);
+            assert.equal(result.data[0].out_of_area_count, 1);
         });
 
         it('a group post: someone who may not write the group is refused', async function () {
@@ -186,10 +236,10 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
             data: {storage_key: storageKey, tag_slug: tagSlug}
         });
 
-        it('the uploader, the chart job owner, a group writer and an admin may change the tag', async function () {
+        it('the uploader, the chart job owner and an admin may change the tag', async function () {
             await retag(ME, MINE_KEY, 'travel');
             await retag(ME, CHART_KEY, 'travel');
-            await retag(ME, GROUP_KEY, 'travel');
+            await retag(OTHER, GROUP_KEY, 'travel');
             await retag(ADMIN, OTHERS_KEY, 'travel');
             for (const key of [MINE_KEY, CHART_KEY, GROUP_KEY, OTHERS_KEY]) {
                 assert.equal(await tagOf(key), 'travel');
@@ -199,6 +249,8 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
         it('someone else\'s row is refused and keeps its tag', async function () {
             await assert.rejects(retag(ME, OTHERS_KEY, 'travel'), {errorType: 'NoPermissionError'});
             await assert.rejects(retag(EDITOR, GROUP_KEY, null), {errorType: 'NoPermissionError'});
+            // a member who may write the group may not change a group row someone else uploaded
+            await assert.rejects(retag(ME, GROUP_KEY, 'travel'), {errorType: 'NoPermissionError'});
             assert.equal(await tagOf(OTHERS_KEY), 'family');
             assert.equal(await tagOf(GROUP_KEY), null);
         });

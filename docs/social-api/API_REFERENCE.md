@@ -242,6 +242,9 @@ All routes below are based on `custom-routes.js`.
   - `/ghost/api/admin/social/gallery`
 - endpoint export:
   - `api.socialGallery`
+- 行を変えられる人（グループのギャラリーも同じ）:
+  - グループは共有だが、行（`social_media_assets` の 1 件＝登録された 1 つのファイルの記録）を変えられる（上書き・タグ・名前・削除）のは、その行を上げた本人だけ。例外は管理者と、行を作った chart job の持ち主。
+  - グループに書けるメンバーは、グループに新しく上げる・写す（新しい行を作る）ことはできるが、ほかの人が上げた行は変えられない。Post の作者であることも、ほかの人の行を変える理由にならない。
 - routes:
   - `GET /social/gallery/user`
   - `GET /social/gallery/group`
@@ -252,8 +255,12 @@ All routes below are based on `custom-routes.js`.
     - `chart_job_id`・`news_job_id` を付けられるのは、行の project の今あるジョブで、呼んだ人がその project を読めるものだけ（project の無いジョブは持ち主か管理者）。違えば 422 か 403。
       `project_id` を省いたとき（`target: "chart_jobs"`・`"news_jobs"` など）は、ジョブの project を行の `project_id` にする（S3 の置き場所はそのまま）。integration（worker）の finalize はどちらも確かめない。
     - 例: `{"target":"chart_jobs","job_id":"<jobId>","chart_job_id":"<jobId>","storage_key":"…/gallery/chart_jobs/<jobId>/a.png","storage_url":"…"}` → 行の `project_id` はそのジョブの project になり、その project の一覧（`GET /social/gallery/project`）に出る（finalize の応答には `project_id` は入らない）。
+    - すでに同じ key の行があるとき、上書きするのはその行を上げた本人の再送（同じ範囲・同じ本人・同じグループ）だけ。グループの置き場所は共有なので、ほかのメンバーが上げたファイルを finalize し直すと 409（行の持ち主・名前はそのまま）。
     - `target: "chart_jobs"`・`"news_jobs"` の `job_id` はそのジョブの id として扱い、行の `chart_job_id`・`news_job_id` に入れる（行の `job_id` 欄＝メディアジョブには入れない。確かめは上と同じ）。`job_id` と `chart_job_id`・`news_job_id` が食い違えば 422。
-  - `POST /social/gallery/sync-tags`
+  - `POST /social/gallery/sync-tags` — Post の主タグを、Post に出ているファイルの行に付ける。
+    - すでにある行は、呼んだ人が変えられる行（上げた本人・chart job の持ち主・管理者）だけタグを変える。ほかの人の行はそのままで `skipped_count` に数える（Post の作者・グループに書けるメンバーでも同じ）。
+    - 行の無い URL は、key が Post の作者の置き場所（`gallery/users/<作者>/…`）か Post のグループの置き場所（`gallery/groups/<グループ>/…`）の中にあるときだけ、Post の作者の行として作る（`inserted_count`。範囲の確かめは finalize と同じ）。外の key は行を作らず `out_of_area_count` に数える。
+  - `PUT /social/gallery/tag` — 1 つの行のタグを変える。変えられるのは上げた本人・chart job の持ち主・管理者だけ（グループに書けるメンバーでもほかの人の行は 403）。
   - `PUT /social/gallery/assets/:id/name` — 表示の名前（別名）を付ける。body `{display_name}`（200 文字まで、空なら消す）。
     変えるのは `social_media_assets.display_name` だけ（S3・`storage_key`・`original_filename` はそのまま）。
     変えられるのは削除（`DELETE /social/gallery/assets/:id`）と同じ人: 上げた本人、または行を作った chart job の持ち主。

@@ -504,8 +504,29 @@ const syncAssetsFromPost = async (frame) => {
     let updated = 0;
     let inserted = 0;
     let skipped = 0;
+    let outOfArea = 0;
     const callerId = frame.options?.context?.user;
-    const authorId = post.get('created_by');
+    // A URL with no row becomes a row only when its key is in the post author's own area or the post's group's area
+    // (the areas presign / finalize hand out for them, same check as finalize): a key of someone else's area written
+    // into the post must not become a row that the author owns.
+    let newRowAreas = null;
+    const getNewRowAreas = async () => {
+        if (newRowAreas) {
+            return newRowAreas;
+        }
+        const root = galleryKeyScope.mediaRootOf(mediaStore);
+        newRowAreas = [];
+        const authorId = post.get('created_by');
+        if (authorId) {
+            // @ts-ignore
+            newRowAreas.push(galleryKeyScope.buildAreaPrefix(root, 'gallery', 'users', await models.User.ensureMediaFolderAlias(authorId)));
+        }
+        if (post.get('group_id')) {
+            // @ts-ignore
+            newRowAreas.push(galleryKeyScope.buildAreaPrefix(root, 'gallery', 'groups', await models.SocialGroup.ensureMediaFolderAlias(post.get('group_id'))));
+        }
+        return newRowAreas;
+    };
     for (const key of keys) {
         const existing = await socialMediaAssets.findAssetRowByStorageKey(knex, key, ['id', 'user_id', 'group_id', 'chart_job_id']);
         const patch = {
@@ -515,15 +536,21 @@ const syncAssetsFromPost = async (frame) => {
         };
 
         if (existing) {
-            // only rows the caller may retag, or the post author's own: someone else's file shown in the post keeps its tag
-            const writable = (authorId && String(existing.user_id || '') === String(authorId)) ||
-                await canRetagAsset(knex, existing, callerId);
-            if (!writable) {
+            // only rows the caller may retag (its uploader, the owner of its chart job, an admin): someone else's file
+            // shown in the post keeps its tag, also when the caller wrote the post or may write its group
+            if (!(await canRetagAsset(knex, existing, callerId))) {
                 skipped += 1;
                 continue;
             }
             await knex('social_media_assets').where({ id: existing.id }).update(patch);
             updated += 1;
+            continue;
+        }
+
+        const decodedKey = decodeKey(key);
+        const areas = await getNewRowAreas();
+        if (!decodedKey || !galleryKeyScope.isKeyInAreas(key, areas) || !galleryKeyScope.isKeyInAreas(decodedKey, areas)) {
+            outOfArea += 1;
             continue;
         }
 
@@ -562,6 +589,7 @@ const syncAssetsFromPost = async (frame) => {
             updated_count: updated,
             inserted_count: inserted,
             skipped_count: skipped,
+            out_of_area_count: outOfArea,
             category: selectedTag?.name || null,
             category_slug: selectedTag?.slug || null,
             mode
@@ -778,7 +806,8 @@ const canRenameAsset = (row, userId) => {
 };
 
 // Who may change a gallery row's tag (sync-tags, PUT /social/gallery/tag): who may rename it (the uploader, the owner
-// of the chart job that made it), a member who may write the row's group, or a system admin.
+// of the chart job that made it), or a system admin. A group is shared, but writing the group only lets a member add
+// new rows to it: a row someone else uploaded is changed by its uploader alone.
 const canRetagAsset = async (knex, row, userId) => {
     if (!userId) {
         return false;
@@ -790,14 +819,6 @@ const canRetagAsset = async (knex, row, userId) => {
     }
     if (canRenameAsset({...row, chart_job_user_id: chartJobUserId}, userId)) {
         return true;
-    }
-    if (row.group_id) {
-        // @ts-ignore
-        const group = await models.SocialGroup.findOne({id: row.group_id});
-        // @ts-ignore
-        if (group && await models.SocialGroup.canAccessGroup(group, userId, 'write')) {
-            return true;
-        }
     }
     return isAdminUser(userId);
 };

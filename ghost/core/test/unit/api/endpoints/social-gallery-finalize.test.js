@@ -175,6 +175,19 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             assert.equal(rows[0].original_filename, won[0].value.data[0].user_id === OTHER ? 'theirs.png' : 'mine.png');
         });
 
+        it('a group\'s shared area: another member finalizing a file someone else uploaded gets 409, the row keeps its uploader; the uploader\'s retry still works', async function () {
+            const key = `${ROOT}/gallery/groups/group-alias/${YM}/shared-1234abcd.png`;
+            await finalize(OTHER, {...keyed(key), group_id: GROUP, original_filename: 'theirs.png'});
+            await assert.rejects(finalize(ME, {...keyed(key), group_id: GROUP, original_filename: 'mine.png'}), {errorType: 'ConflictError'});
+            let row = await rowOf(key);
+            assert.equal(row.user_id, OTHER);
+            assert.equal(row.original_filename, 'theirs.png');
+            await finalize(OTHER, {...keyed(key), group_id: GROUP, original_filename: 'theirs-2.png'});
+            row = await rowOf(key);
+            assert.equal(row.user_id, OTHER);
+            assert.equal(row.original_filename, 'theirs-2.png');
+        });
+
         it('a member upload row is never taken over by staff', async function () {
             const key = `${ROOT}/gallery/users/me-alias/${YM}/member-1234abcd.png`;
             await db('social_media_assets').insert({id: '0000000000000000000000f5', storage_key: key, storage_url: `${HOST}/${key}`, owner_scope: 'user', user_id: ME, member_id: 'member-1'});
