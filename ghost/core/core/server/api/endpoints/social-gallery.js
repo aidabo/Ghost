@@ -9,7 +9,7 @@ const socialMediaAssets = require('./utils/social-media-assets');
 const staffScope = require('./utils/staff-scope');
 const permissionsService = require('../../services/permissions');
 const galleryKeyScope = require('./utils/gallery-key-scope');
-const {canRenameAsset, canRetagAsset} = require('./utils/asset-write-access');
+const {isAdminUser, canRenameAsset, canRetagAsset} = require('./utils/asset-write-access');
 
 const messages = {
     userRequired: 'No login user authentication, can not read gallery in this scope.',
@@ -66,9 +66,8 @@ const TYPE_FILE = 'file';
 const getCurrentUserId = frame => frame.options?.context?.user || null;
 const {getIntegrationId: getCurrentIntegrationId} = require('./utils/integration-context');
 
-// System admin (Owner / Administrator / Admin). Super Editor is not: it only
-// widens the gallery listings below (isNoGroupReader), writes as a normal user.
-const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
+// isAdminUser (utils/asset-write-access): system admin (Owner / Administrator / Admin). Super Editor is not:
+// it only widens the gallery listings below (isNoGroupReader), writes as a normal user.
 
 // A project / chart job the caller may add files to: its own, or one of a group the caller may write
 // (the rule of the content-bundle link-assets). A group project / job of a group the caller is not in is refused.

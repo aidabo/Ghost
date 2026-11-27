@@ -7,7 +7,7 @@ const storage = require('../../adapters/storage');
 const ObjectId = require('bson-objectid').default;
 const socialMediaAssets = require('./utils/social-media-assets');
 const staffScope = require('./utils/staff-scope');
-const {canRetagAsset} = require('./utils/asset-write-access');
+const {isAdminUser, canLinkAssetToChartJob} = require('./utils/asset-write-access');
 
 const ALLOWED_INCLUDES = ['user', 'group'];
 
@@ -108,12 +108,9 @@ const deriveJobStatus = (steps) => {
     return 'queued';
 };
 
-// System admin (Owner / Administrator / Admin). Super Editor is not: it reads
-// and manages jobs of newsroom (no-group / public-group) projects (see browse /
-// assertRowAccess / assertProjectAccess); everything else it does as a
-// normal user.
-// @ts-ignore
-const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
+// isAdminUser (utils/asset-write-access): system admin (Owner / Administrator / Admin). Super Editor is not:
+// it reads and manages jobs of newsroom (no-group / public-group) projects (see browse /
+// assertRowAccess / assertProjectAccess); everything else it does as a normal user.
 
 // @ts-ignore
 const resolveTargetUserId = async (frame) => {
@@ -570,11 +567,12 @@ const controller = {
                 const assetUrls = [payloadInput.source_path, payloadInput.preview_url]
                     .map(u => String(u || '').trim())
                     .filter(u => /^https?:\/\//i.test(u));
-                // Only rows the job owner may write (canRetagAsset: the uploader,
-                // a member who may write the row's group, a system admin): a
-                // known URL must never pull someone else's asset into this job
-                // (destroy would then delete it). An owner-less (integration)
-                // job stamps owner-less assets only, as dzi does.
+                // Only rows the job owner may delete directly (canLinkAssetToChartJob:
+                // the uploader, the owner of the chart job that made the row, a
+                // system admin — not a mere group writer): a known URL must never
+                // pull someone else's asset into this job (destroy would then
+                // delete it). An owner-less (integration) job stamps owner-less
+                // assets only, as dzi does.
                 const ownerId = targetUserId || currentUserId || null;
                 if (jobId && assetUrls.length) {
                     const knex = models.Base.knex;
@@ -583,7 +581,7 @@ const controller = {
                         .select('id', 'user_id', 'group_id', 'chart_job_id');
                     const ids = [];
                     for (const row of rows) {
-                        if (ownerId ? await canRetagAsset(knex, row, ownerId) : !row.user_id) {
+                        if (ownerId ? await canLinkAssetToChartJob(knex, row, ownerId) : !row.user_id) {
                             ids.push(row.id);
                         }
                     }
@@ -753,8 +751,16 @@ const controller = {
                             cursor = listed?.nextCursor || null;
                         } while (cursor);
                     }
+                    // preview_url is caller-supplied and may name someone else's
+                    // file: delete it only when the job owner uploaded it (as
+                    // dzi; null-safe: an owner-less job, an owner-less row).
                     if (row.preview_url && typeof mediaStore.urlToPath === 'function') {
-                        await deleteKey(mediaStore.urlToPath(row.preview_url));
+                        const ownPreview = await knex('social_media_assets')
+                            .where({storage_url: row.preview_url, user_id: row.user_id})
+                            .first('id');
+                        if (ownPreview) {
+                            await deleteKey(mediaStore.urlToPath(row.preview_url));
+                        }
                     }
                 }
             } catch (err) {
@@ -767,18 +773,28 @@ const controller = {
             // working-area rows (storage_key …/jobs/{jobId}/…) are removed —
             // artifacts rows use stable paths that other jobs may reference and
             // must survive until project deletion. Legacy (project_id null) jobs
-            // own every row they created, so all of them are removed.
+            // own every row they created, so all of them are removed — but only
+            // the job owner's rows and owner-less (worker) rows; a row someone
+            // else uploaded (an older link) only loses its chart_job_id.
             try {
                 await knex('social_media_assets')
                     .where(function () {
                         if (row.project_id) {
                             this.whereRaw('storage_key LIKE ?', [`%/jobs/${row.id}/%`]);
                         } else {
-                            this.where('chart_job_id', row.id);
+                            this.where('chart_job_id', row.id).where(function () {
+                                this.whereNull('user_id');
+                                if (row.user_id) {
+                                    this.orWhere('user_id', row.user_id);
+                                }
+                            });
                         }
                     })
                     .orWhereRaw('storage_key LIKE ?', [`%gallery/chart_jobs/${row.id}/%`])
                     .del();
+                if (!row.project_id) {
+                    await knex('social_media_assets').where('chart_job_id', row.id).update({chart_job_id: null});
+                }
             } catch (err) {
                 logging.warn(`[social-ai-chart-jobs] asset row cleanup failed for job ${row.id}: ${err?.message || err}`);
             }
