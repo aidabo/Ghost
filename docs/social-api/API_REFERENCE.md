@@ -264,6 +264,9 @@ All routes below are based on `custom-routes.js`.
 - 一覧の項目（`listByAssetTable` を通るもの: user / group / chartjobs / newsjobs / project など）:
   - `name` = `display_name` → `original_filename` → key の最後、の順
   - `display_name`・`original_filename`（元のファイル名）・`can_rename`（今の人が名前を変えられるか）も返す
+- chart job の worker の `POST /social/ai/chart/jobs/:id/link-assets`（integration だけ）:
+  - 新しい成果物はジョブの持ち主・project・`chart_job_id` の行として作る。すでにある行（同じ `storage_key`）を使い直す（`chart_job_id` を付け替える・名前と URL を変える）のは、ジョブの持ち主がその行を直接消せるとき（上げた本人・行を作った chart job の持ち主）か、ジョブの持ち主が管理者のときだけ。持ち主の無いジョブは持ち主の無い行だけ。
+  - ほかの人の行はそのままで、このジョブにも結びつけない（応答の `skipped_count`）。`removed_keys` で消すのも同じ規則の行だけ。
 
 ### AI chats
 

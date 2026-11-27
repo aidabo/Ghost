@@ -282,6 +282,26 @@ const loadModelOrThrow = async (id) => {
     return model;
 };
 
+// link-assets: may this job's worker reuse (re-point, rename, remove) an existing gallery row? Only a row the job owner
+// may delete directly (its uploader, or the owner of the chart job that made it) or any row when the job owner is a
+// system admin; an owner-less (integration) job only owner-less rows. Same rule as the add's asset link: a row someone
+// else uploaded must not move into this job (its owner would then rename / delete it).
+const canRelinkAsset = async (knex, asset, jobUserId) => {
+    if (!jobUserId) {
+        return !asset.user_id;
+    }
+    if (String(asset.user_id || '') === String(jobUserId)) {
+        return true;
+    }
+    if (asset.chart_job_id) {
+        const madeBy = await knex(TABLE).where({id: asset.chart_job_id}).first('user_id');
+        if (madeBy?.user_id && String(madeBy.user_id) === String(jobUserId)) {
+            return true;
+        }
+    }
+    return isAdminUser(jobUserId);
+};
+
 // @ts-ignore
 const loadRowOrThrow = async (knex, id) => {
     if (!id) {
@@ -989,6 +1009,7 @@ const controller = {
                 ? payloadInput.removed_keys.map(String).map((s) => String(s).trim()).filter(Boolean)
                 : [];
             const mediaIds = [];
+            let skipped = 0;
 
             // Register worker-written S3 artifacts in social_media_assets +
             // social_ai_chart_job_media so the gallery can show them
@@ -1025,9 +1046,15 @@ const controller = {
                 // project_id keeps the row's existing value (null for new rows).
                 const jobProjectId = row.project_id || null;
 
+                if (existing && !(await canRelinkAsset(knex, existing, row.user_id))) {
+                    // Someone else's row (canRelinkAsset): left as it is, not linked to this job.
+                    skipped += 1;
+                    continue;
+                }
                 if (existing) {
-                    // Same S3 key: latest publisher wins. chart_job_id is
-                    // re-pointed; user/group fall back to existing values.
+                    // Same S3 key: latest publisher wins (a row the job owner may
+                    // reuse). chart_job_id is re-pointed; user/group fall back to
+                    // existing values.
                     await knex('social_media_assets')
                         .where({id: existing.id})
                         .update({
@@ -1074,6 +1101,10 @@ const controller = {
                                 .first();
                             if (!dup) {
                                 throw err;
+                            }
+                            if (!(await canRelinkAsset(knex, dup, row.user_id))) {
+                                skipped += 1;
+                                continue;
                             }
                             await knex('social_media_assets')
                                 .where({id: dup.id})
@@ -1144,14 +1175,21 @@ const controller = {
                 if (stillRegistered) {
                     continue;
                 }
-                await knex('social_media_assets')
+                // Only rows this job may reuse (canRelinkAsset): someone else's row stays.
+                const stale = await knex('social_media_assets')
                     .where({storage_key: key, owner_scope: 'chart_jobs'})
-                    .del();
+                    .select('id', 'user_id', 'chart_job_id');
+                for (const staleRow of stale) {
+                    if (await canRelinkAsset(knex, staleRow, row.user_id)) {
+                        await knex('social_media_assets').where({id: staleRow.id}).del();
+                    }
+                }
             }
 
             return {
                 media_ids: mediaIds,
                 count: mediaIds.length,
+                skipped_count: skipped,
                 removed_count: removedKeys.length
             };
         }
