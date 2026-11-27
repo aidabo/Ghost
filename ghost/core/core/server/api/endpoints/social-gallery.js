@@ -7,6 +7,7 @@ const storage = require('../../adapters/storage');
 const models = require('../../models');
 const socialMediaAssets = require('./utils/social-media-assets');
 const staffScope = require('./utils/staff-scope');
+const permissionsService = require('../../services/permissions');
 const galleryKeyScope = require('./utils/gallery-key-scope');
 
 const messages = {
@@ -36,6 +37,8 @@ const messages = {
     assetRowNotFound: 'Gallery asset not found: {id}.',
     noAssetPermission: 'You are not allowed to delete this gallery asset.',
     noRenamePermission: 'Only the person who added this file can change its name.',
+    noTagPermission: 'You are not allowed to change the tag of this gallery file.',
+    noSyncPostPermission: 'You are not allowed to edit this post.',
     displayNameTooLong: '`display_name` must be 200 characters or fewer.',
     displayNameRequired: '`display_name` is required (send "" or null to clear it).',
     selectedBroadcastAsset: 'This gallery asset is selected for a virtual broadcast. Clear the broadcast selection before deleting it.',
@@ -359,12 +362,9 @@ const getFrameValue = (frame, key) => {
     return row?.[key] || body[key] || frame.options?.[key] || null;
 };
 
+// The post's own URLs (feature_image, html, lexical). urls in the body only narrow them: a URL that is not in the
+// post is dropped, so sync-tags never makes or retags a row for a file the post does not show.
 const getSyncUrls = (frame, post) => {
-    const payloadUrls = getFrameValue(frame, 'urls');
-    if (Array.isArray(payloadUrls) && payloadUrls.length > 0) {
-        return payloadUrls.filter(url => typeof url === 'string');
-    }
-
     const urls = new Set();
     if (post.get('feature_image')) {
         urls.add(post.get('feature_image'));
@@ -372,6 +372,11 @@ const getSyncUrls = (frame, post) => {
 
     extractUrlsFromHtml(post.get('html')).forEach(url => urls.add(url));
     extractUrlsFromLexical(post.get('lexical')).forEach(url => urls.add(url));
+
+    const payloadUrls = getFrameValue(frame, 'urls');
+    if (Array.isArray(payloadUrls) && payloadUrls.length > 0) {
+        return payloadUrls.filter(url => typeof url === 'string' && urls.has(url));
+    }
     return Array.from(urls);
 };
 
@@ -404,6 +409,14 @@ const assertCanSyncPost = async (frame, post) => {
 
     const groupId = post.get('group_id');
     if (!groupId) {
+        // outside a group: whoever Ghost lets edit the post (its author, editors, admins)
+        try {
+            await permissionsService.canThis(frame.options.context).edit.post(post.id);
+        } catch (err) {
+            throw new errors.NoPermissionError({
+                message: tpl(messages.noSyncPostPermission)
+            });
+        }
         return;
     }
 
@@ -475,8 +488,11 @@ const syncAssetsFromPost = async (frame) => {
 
     let updated = 0;
     let inserted = 0;
+    let skipped = 0;
+    const callerId = frame.options?.context?.user;
+    const authorId = post.get('created_by');
     for (const key of keys) {
-        const existing = await socialMediaAssets.findAssetRowByStorageKey(knex, key, ['id']);
+        const existing = await socialMediaAssets.findAssetRowByStorageKey(knex, key, ['id', 'user_id', 'group_id', 'chart_job_id']);
         const patch = {
             tag_id: selectedTag?.id || null,
             tag_slug: selectedTag?.slug || null,
@@ -484,6 +500,13 @@ const syncAssetsFromPost = async (frame) => {
         };
 
         if (existing) {
+            // only rows the caller may retag, or the post author's own: someone else's file shown in the post keeps its tag
+            const writable = (authorId && String(existing.user_id || '') === String(authorId)) ||
+                await canRetagAsset(knex, existing, callerId);
+            if (!writable) {
+                skipped += 1;
+                continue;
+            }
             await knex('social_media_assets').where({ id: existing.id }).update(patch);
             updated += 1;
             continue;
@@ -523,6 +546,7 @@ const syncAssetsFromPost = async (frame) => {
             synced_count: keys.length,
             updated_count: updated,
             inserted_count: inserted,
+            skipped_count: skipped,
             category: selectedTag?.name || null,
             category_slug: selectedTag?.slug || null,
             mode
@@ -736,6 +760,31 @@ const canRenameAsset = (row, userId) => {
     }
     return String(row.user_id || '') === String(userId) ||
         (Boolean(row.chart_job_user_id) && String(row.chart_job_user_id) === String(userId));
+};
+
+// Who may change a gallery row's tag (sync-tags, PUT /social/gallery/tag): who may rename it (the uploader, the owner
+// of the chart job that made it), a member who may write the row's group, or a system admin.
+const canRetagAsset = async (knex, row, userId) => {
+    if (!userId) {
+        return false;
+    }
+    let chartJobUserId = null;
+    if (row.chart_job_id) {
+        const job = await knex('social_ai_chart_jobs').where({id: row.chart_job_id}).first('user_id');
+        chartJobUserId = job?.user_id || null;
+    }
+    if (canRenameAsset({...row, chart_job_user_id: chartJobUserId}, userId)) {
+        return true;
+    }
+    if (row.group_id) {
+        // @ts-ignore
+        const group = await models.SocialGroup.findOne({id: row.group_id});
+        // @ts-ignore
+        if (group && await models.SocialGroup.canAccessGroup(group, userId, 'write')) {
+            return true;
+        }
+    }
+    return isAdminUser(userId);
 };
 
 // The name lists show: the display name (alias) first, then the uploaded file name, then the last part of the key.
@@ -2620,11 +2669,23 @@ const controller = {
                 });
             }
 
+            const userId = getCurrentUserId(frame);
+            if (!userId) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.userRequired)
+                });
+            }
+
             const knex = models.Base.knex;
-            const existing = await socialMediaAssets.findAssetRowByStorageKey(knex, storageKey, ['id']);
+            const existing = await socialMediaAssets.findAssetRowByStorageKey(knex, storageKey, ['id', 'user_id', 'group_id', 'chart_job_id']);
             if (!existing) {
                 throw new errors.NotFoundError({
                     message: tpl(messages.assetNotFound, {storageKey})
+                });
+            }
+            if (!(await canRetagAsset(knex, existing, userId))) {
+                throw new errors.NoPermissionError({
+                    message: tpl(messages.noTagPermission)
                 });
             }
 
