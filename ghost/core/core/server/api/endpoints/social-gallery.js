@@ -69,8 +69,10 @@ const {getIntegrationId: getCurrentIntegrationId} = require('./utils/integration
 // widens the gallery listings below (isNoGroupReader), writes as a normal user.
 const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
 
-// A project / chart job the caller may add files to: its own, or one of a group the caller may write
-// (the rule of the content-bundle link-assets). A group project / job of a group the caller is not in is refused.
+// A project / chart job the caller may add files to (copy-to-project / copy-to-job): the caller's own row
+// (row.user_id), or a row of a group the caller may write (canAccessGroup 'write': an active member of an active
+// group, or an admin of a group that is not archived). A member who may only read the group, a group the caller
+// is not in, and a group that no longer exists are refused. Same rule as the content-bundle link-assets.
 const canWriteOwnOrGroupRow = async (row, userId) => {
     if (String(row.user_id || '') === String(userId)) {
         return true;
@@ -377,22 +379,54 @@ const getFrameValue = (frame, key) => {
     return row?.[key] || body[key] || frame.options?.[key] || null;
 };
 
-// The post's own URLs (feature_image, html, lexical). urls in the body only narrow them: a URL that is not in the
-// post is dropped, so sync-tags never makes or retags a row for a file the post does not show.
-const getSyncUrls = (frame, post) => {
+// A URL of the media store as its storage key, for comparing a URL of the body with one of the post:
+// `&amp;` of the html and percent-encoding do not change the key. null when the URL is not on the store.
+const toComparableKey = (store, url) => {
+    if (typeof url !== 'string' || typeof store.urlToPath !== 'function') {
+        return null;
+    }
+    const value = url.replace(/&amp;/gi, '&');
+    if (!value.startsWith(store.host)) {
+        return null;
+    }
+    const key = store.urlToPath(value);
+    return key ? (decodeKey(key) || key) : null;
+};
+
+// The post's own URLs (feature_image, html, lexical). urls in the body only narrow them, matched by storage key:
+// a URL that is not in the post is dropped (droppedUrlCount), so sync-tags never makes or retags a row for a file
+// the post does not show.
+const getSyncUrls = (frame, post, store) => {
     const urls = new Set();
     if (post.get('feature_image')) {
         urls.add(post.get('feature_image'));
     }
 
-    extractUrlsFromHtml(post.get('html')).forEach(url => urls.add(url));
+    extractUrlsFromHtml(post.get('html')).forEach(url => urls.add(url.replace(/&amp;/gi, '&')));
     extractUrlsFromLexical(post.get('lexical')).forEach(url => urls.add(url));
 
     const payloadUrls = getFrameValue(frame, 'urls');
-    if (Array.isArray(payloadUrls) && payloadUrls.length > 0) {
-        return payloadUrls.filter(url => typeof url === 'string' && urls.has(url));
+    if (!Array.isArray(payloadUrls) || payloadUrls.length === 0) {
+        return {urls: Array.from(urls), droppedUrlCount: 0};
     }
-    return Array.from(urls);
+    const postUrlByKey = new Map();
+    urls.forEach((url) => {
+        const key = toComparableKey(store, url);
+        if (key && !postUrlByKey.has(key)) {
+            postUrlByKey.set(key, url);
+        }
+    });
+    const kept = new Set();
+    let droppedUrlCount = 0;
+    payloadUrls.forEach((url) => {
+        const key = toComparableKey(store, url);
+        if (key && postUrlByKey.has(key)) {
+            kept.add(postUrlByKey.get(key));
+        } else {
+            droppedUrlCount += 1;
+        }
+    });
+    return {urls: Array.from(kept), droppedUrlCount};
 };
 
 const getPrimaryTag = (post) => {
@@ -467,7 +501,7 @@ const syncAssetsFromPost = async (frame) => {
     // @ts-ignore
     const post = await models.Post.findOne({ id: postId }, {
         context: { internal: true },
-        withRelated: ['tags']
+        withRelated: ['tags', 'authors']
     });
 
     if (!post) {
@@ -479,7 +513,7 @@ const syncAssetsFromPost = async (frame) => {
     await assertCanSyncPost(frame, post);
 
     const selectedTag = mode === 'primary' ? getPrimaryTag(post) : null;
-    const urls = getSyncUrls(frame, post);
+    const {urls, droppedUrlCount} = getSyncUrls(frame, post, mediaStore);
     const keyToUrl = new Map();
     urls.forEach((url) => {
         if (typeof url !== 'string') {
@@ -505,7 +539,9 @@ const syncAssetsFromPost = async (frame) => {
     let inserted = 0;
     let skipped = 0;
     const callerId = frame.options?.context?.user;
-    const authorId = post.get('created_by');
+    // the post's authors: created_by and everyone in its authors
+    const authorIds = new Set([post.get('created_by'), ...(post.related('authors')?.toJSON?.() || []).map(author => author?.id)]
+        .filter(Boolean).map(String));
     for (const key of keys) {
         const existing = await socialMediaAssets.findAssetRowByStorageKey(knex, key, ['id', 'user_id', 'group_id', 'chart_job_id']);
         const patch = {
@@ -516,7 +552,7 @@ const syncAssetsFromPost = async (frame) => {
 
         if (existing) {
             // only rows the caller may retag, or the post author's own: someone else's file shown in the post keeps its tag
-            const writable = (authorId && String(existing.user_id || '') === String(authorId)) ||
+            const writable = authorIds.has(String(existing.user_id || '')) ||
                 await canRetagAsset(knex, existing, callerId);
             if (!writable) {
                 skipped += 1;
@@ -562,6 +598,7 @@ const syncAssetsFromPost = async (frame) => {
             updated_count: updated,
             inserted_count: inserted,
             skipped_count: skipped,
+            dropped_url_count: droppedUrlCount,
             category: selectedTag?.name || null,
             category_slug: selectedTag?.slug || null,
             mode

@@ -1,6 +1,7 @@
 // 自分のギャラリーのファイルを project・chart job に写す（POST /social/gallery/copy-to-project・copy-to-job）。
 // 写せるのは自分のファイルだけ、写し先は自分の project・job か、書けるグループの project・job だけ
 // （content-bundle の link-assets と同じ規則）。前はグループの project・job ならメンバーでなくても写せた。
+// 読めるだけのメンバー・無くなったグループは断る。管理者はアーカイブされたグループには写せない（本物の canAccessGroup で確かめる）。
 const assert = require('assert/strict');
 const sinon = require('sinon');
 const knex = require('knex');
@@ -14,11 +15,20 @@ const ME = '00000000000000000000aa01';
 const OTHER = '00000000000000000000aa02';
 const MY_GROUP = '00000000000000000000bb01';
 const OTHERS_GROUP = '00000000000000000000bb02';
+const ADMIN = '00000000000000000000aa03';
+const READ_ONLY_GROUP = '00000000000000000000bb03';
+const ARCHIVED_GROUP = '00000000000000000000bb04';
+const GONE_GROUP = '00000000000000000000bb05';
 const ASSET = '00000000000000000000a001';
+const OTHERS_ASSET = '00000000000000000000a002';
+const ADMIN_ASSET = '00000000000000000000a003';
 const MY_PROJECT = '00000000000000000000dd01';
 const MY_GROUP_PROJECT = '00000000000000000000dd02';
 const OTHERS_GROUP_PROJECT = '00000000000000000000dd03';
 const OTHERS_PROJECT = '00000000000000000000dd04';
+const READ_ONLY_GROUP_PROJECT = '00000000000000000000dd05';
+const ARCHIVED_GROUP_PROJECT = '00000000000000000000dd06';
+const GONE_GROUP_PROJECT = '00000000000000000000dd07';
 const MY_JOB = '00000000000000000000ee01';
 const MY_GROUP_JOB = '00000000000000000000ee02';
 const OTHERS_GROUP_JOB = '00000000000000000000ee03';
@@ -65,17 +75,30 @@ describe('Social gallery: copy-to-project / copy-to-job only into what the calle
             urlToPath: value => value.replace(`${HOST}/`, ''),
             copy: async (from, to) => `${HOST}/${to}`
         });
-        sinon.stub(models.SocialGroup, 'findOne').callsFake(async ({id}) => ([MY_GROUP, OTHERS_GROUP].includes(id) ? {id} : null));
-        sinon.stub(models.SocialGroup, 'canAccessGroup').callsFake(async (group, userId) => group.id === MY_GROUP && userId === ME);
+        sinon.stub(models.SocialGroup, 'findOne').callsFake(async ({id}) => ([MY_GROUP, OTHERS_GROUP, READ_ONLY_GROUP].includes(id) ? {id} : null));
+        // write only in MY_GROUP; in READ_ONLY_GROUP ME may only read
+        sinon.stub(models.SocialGroup, 'canAccessGroup').callsFake(async (group, userId, mode) => {
+            if (userId !== ME) {
+                return false;
+            }
+            return group.id === MY_GROUP || (group.id === READ_ONLY_GROUP && mode === 'read');
+        });
         for (const name of ['social_media_assets', 'social_ai_projects', 'social_ai_chart_jobs']) {
             await db(name).del();
         }
-        await db('social_media_assets').insert({id: ASSET, user_id: ME, storage_key: 'content/media/gallery/users/me/photo.png', storage_url: `${HOST}/content/media/gallery/users/me/photo.png`, asset_type: 'image', original_filename: 'photo.png', owner_scope: 'user'});
+        await db('social_media_assets').insert([
+            {id: ASSET, user_id: ME, storage_key: 'content/media/gallery/users/me/photo.png', storage_url: `${HOST}/content/media/gallery/users/me/photo.png`, asset_type: 'image', original_filename: 'photo.png', owner_scope: 'user'},
+            {id: OTHERS_ASSET, user_id: OTHER, storage_key: 'content/media/gallery/users/other/photo.png', storage_url: `${HOST}/content/media/gallery/users/other/photo.png`, asset_type: 'image', original_filename: 'photo.png', owner_scope: 'user'},
+            {id: ADMIN_ASSET, user_id: ADMIN, storage_key: 'content/media/gallery/users/admin/photo.png', storage_url: `${HOST}/content/media/gallery/users/admin/photo.png`, asset_type: 'image', original_filename: 'photo.png', owner_scope: 'user'}
+        ]);
         await db('social_ai_projects').insert([
             {id: MY_PROJECT, user_id: ME, group_id: null},
             {id: MY_GROUP_PROJECT, user_id: OTHER, group_id: MY_GROUP},
             {id: OTHERS_GROUP_PROJECT, user_id: OTHER, group_id: OTHERS_GROUP},
-            {id: OTHERS_PROJECT, user_id: OTHER, group_id: null}
+            {id: OTHERS_PROJECT, user_id: OTHER, group_id: null},
+            {id: READ_ONLY_GROUP_PROJECT, user_id: OTHER, group_id: READ_ONLY_GROUP},
+            {id: ARCHIVED_GROUP_PROJECT, user_id: OTHER, group_id: ARCHIVED_GROUP},
+            {id: GONE_GROUP_PROJECT, user_id: OTHER, group_id: GONE_GROUP}
         ]);
         await db('social_ai_chart_jobs').insert([
             {id: MY_JOB, user_id: ME, group_id: null, project_id: MY_PROJECT},
@@ -89,9 +112,9 @@ describe('Social gallery: copy-to-project / copy-to-job only into what the calle
         sinon.restore();
     });
 
-    const toProject = (user, projectId) => endpoint.copyToProject.query({options: {context: {user}}, data: {id: ASSET, project_id: projectId}});
+    const toProject = (user, projectId, assetId = ASSET) => endpoint.copyToProject.query({options: {context: {user}}, data: {id: assetId, project_id: projectId}});
     const toJob = (user, jobId) => endpoint.copyToJob.query({options: {context: {user}}, data: {id: ASSET, job_id: jobId}});
-    const copies = () => db('social_media_assets').whereNot({id: ASSET});
+    const copies = () => db('social_media_assets').whereNotIn('id', [ASSET, OTHERS_ASSET, ADMIN_ASSET]);
 
     it('into my own project and into a project of a group I may write', async function () {
         await toProject(ME, MY_PROJECT);
@@ -117,7 +140,48 @@ describe('Social gallery: copy-to-project / copy-to-job only into what the calle
         assert.equal((await copies()).length, 0);
     });
 
-    it('someone else\'s file is still refused', async function () {
-        await assert.rejects(toProject(OTHER, MY_GROUP_PROJECT), {errorType: 'NoPermissionError'});
+    it('someone else\'s file is refused even into a project the caller may write (only the file\'s owner is checked)', async function () {
+        // OTHER may write OTHERS_PROJECT: OTHER's own file goes in
+        await toProject(OTHER, OTHERS_PROJECT, OTHERS_ASSET);
+        assert.equal((await copies()).length, 1);
+        await assert.rejects(toProject(OTHER, OTHERS_PROJECT, ASSET), {errorType: 'NoPermissionError'});
+        assert.equal((await copies()).length, 1);
+    });
+
+    it('a member who may only read the group may not copy into its project', async function () {
+        await assert.rejects(toProject(ME, READ_ONLY_GROUP_PROJECT), {errorType: 'NoPermissionError'});
+        assert.equal((await copies()).length, 0);
+    });
+
+    it('a project whose group is gone is refused', async function () {
+        await assert.rejects(toProject(ME, GONE_GROUP_PROJECT), {errorType: 'NoPermissionError'});
+        assert.equal((await copies()).length, 0);
+    });
+
+    describe('the admin path (the real canAccessGroup)', function () {
+        beforeEach(function () {
+            models.SocialGroup.findOne.restore();
+            models.SocialGroup.canAccessGroup.restore();
+            const group = (id, status) => ({id, get: key => ({id, status})[key]});
+            sinon.stub(models.SocialGroup, 'findOne').callsFake(async ({id}) => ({
+                [OTHERS_GROUP]: group(OTHERS_GROUP, 'active'),
+                [ARCHIVED_GROUP]: group(ARCHIVED_GROUP, 'archived')
+            })[id] || null);
+            sinon.stub(models.User, 'findOne').callsFake(async ({id}) => ({
+                related: () => ({some: matches => id === ADMIN && matches({get: () => 'Administrator'})})
+            }));
+            sinon.stub(models.SocialGroupMember, 'findOne').resolves(null);
+        });
+
+        it('an admin may copy own file into an active group\'s project', async function () {
+            await toProject(ADMIN, OTHERS_GROUP_PROJECT, ADMIN_ASSET);
+            assert.equal((await copies()).length, 1);
+        });
+
+        it('an admin may not copy into a project of an archived group, nor of a group that is gone', async function () {
+            await assert.rejects(toProject(ADMIN, ARCHIVED_GROUP_PROJECT, ADMIN_ASSET), {errorType: 'NoPermissionError'});
+            await assert.rejects(toProject(ADMIN, GONE_GROUP_PROJECT, ADMIN_ASSET), {errorType: 'NoPermissionError'});
+            assert.equal((await copies()).length, 0);
+        });
     });
 });
