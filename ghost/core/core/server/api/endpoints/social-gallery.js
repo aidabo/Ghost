@@ -69,6 +69,21 @@ const {getIntegrationId: getCurrentIntegrationId} = require('./utils/integration
 // widens the gallery listings below (isNoGroupReader), writes as a normal user.
 const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
 
+// A project / chart job the caller may add files to: its own, or one of a group the caller may write
+// (the rule of the content-bundle link-assets). A group project / job of a group the caller is not in is refused.
+const canWriteOwnOrGroupRow = async (row, userId) => {
+    if (String(row.user_id || '') === String(userId)) {
+        return true;
+    }
+    if (!row.group_id) {
+        return false;
+    }
+    // @ts-ignore
+    const group = await models.SocialGroup.findOne({id: row.group_id});
+    // @ts-ignore
+    return Boolean(group && await models.SocialGroup.canAccessGroup(group, userId, 'write'));
+};
+
 const assertCanReadRow = async ({frame, row}) => {
     const currentUserId = getCurrentUserId(frame);
     if (getCurrentIntegrationId(frame) || await isAdminUser(currentUserId)) {
@@ -2973,7 +2988,7 @@ const controller = {
                     message: tpl(messages.projectNotFound, {projectId})
                 });
             }
-            if (String(project.user_id || '') !== String(userId) && !project.group_id) {
+            if (!(await canWriteOwnOrGroupRow(project, userId))) {
                 throw new errors.NoPermissionError({
                     message: tpl(messages.noProjectPermission)
                 });
@@ -3074,7 +3089,7 @@ const controller = {
                     message: tpl(messages.noAssetPermission)
                 });
             }
-            // Destination job: caller must own the job (or be in its group).
+            // Destination job: caller must own the job (or may write its group).
             // project_id comes from the JOB row, never from the payload (mirror link-assets).
             const job = await knex('social_ai_chart_jobs')
                 .where({id: jobId})
@@ -3084,7 +3099,7 @@ const controller = {
                     message: tpl(messages.jobNotFound, {jobId})
                 });
             }
-            if (String(job.user_id || '') !== String(userId) && !job.group_id) {
+            if (!(await canWriteOwnOrGroupRow(job, userId))) {
                 throw new errors.NoPermissionError({
                     message: tpl(messages.noJobPermission)
                 });
@@ -3099,7 +3114,7 @@ const controller = {
                         message: tpl(messages.projectNotFound, {projectId})
                     });
                 }
-                if (String(project.user_id || '') !== String(userId) && !project.group_id) {
+                if (!(await canWriteOwnOrGroupRow(project, userId))) {
                     throw new errors.NoPermissionError({
                         message: tpl(messages.noProjectPermission)
                     });
