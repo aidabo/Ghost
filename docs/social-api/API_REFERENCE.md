@@ -266,7 +266,10 @@ All routes below are based on `custom-routes.js`.
   - `display_name`・`original_filename`（元のファイル名）・`can_rename`（今の人が名前を変えられるか）も返す
 - chart job の worker の `POST /social/ai/chart/jobs/:id/link-assets`（integration だけ）:
   - 新しい成果物はジョブの持ち主・project・`chart_job_id` の行として作る。すでにある行（同じ `storage_key`）を使い直す（`chart_job_id` を付け替える・名前と URL を変える）のは、ジョブの持ち主がその行を直接消せるとき（上げた本人・行を作った chart job の持ち主）か、ジョブの持ち主が管理者のときだけ。持ち主の無いジョブは持ち主の無い行だけ。
+  - 使い直すのは chart 用の行（`owner_scope` が `chart_jobs`）と直接アップロードの行（`user`・`group`）だけ。ほかのジョブの行（`news_job_id`・`video_job_id`・`dzi_job_id`・`content_bundle_job_id` が付いている行、`news_jobs` など別の `owner_scope`）は持ち主や管理者でも使い直さない。
   - ほかの人の行はそのままで、このジョブにも結びつけない（応答の `skipped_count`）。`removed_keys` で消すのも同じ規則の行だけ。
+  - 応答: `media_ids`（結びつけた行の id）・`count`（その数）・`skipped_count`（使い直せずに飛ばした成果物の数）・`removed_count`（`removed_keys` で実際に消した行の数）・`removed_skipped_count`（`removed_keys` にあったが消さなかった行の数）。
+  - skip された成果物には行ができないので、worker はジョブ固有のファイル名（key）にする。
 
 ### AI chats
 
