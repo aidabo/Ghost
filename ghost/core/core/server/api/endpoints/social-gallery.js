@@ -429,6 +429,29 @@ const getSyncUrls = (frame, post, store) => {
     return {urls: Array.from(kept), droppedUrlCount};
 };
 
+// A row may be stored under the percent-encoded or the decoded spelling of its key (finalize keeps the key of the
+// URL the client sent; a post may show the other spelling). Look under both so sync-tags never makes a second row.
+const keySpellings = (key) => {
+    const decoded = decodeKey(key) || key;
+    let encoded = decoded;
+    try {
+        encoded = encodeURI(decoded);
+    } catch (err) {
+        encoded = decoded;
+    }
+    return Array.from(new Set([key, decoded, encoded]));
+};
+
+const findRowBySpellings = async (knex, key, columns) => {
+    for (const spelling of keySpellings(key)) {
+        const row = await socialMediaAssets.findAssetRowByStorageKey(knex, spelling, columns);
+        if (row) {
+            return row;
+        }
+    }
+    return null;
+};
+
 const getPrimaryTag = (post) => {
     const related = post.related('tags');
     const tags = related?.toJSON?.() || [];
@@ -515,6 +538,7 @@ const syncAssetsFromPost = async (frame) => {
     const selectedTag = mode === 'primary' ? getPrimaryTag(post) : null;
     const {urls, droppedUrlCount} = getSyncUrls(frame, post, mediaStore);
     const keyToUrl = new Map();
+    const seenFiles = new Set();
     urls.forEach((url) => {
         if (typeof url !== 'string') {
             return;
@@ -526,8 +550,12 @@ const syncAssetsFromPost = async (frame) => {
             return;
         }
         const key = mediaStore.urlToPath(url);
-        if (key) {
+        const sameFile = toComparableKey(mediaStore, url);
+        if (key && !(sameFile && seenFiles.has(sameFile))) {
             keyToUrl.set(key, url);
+            if (sameFile) {
+                seenFiles.add(sameFile);
+            }
         }
     });
 
@@ -543,7 +571,7 @@ const syncAssetsFromPost = async (frame) => {
     const authorIds = new Set([post.get('created_by'), ...(post.related('authors')?.toJSON?.() || []).map(author => author?.id)]
         .filter(Boolean).map(String));
     for (const key of keys) {
-        const existing = await socialMediaAssets.findAssetRowByStorageKey(knex, key, ['id', 'user_id', 'group_id', 'chart_job_id']);
+        const existing = await findRowBySpellings(knex, key, ['id', 'user_id', 'group_id', 'chart_job_id']);
         const patch = {
             tag_id: selectedTag?.id || null,
             tag_slug: selectedTag?.slug || null,

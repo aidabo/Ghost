@@ -166,6 +166,25 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
             assert.equal(result.data[0].dropped_url_count, 0);
         });
 
+        it('the post spells a file percent-encoded and the row is stored decoded (or the reverse): the row is found, no second row is made', async function () {
+            const jaKey = 'content/media/gallery/users/me/2026/11/写真.png';
+            const encKey = 'content/media/gallery/users/me/2026/11/%E7%94%BB.png';
+            const before = (await db('social_media_assets')).length;
+            await db('social_media_assets').insert([
+                {id: 'a8', storage_key: jaKey, storage_url: url(jaKey), owner_scope: 'user', user_id: ME},
+                {id: 'a9', storage_key: encKey, storage_url: url(encKey), owner_scope: 'user', user_id: ME}
+            ]);
+            posts[POST] = makePost({id: POST, createdBy: ME, html: `<img src="${encodeURI(url(jaKey))}"><img src="${url('content/media/gallery/users/me/2026/11/画.png')}">`});
+            const result = await sync(ME, {post_id: POST, mode: 'primary', urls: [url(jaKey), encodeURI(url('content/media/gallery/users/me/2026/11/画.png'))]});
+            assert.equal(await tagOf(jaKey), 'travel');
+            assert.equal(await tagOf(encKey), 'travel');
+            assert.equal((await db('social_media_assets').whereIn('id', ['a8', 'a9'])).length, 2);
+            assert.equal(result.data[0].updated_count, 2);
+            assert.equal(result.data[0].inserted_count, 0);
+            assert.equal(result.data[0].dropped_url_count, 0);
+            assert.equal((await db('social_media_assets')).length, before + 2);
+        });
+
         it('urls in the body narrow a post whose files are only in feature_image and lexical', async function () {
             const lexical = JSON.stringify({root: {children: [{type: 'image', src: url(CHART_KEY)}]}});
             posts[POST] = makePost({id: POST, createdBy: ME, featureImage: url(MINE_KEY), lexical});
