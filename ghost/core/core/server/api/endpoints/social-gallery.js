@@ -379,6 +379,16 @@ const getFrameValue = (frame, key) => {
     return row?.[key] || body[key] || frame.options?.[key] || null;
 };
 
+// store.urlToPath, but a URL it does not serve is null: LocalStorageBase throws for a URL on its host outside the
+// media area (an <a href> in the html), which must not turn sync-tags into a 500.
+const safeUrlToPath = (store, url) => {
+    try {
+        return store.urlToPath(url) || null;
+    } catch (err) {
+        return null;
+    }
+};
+
 // A URL of the media store as its storage key, for comparing a URL of the body with one of the post:
 // `&amp;` of the html and percent-encoding do not change the key. null when the URL is not on the store.
 const toComparableKey = (store, url) => {
@@ -389,7 +399,7 @@ const toComparableKey = (store, url) => {
     if (!value.startsWith(store.host)) {
         return null;
     }
-    const key = store.urlToPath(value);
+    const key = safeUrlToPath(store, value);
     return key ? (decodeKey(key) || key) : null;
 };
 
@@ -549,7 +559,7 @@ const syncAssetsFromPost = async (frame) => {
         if (typeof mediaStore.urlToPath !== 'function') {
             return;
         }
-        const key = mediaStore.urlToPath(url);
+        const key = safeUrlToPath(mediaStore, url);
         const sameFile = toComparableKey(mediaStore, url);
         if (key && !(sameFile && seenFiles.has(sameFile))) {
             keyToUrl.set(key, url);

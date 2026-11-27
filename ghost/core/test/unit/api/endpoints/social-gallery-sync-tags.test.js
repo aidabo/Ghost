@@ -83,7 +83,13 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
         const store = {
             host: HOST,
             list: async () => [],
-            urlToPath: value => value.replace(`${HOST}/`, '')
+            urlToPath: (value) => {
+                // like LocalStorageBase: a URL on the host but outside the media area throws
+                if (!value.startsWith(`${HOST}/content/media/`)) {
+                    throw new Error('IncorrectUsageError: not a media URL');
+                }
+                return value.replace(`${HOST}/`, '');
+            }
         };
         sinon.stub(storage, 'getStorage').returns(store);
         posts = {
@@ -183,6 +189,16 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
             assert.equal(result.data[0].inserted_count, 0);
             assert.equal(result.data[0].dropped_url_count, 0);
             assert.equal((await db('social_media_assets')).length, before + 2);
+        });
+
+        it('a link on the media host but outside the media area (e.g. <a href>) is not a file: no 500, it is left out', async function () {
+            posts[POST] = makePost({id: POST, createdBy: ME, html: `<a href="${HOST}/about/">about</a><img src="${url(MINE_KEY)}">`});
+            const plain = await sync(ME, {post_id: POST, mode: 'primary'});
+            assert.equal(plain.data[0].synced_count, 1);
+            const narrowed = await sync(ME, {post_id: POST, mode: 'primary', urls: [`${HOST}/about/`, url(MINE_KEY)]});
+            assert.equal(narrowed.data[0].synced_count, 1);
+            assert.equal(narrowed.data[0].dropped_url_count, 1);
+            assert.equal(await tagOf(MINE_KEY), 'travel');
         });
 
         it('urls in the body narrow a post whose files are only in feature_image and lexical', async function () {

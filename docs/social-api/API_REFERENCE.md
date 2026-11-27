@@ -255,11 +255,11 @@ All routes below are based on `custom-routes.js`.
     - `target: "chart_jobs"`・`"news_jobs"` の `job_id` はそのジョブの id として扱い、行の `chart_job_id`・`news_job_id` に入れる（行の `job_id` 欄＝メディアジョブには入れない。確かめは上と同じ）。`job_id` と `chart_job_id`・`news_job_id` が食い違えば 422。
   - `POST /social/gallery/sync-tags` — Post の主タグをその Post に出ているファイルの行に付ける。body `{post_id, mode: "primary", urls?}`。
     - ログインした人だけ（Admin API の鍵＝integration だけの呼び出しは 403）。Post を直せる人だけ: グループの Post はそのグループに書ける人、それ以外は Ghost の Post の編集の権限。
-    - 使う URL は Post の中（`feature_image`・html・lexical）のものだけ。body の `urls` はそれを絞るだけで、storage key で比べる（html の `&amp;`・percent-encode の違いは同じとみなす）。すでにある行は percent-encode した綴りと戻した綴りの両方で探し、2 つ目の行は作らない。Post に無い URL は使わず、その数を `dropped_url_count` で返す。
+    - 使う URL は Post の中（`feature_image`・html・lexical）のものだけ。body の `urls` はそれを絞るだけで、storage key で比べる（html の `&amp;`・percent-encode の違いは同じとみなす）。すでにある行は percent-encode した綴りと戻した綴りの両方で探し、2 つ目の行は作らない。Post に無い URL・メディアストアの URL として読めない URL（media の外のリンクなど）は使わず、その数を `dropped_url_count` で返す。
     - すでにある行は、書ける行（上げた本人・Post の作者＝`created_by` と `authors`・chart job の持ち主・グループに書けるメンバー・管理者）だけタグを変える。ほかの人の行はそのままで `skipped_count` に数える。行の無い URL は Post の作者の行として作る（`inserted_count`）。
     - 応答: `{post_id, synced_count, updated_count, inserted_count, skipped_count, dropped_url_count, category, category_slug, mode}`
   - `PUT /social/gallery/tag` — 1 つの行のタグを変える。body `{storage_key, tag_slug}`。
-    - ログインした人だけ（鍵だけは 403）。変えられるのは上の「書ける行」だけ。ほかの人の行は 403。
+    - ログインした人だけ（鍵だけは 403）。変えられるのは、上げた本人・chart job の持ち主・グループに書けるメンバー・管理者の行だけ（Post を見ないので、Post の作者であることは理由にならない）。ほかの人の行は 403。
   - `POST /social/gallery/copy-to-project` — body `{id, project_id}`。自分のギャラリーのファイルを project に写す。
   - `POST /social/gallery/copy-to-job` — body `{id, job_id}`。自分のファイルを chart job に写す（project はジョブの行のものを使い、その project も確かめる）。
     - 2 つとも、ログインした人だけ（鍵だけは 403）。写せるのは自分のファイル（行の `user_id` が自分）だけ。
