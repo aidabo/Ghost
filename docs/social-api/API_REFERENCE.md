@@ -242,6 +242,12 @@ All routes below are based on `custom-routes.js`.
   - `/ghost/api/admin/social/gallery`
 - endpoint export:
   - `api.socialGallery`
+- 行（`social_media_assets` の 1 件）を変えられる人（実装と同じ）:
+  | 操作 | 変えられる人 |
+  | --- | --- |
+  | 上書き（finalize で同じ key を登録し直す） | その行を上げた本人の再送だけ（同じ範囲・同じ本人・同じグループ）。ほかは 409 |
+  | 名前・削除 | 上げた本人、行を作った chart job の持ち主（管理者は不可） |
+  | タグ（`PUT /social/gallery/tag`・sync-tags） | 上げた本人・Post の作者・chart job の持ち主・グループに書けるメンバー・管理者（main のまま変えない） |
 - routes:
   - `GET /social/gallery/user`
   - `GET /social/gallery/group`
@@ -255,7 +261,7 @@ All routes below are based on `custom-routes.js`.
     - すでに同じ key の行があるとき、上書きするのはその行を上げた本人の再送（同じ範囲・同じ本人・同じグループ）だけ。ほかのメンバーが上げたファイルを finalize し直すと 409（行の持ち主・名前はそのまま）。
     - `target: "chart_jobs"`・`"news_jobs"` の `job_id` はそのジョブの id として扱い、行の `chart_job_id`・`news_job_id` に入れる（行の `job_id` 欄＝メディアジョブには入れない。確かめは上と同じ）。`job_id` と `chart_job_id`・`news_job_id` が食い違えば 422。
   - `POST /social/gallery/sync-tags` — Post の主タグを、Post に出ているファイルの行に付ける。タグを変えられる人の決まりは変えていない（上げた本人・Post の作者・chart job の持ち主・グループに書けるメンバー・管理者。ほかの人の行はそのままで `skipped_count`）。
-    - 行の無い URL は、key が Post の作者の置き場所（`gallery/users/<作者>/…`）か Post のグループの置き場所（`gallery/groups/<グループ>/…`）の中にあるときだけ、Post の作者の行として作る（`inserted_count`。範囲の確かめは finalize と同じ）。外の key は行を作らず `out_of_area_count` に数える。
+    - 行の無い URL は、key が Post の作者の置き場所（`gallery/users/<作者>/…`）か Post のグループの置き場所（`gallery/groups/<グループ>/…`）の中にあるときだけ、Post の作者の行として作る（個人の置き場所なら個人の行、グループの置き場所ならグループの行。別名が読めない置き場所は許さない。`inserted_count`。範囲の確かめは finalize と同じ）。外の key は行を作らず `out_of_area_count` に数える。
   - `PUT /social/gallery/assets/:id/name` — 表示の名前（別名）を付ける。body `{display_name}`（200 文字まで、空なら消す）。
     変えるのは `social_media_assets.display_name` だけ（S3・`storage_key`・`original_filename` はそのまま）。
     変えられるのは削除（`DELETE /social/gallery/assets/:id`）と同じ人: 上げた本人、または行を作った chart job の持ち主。

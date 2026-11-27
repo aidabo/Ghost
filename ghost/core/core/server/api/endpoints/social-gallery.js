@@ -510,6 +510,7 @@ const syncAssetsFromPost = async (frame) => {
     // A URL with no row becomes a row only when its key is in the post author's own area or the post's group's area
     // (the areas presign / finalize hand out for them, same check as finalize): a key of someone else's area written
     // into the post must not become a row that the author owns.
+    // An area whose alias cannot be read (deleted user or group) is not added: an empty alias must never widen the prefix.
     let newRowAreas = null;
     const getNewRowAreas = async () => {
         if (newRowAreas) {
@@ -517,13 +518,15 @@ const syncAssetsFromPost = async (frame) => {
         }
         const root = galleryKeyScope.mediaRootOf(mediaStore);
         newRowAreas = [];
-        if (authorId) {
-            // @ts-ignore
-            newRowAreas.push(galleryKeyScope.buildAreaPrefix(root, 'gallery', 'users', await models.User.ensureMediaFolderAlias(authorId)));
+        // @ts-ignore
+        const userAlias = authorId ? await models.User.ensureMediaFolderAlias(authorId) : null;
+        if (userAlias) {
+            newRowAreas.push({prefix: galleryKeyScope.buildAreaPrefix(root, 'gallery', 'users', userAlias), ownerScope: 'user', groupId: null});
         }
-        if (post.get('group_id')) {
-            // @ts-ignore
-            newRowAreas.push(galleryKeyScope.buildAreaPrefix(root, 'gallery', 'groups', await models.SocialGroup.ensureMediaFolderAlias(post.get('group_id'))));
+        // @ts-ignore
+        const groupAlias = post.get('group_id') ? await models.SocialGroup.ensureMediaFolderAlias(post.get('group_id')) : null;
+        if (groupAlias) {
+            newRowAreas.push({prefix: galleryKeyScope.buildAreaPrefix(root, 'gallery', 'groups', groupAlias), ownerScope: 'group', groupId: post.get('group_id')});
         }
         return newRowAreas;
     };
@@ -549,8 +552,8 @@ const syncAssetsFromPost = async (frame) => {
         }
 
         const decodedKey = decodeKey(key);
-        const areas = await getNewRowAreas();
-        if (!decodedKey || !galleryKeyScope.isKeyInAreas(key, areas) || !galleryKeyScope.isKeyInAreas(decodedKey, areas)) {
+        const area = decodedKey && (await getNewRowAreas()).find(a => galleryKeyScope.isKeyInAreas(key, [a.prefix]) && galleryKeyScope.isKeyInAreas(decodedKey, [a.prefix]));
+        if (!area) {
             outOfArea += 1;
             continue;
         }
@@ -561,9 +564,9 @@ const syncAssetsFromPost = async (frame) => {
             storage_key_hash: socialMediaAssets.buildStorageKeyHash(key),
             storage_url: keyToUrl.get(key),
             asset_type: inferAssetTypeByKey(key),
-            owner_scope: post.get('group_id') ? 'group' : 'user',
+            owner_scope: area.ownerScope,
             user_id: post.get('created_by') || frame.options?.context?.user || null,
-            group_id: post.get('group_id') || null,
+            group_id: area.groupId,
             tag_id: selectedTag?.id || null,
             tag_slug: selectedTag?.slug || null,
             created_at: now,

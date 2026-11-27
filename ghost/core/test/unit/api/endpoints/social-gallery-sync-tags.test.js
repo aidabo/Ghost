@@ -185,6 +185,34 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
             assert.equal(result.data[0].out_of_area_count, 1);
         });
 
+        it('an author with no alias (deleted user) gets no area: nobody\'s key becomes a row', async function () {
+            posts[POST] = makePost({id: POST, createdBy: 'gone', html: `<img src="${url(PLANTED_KEY)}">`});
+            const result = await sync(ADMIN, {post_id: POST, mode: 'primary'});
+            assert.equal(await rowOf(PLANTED_KEY), undefined);
+            assert.equal(result.data[0].inserted_count, 0);
+            assert.equal(result.data[0].out_of_area_count, 1);
+        });
+
+        it('a group post: a key in the author\'s own area becomes a user row, one in the group\'s area a group row', async function () {
+            const ownKey = 'content/media/gallery/users/other/2026/11/own.png';
+            posts[GROUP_POST] = makePost({id: GROUP_POST, createdBy: OTHER, groupId: GROUP, html: `<img src="${url(ownKey)}"><img src="${url(NEW_GROUP_KEY)}">`});
+            await sync(OTHER, {post_id: GROUP_POST, mode: 'primary'});
+            const own = await rowOf(ownKey);
+            assert.equal(own.owner_scope, 'user');
+            assert.equal(own.group_id, null);
+            const grp = await rowOf(NEW_GROUP_KEY);
+            assert.equal(grp.owner_scope, 'group');
+            assert.equal(grp.group_id, GROUP);
+        });
+
+        it('a percent-encoded key inside the author\'s area becomes a row', async function () {
+            const encoded = 'content/media/gallery/users/me/2026/11/a%20b.png';
+            posts[POST] = makePost({id: POST, createdBy: ME, html: `<img src="${url(encoded)}">`});
+            const result = await sync(ME, {post_id: POST, mode: 'primary'});
+            assert.equal(result.data[0].inserted_count, 1);
+            assert.equal(result.data[0].out_of_area_count, 0);
+        });
+
         it('a post outside any group that the caller may not edit is refused, and nothing changes', async function () {
             await assert.rejects(sync(OTHER, {post_id: POST, mode: 'primary'}), {errorType: 'NoPermissionError'});
             assert.equal(await tagOf(MINE_KEY), null);
