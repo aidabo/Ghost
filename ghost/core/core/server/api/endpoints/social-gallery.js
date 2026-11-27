@@ -467,7 +467,7 @@ const syncAssetsFromPost = async (frame) => {
     // @ts-ignore
     const post = await models.Post.findOne({ id: postId }, {
         context: { internal: true },
-        withRelated: ['tags']
+        withRelated: ['tags', 'authors']
     });
 
     if (!post) {
@@ -518,15 +518,22 @@ const syncAssetsFromPost = async (frame) => {
         }
         const root = galleryKeyScope.mediaRootOf(mediaStore);
         newRowAreas = [];
-        // @ts-ignore
-        const userAlias = authorId ? await models.User.ensureMediaFolderAlias(authorId) : null;
-        if (userAlias) {
-            newRowAreas.push({prefix: galleryKeyScope.buildAreaPrefix(root, 'gallery', 'users', userAlias), ownerScope: 'user', groupId: null});
+        // every author of the post (created_by and the co-authors of posts_authors) has an own area
+        const authorIds = new Set(post.related('authors').toJSON().map(author => String(author.id)));
+        if (authorId) {
+            authorIds.add(String(authorId));
+        }
+        for (const id of authorIds) {
+            // @ts-ignore
+            const userAlias = await models.User.ensureMediaFolderAlias(id);
+            if (userAlias) {
+                newRowAreas.push({prefix: galleryKeyScope.buildAreaPrefix(root, 'gallery', 'users', userAlias), ownerScope: 'user', userId: id, groupId: null});
+            }
         }
         // @ts-ignore
         const groupAlias = post.get('group_id') ? await models.SocialGroup.ensureMediaFolderAlias(post.get('group_id')) : null;
         if (groupAlias) {
-            newRowAreas.push({prefix: galleryKeyScope.buildAreaPrefix(root, 'gallery', 'groups', groupAlias), ownerScope: 'group', groupId: post.get('group_id')});
+            newRowAreas.push({prefix: galleryKeyScope.buildAreaPrefix(root, 'gallery', 'groups', groupAlias), ownerScope: 'group', userId: null, groupId: post.get('group_id')});
         }
         return newRowAreas;
     };
@@ -565,7 +572,7 @@ const syncAssetsFromPost = async (frame) => {
             storage_url: keyToUrl.get(key),
             asset_type: inferAssetTypeByKey(key),
             owner_scope: area.ownerScope,
-            user_id: post.get('created_by') || frame.options?.context?.user || null,
+            user_id: area.userId || post.get('created_by') || frame.options?.context?.user || null,
             group_id: area.groupId,
             tag_id: selectedTag?.id || null,
             tag_slug: selectedTag?.slug || null,

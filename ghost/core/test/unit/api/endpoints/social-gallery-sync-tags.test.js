@@ -39,10 +39,10 @@ const OTHER_GROUP_KEY = 'content/media/gallery/groups/h/2026/11/other-group.png'
 const ALIASES = {[ME]: 'me', [OTHER]: 'other', [EDITOR]: 'editor', [ADMIN]: 'admin', [GROUP]: 'g'};
 const url = key => `${HOST}/${key}`;
 
-const makePost = ({id, createdBy, groupId = null, html}) => ({
+const makePost = ({id, createdBy, groupId = null, html, authors = []}) => ({
     id,
     get: key => ({id, created_by: createdBy, group_id: groupId, html, feature_image: null, lexical: null})[key],
-    related: () => ({toJSON: () => [TAG]})
+    related: name => ({toJSON: () => (name === 'authors' ? authors.map(authorId => ({id: authorId})) : [TAG])})
 });
 
 describe('Social gallery: sync-tags and tag only touch rows the caller may write', function () {
@@ -211,6 +211,16 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
             const result = await sync(ME, {post_id: POST, mode: 'primary'});
             assert.equal(result.data[0].inserted_count, 1);
             assert.equal(result.data[0].out_of_area_count, 0);
+        });
+
+        it('a co-author\'s area counts like the author\'s: the row is the co-author\'s; a non-author\'s area is out of area', async function () {
+            const coKey = 'content/media/gallery/users/editor/2026/11/co.png';
+            posts[POST] = makePost({id: POST, createdBy: ME, authors: [ME, EDITOR], html: `<img src="${url(coKey)}"><img src="${url(PLANTED_KEY)}">`});
+            const result = await sync(ME, {post_id: POST, mode: 'primary'});
+            assert.equal((await rowOf(coKey)).user_id, EDITOR);
+            assert.equal(await rowOf(PLANTED_KEY), undefined);
+            assert.equal(result.data[0].inserted_count, 1);
+            assert.equal(result.data[0].out_of_area_count, 1);
         });
 
         it('a post outside any group that the caller may not edit is refused, and nothing changes', async function () {
