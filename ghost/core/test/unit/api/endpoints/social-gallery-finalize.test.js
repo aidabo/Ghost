@@ -12,6 +12,7 @@ const storage = require('../../../../core/server/adapters/storage');
 
 const galleryPath = require.resolve('../../../../core/server/api/endpoints/social-gallery');
 const staffScopePath = require.resolve('../../../../core/server/api/endpoints/utils/staff-scope');
+const assetWriteAccessPath = require.resolve('../../../../core/server/api/endpoints/utils/asset-write-access');
 
 const HOST = 'https://cdn.example.com';
 const ROOT = 'content/media';
@@ -53,6 +54,7 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
         // Fresh copies: other suites (staff-scope.test.js) reload these modules.
         delete require.cache[galleryPath];
         delete require.cache[staffScopePath];
+        delete require.cache[assetWriteAccessPath];
         staffScope = require(staffScopePath);
         endpoint = require(galleryPath);
         db = knex({client: 'sqlite3', connection: {filename: ':memory:'}, useNullAsDefault: true});

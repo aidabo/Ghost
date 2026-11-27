@@ -7,6 +7,7 @@ const storage = require('../../adapters/storage');
 const ObjectId = require('bson-objectid').default;
 const socialMediaAssets = require('./utils/social-media-assets');
 const staffScope = require('./utils/staff-scope');
+const {canRetagAsset} = require('./utils/asset-write-access');
 
 const ALLOWED_INCLUDES = ['user', 'group'];
 
@@ -569,10 +570,29 @@ const controller = {
                 const assetUrls = [payloadInput.source_path, payloadInput.preview_url]
                     .map(u => String(u || '').trim())
                     .filter(u => /^https?:\/\//i.test(u));
+                // Only rows the job owner may write (canRetagAsset: the uploader,
+                // a member who may write the row's group, a system admin): a
+                // known URL must never pull someone else's asset into this job
+                // (destroy would then delete it). An owner-less (integration)
+                // job stamps owner-less assets only, as dzi does.
+                const ownerId = targetUserId || currentUserId || null;
                 if (jobId && assetUrls.length) {
-                    await models.Base.knex('social_media_assets')
+                    const knex = models.Base.knex;
+                    const rows = await knex('social_media_assets')
                         .whereIn('storage_url', assetUrls)
-                        .update({chart_job_id: jobId});
+                        .select('id', 'user_id', 'group_id', 'chart_job_id');
+                    const ids = [];
+                    for (const row of rows) {
+                        if (ownerId ? await canRetagAsset(knex, row, ownerId) : !row.user_id) {
+                            ids.push(row.id);
+                        }
+                    }
+                    if (ids.length) {
+                        await knex('social_media_assets').whereIn('id', ids).update({chart_job_id: jobId});
+                    }
+                    if (ids.length < rows.length) {
+                        logging.info(`[social-ai-chart-jobs] job ${jobId}: ${rows.length - ids.length} asset(s) of someone else not linked`);
+                    }
                 }
             } catch (err) {
                 logging.warn(`[social-ai-chart-jobs] asset link failed for job ${added?.id}: ${err?.message || err}`);
