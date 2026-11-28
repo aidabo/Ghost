@@ -1,29 +1,9 @@
 const api = require('../../../../api').endpoints;
-const models = require('../../../../models');
 const {http} = require('@tryghost/api-framework');
 const bodyParser = require('body-parser');
 const mw = require('./middleware');
 const contentProducts = require('../../../../api/endpoints/content-products-admin');
 const memberPostSearch = require('../../../../api/endpoints/member-post-search');
-
-const createOrUpdatePost = async (req, res, next) => {
-    try {
-        const payload = req.body?.posts?.[0] || req.body?.post?.[0];
-        if (!payload || !payload.slug) {
-            return res.status(400).json({errors: [{message: 'Post payload with slug is required.'}]});
-        }
-
-        const existing = await models.Post.findOne({slug: payload.slug}, {context: {internal: true}});
-        const options = {context: {internal: true}};
-        const saved = existing
-            ? await models.Post.edit(payload, {id: existing.id, context: {internal: true}})
-            : await models.Post.add(payload, options);
-
-        return res.status(existing ? 200 : 201).json({posts: [saved.toJSON ? saved.toJSON() : saved]});
-    } catch (error) {
-        return next(error);
-    }
-};
 
 /**
  * @returns {import('express').Router}
@@ -348,11 +328,6 @@ module.exports = function customApiRoutes(router) {
     router.post('/estate/properties', mw.authAdminApi, http(api.estateProperties.add));
     router.put('/estate/properties/:id', mw.authAdminApi, http(api.estateProperties.edit));
     router.del('/estate/properties/:id', mw.authAdminApi, http(api.estateProperties.destroy));
-
-    // ## news worker の記事の upsert（slug で引いて internal 文脈で add / edit）
-    // 名前は古い person の名残りだが、tools/news-worker（janabiz の毎日の記事・顔・seed）が使うので残す。
-    // 古い person の表の API（/person/persons ほか）は 2026-11-28 に消した。表も 2026-11-28 の migration（drop-person-tables）で消した。
-    router.post('/person/graph/posts', mw.authAdminApi, createOrUpdatePost);
 
     router.get('/estate/properties/:propertyId/posts', mw.authAdminApi, http(api.estatePropertyPosts.browse));
     router.post('/estate/properties/:propertyId/posts', mw.authAdminApi, http(api.estatePropertyPosts.add));

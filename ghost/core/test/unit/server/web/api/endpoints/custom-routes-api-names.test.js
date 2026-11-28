@@ -24,3 +24,18 @@ describe('custom-routes が使う api.<名前> は api/endpoints/index.js にあ
         });
     }
 });
+
+// POST /person/graph/posts は slug で記事を internal 文脈（権限の確かめ無し）で upsert していた抜け道。
+// 2026-11-28 に消した（news-worker は標準の /posts API を使う）。戻さないための確かめ。
+describe('admin の custom-routes に権限を飛ばす記事の upsert が無い', function () {
+    const source = fs.readFileSync(path.join(ROOT, 'web/api/endpoints/admin/custom-routes.js'), 'utf8');
+
+    it('/person/ の route が無い', function () {
+        assert.doesNotMatch(source, /['"]\/person\//);
+    });
+
+    it('models.Post を internal 文脈で直接書かない', function () {
+        assert.doesNotMatch(source, /models\.Post\.(add|edit)\(/);
+        assert.doesNotMatch(source, /context:\s*\{\s*internal:\s*true/);
+    });
+});
