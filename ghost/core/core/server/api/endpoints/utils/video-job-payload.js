@@ -27,7 +27,6 @@ const CLIP_FIELDS = new Set(['video_asset_id', 'duration_seconds', 'size_bytes',
 const CLIP_FITS = ['contain-blur', 'cover'];
 const CLIP_AUDIO = ['keep', 'duck', 'mute'];
 const CAPTIONS = ['none', 'narration'];
-const CLIP_MAX_LINES = 20;
 // The worker starts the first line 0.3 s into the scene (timeline.js
 // VOICE_LEAD_SECONDS) and stretches a lip-synced video by up to 1.2 (stretchOf).
 const VOICE_LEAD_SECONDS = 0.3;
@@ -51,6 +50,7 @@ const limits = () => ({
     maxScenes: envNumber('VIDEO_JOB_MAX_SCENES', 30),
     maxLines: envNumber('VIDEO_JOB_MAX_LINES', 40),
     maxFaceLines: envNumber('VIDEO_JOB_MAX_FACE_LINES', 20),
+    maxClipLines: envNumber('VIDEO_JOB_MAX_CLIP_LINES', 20),
     maxLineChars: envNumber('VIDEO_JOB_MAX_LINE_CHARS', 300),
     // Cost estimate (USD). The rates are placeholders until a real Wan3 call is
     // measured (plan §9.2); the cap is the plan's recommended 3 USD. The face is
@@ -158,6 +158,8 @@ const clipSeconds = (clip) => {
     return typeof end === 'number' ? Math.max(0, end - start) : 0;
 };
 
+const stretch = payload => (lipsyncLines(payload).length ? LIPSYNC_STRETCH : 1);
+
 // clip-presenter (plan §4): max(the trimmed video, the lines' speech + 0.3 s),
 // times 1.2 when the face is lip-synced (the worker's stretch at most).
 const clipVideoSeconds = (payload) => {
@@ -165,7 +167,7 @@ const clipVideoSeconds = (payload) => {
     const lines = Array.isArray(payload.lines) ? payload.lines : [];
     const spoken = lines.reduce((acc, line) => acc + lineSeconds(line, rate), 0);
     const base = Math.max(clipSeconds(payload.clip), spoken > 0 ? spoken + VOICE_LEAD_SECONDS : 0);
-    return base * (lipsyncLines(payload).length ? LIPSYNC_STRETCH : 1);
+    return base * stretch(payload);
 };
 
 /**
@@ -279,8 +281,9 @@ const validateClip = (payload, lines, cfg) => {
     if (payload.scenes.length !== 1 || scene.key !== CLIP_SCENE_KEY || Object.keys(scene).some(field => field !== 'key')) {
         fail(`clip-presenter takes exactly one scene: {key: '${CLIP_SCENE_KEY}'}.`);
     }
-    if (lines.length > CLIP_MAX_LINES) {
-        fail(`clip-presenter takes at most ${CLIP_MAX_LINES} lines.`, 'VIDEO_JOB_TOO_LARGE');
+    optionalChoice(payload.captions, 'captions', CAPTIONS);
+    if (lines.length > cfg.maxClipLines) {
+        fail(`clip-presenter takes at most ${cfg.maxClipLines} lines.`, 'VIDEO_JOB_TOO_LARGE');
     }
     return videoAssetId;
 };
@@ -347,9 +350,8 @@ const validateVideoJobPayload = (payload) => {
         }
     });
 
-    optionalChoice(payload.captions, 'captions', CAPTIONS);
     const isClip = payload.template_id === CLIP_TEMPLATE;
-    if (!isClip && payload.clip !== undefined) {
+    if (!isClip && payload.clip !== undefined && payload.clip !== null) {
         fail('clip is only for clip-presenter.');
     }
     const clipAssetId = isClip ? validateClip(payload, lines, cfg) : null;
@@ -415,8 +417,12 @@ const validateVideoJobPayload = (payload) => {
 
     const cost = estimate(payload);
     const maxVideoSeconds = serviceLimits().maxVideoSeconds;
-    if (isClip && wholeSeconds(clipSeconds(payload.clip)) > maxVideoSeconds) {
-        fail(`The video is about ${wholeSeconds(clipSeconds(payload.clip))} seconds after the trim; at most ${maxVideoSeconds} seconds are allowed.`, 'VIDEO_JOB_TOO_LONG');
+    // The video alone (trimmed, stretched when lip-synced) over the limit is
+    // the video's fault; only when the lines push it over is it narration_too_long.
+    const clipOnly = isClip ? wholeSeconds(clipSeconds(payload.clip) * stretch(payload)) : 0;
+    if (clipOnly > maxVideoSeconds) {
+        const why = stretch(payload) > 1 ? ' (with the lip-sync stretch)' : '';
+        fail(`The video is about ${clipOnly} seconds after the trim${why}; at most ${maxVideoSeconds} seconds are allowed.`, 'VIDEO_JOB_TOO_LONG');
     }
     if (isClip && cost.video_seconds > maxVideoSeconds) {
         fail(`With the lines the video would be about ${cost.video_seconds} seconds; at most ${maxVideoSeconds} seconds are allowed.`, 'narration_too_long');

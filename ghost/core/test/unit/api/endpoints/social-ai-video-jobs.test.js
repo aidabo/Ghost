@@ -60,7 +60,7 @@ describe('Video jobs and avatar consents', function () {
     const savedEnv = {};
     const ENV = ['VIDEO_JOB_FACE_ENABLED', 'VIDEO_JOB_MAX_COST_USD', 'VIDEO_JOB_TEMPLATE_IDS', 'VIDEO_JOB_MAX_LINES',
         'VIDEO_JOB_MONTHLY_MAX_COST_USD', 'VIDEO_JOB_VOICE_LINE_COST_USD', 'VIDEO_JOB_FACE_SECOND_COST_USD',
-        'VIDEO_JOB_MAX_SECONDS', 'VIDEO_JOB_MONTHLY_MAX_JOBS', 'VIDEO_JOB_CLIP_MAX_MB'];
+        'VIDEO_JOB_MAX_SECONDS', 'VIDEO_JOB_MONTHLY_MAX_JOBS', 'VIDEO_JOB_CLIP_MAX_MB', 'VIDEO_JOB_MAX_CLIP_LINES'];
     // The site timezone (settings `timezone`) the budget month is counted in.
     let siteTimezone = 'Asia/Tokyo';
 
@@ -1044,8 +1044,10 @@ describe('Video jobs and avatar consents', function () {
             await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload()})), {code: 'VIDEO_JOB_UNKNOWN_TEMPLATE'});
         });
 
-        it('refuses a clip on another template', async function () {
+        it('refuses a clip on another template, but passes captions and clip: null through as before', async function () {
             await rejects(jobs.add.query(addFrame(USER, {payload: basePayload({clip: {video_asset_id: OTHER_VIDEO, duration_seconds: 5, size_bytes: MIB}})})), {errorType: 'ValidationError'});
+            assert.ok(await jobs.add.query(addFrame(USER, {payload: basePayload({captions: 'anything', clip: null})})));
+            assert.ok(await jobs.add.query(addFrame(USER, {payload: basePayload({captions: ''})})));
         });
 
         it('takes only the caller\'s own video in their own area', async function () {
@@ -1084,8 +1086,10 @@ describe('Video jobs and avatar consents', function () {
             process.env.VIDEO_JOB_FACE_ENABLED = 'true';
             const talking = {photo_asset_id: OWN_PHOTO, consent_id: OTHER_PRIVATE, lipsync: true};
             const lines = [line('l1', 7)];
-            // 52 s x 1.2 = 62.4 s
-            assert.throws(() => validateVideoJobPayload(clipPayload({duration_seconds: 52}, {lines, avatar: talking})), {code: 'narration_too_long'});
+            // the video alone: 52 s x 1.2 = 62.4 s — the video is too long, not the line
+            assert.throws(() => validateVideoJobPayload(clipPayload({duration_seconds: 52}, {lines, avatar: talking})), {code: 'VIDEO_JOB_TOO_LONG', message: /video/});
+            // the lines push it over: (355 / 7 + 0.3) x 1.2 = 61.2 s on a 40 s video (48 s alone)
+            assert.throws(() => validateVideoJobPayload(clipPayload({duration_seconds: 40}, {lines: [line('l1', 300), line('l2', 55)], avatar: talking})), {code: 'narration_too_long'});
             assert.equal(validateVideoJobPayload(clipPayload({duration_seconds: 50}, {lines, avatar: talking})).estimate.video_seconds, 60);
             // without lipsync, no stretch
             assert.equal(validateVideoJobPayload(clipPayload({duration_seconds: 52}, {lines})).estimate.video_seconds, 52);
@@ -1105,6 +1109,8 @@ describe('Video jobs and avatar consents', function () {
             const lines = Array.from({length: 21}, (unused, index) => line(`l${index}`, 1));
             await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({}, {lines})})), {code: 'VIDEO_JOB_TOO_LARGE'});
             assert.ok(await jobs.add.query(addFrame(USER, {payload: clipPayload({}, {lines: lines.slice(0, 20)})})));
+            process.env.VIDEO_JOB_MAX_CLIP_LINES = '2';
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({}, {lines: lines.slice(0, 3)})})), {code: 'VIDEO_JOB_TOO_LARGE'});
         });
 
         it('takes only the allowed clip fields and values', async function () {
