@@ -416,6 +416,11 @@ module.exports = {
         return apiFramework.pipeline(require('./estate-property-translations'), localUtils);
     },
 
+    // publish content admin endpoints
+    get publishContent() {
+        return apiFramework.pipeline(require('./publish-content'), localUtils);
+    },
+
     /**
      * Content API Controllers
      *
