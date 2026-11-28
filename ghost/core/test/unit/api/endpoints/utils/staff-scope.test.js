@@ -148,6 +148,38 @@ describe('staff-scope', function () {
         assert.equal(staffScope.publishedProjectOrOwnFilter(editorRead, 'u1'), '(user_id:u1,(status:published+(group_id:null,group_id:[0000000000000000000000a1])))');
     });
 
+    it('getProjectVisibility: why a project is in the user\'s projects list (the same rows the list shows)', async function () {
+        const SocialGroup = {
+            findOne: async ({id}) => ({id}),
+            // 'author' and 'contrib' read the family group.
+            canAccessGroup: async (group, userId, permission) => permission === 'read' && group.id === FAM && ['author', 'contrib'].includes(userId)
+        };
+        const scope = loadWith(helperPath, {User, SocialGroup, Base: {knex: publicGroupsKnex}});
+        const project = fields => ({user_id: 'editor-b', group_id: null, status: 'draft', ...fields});
+        const table = [
+            ['own draft', 'editor', project({user_id: 'editor'}), 'own'],
+            ['own project in a group the owner left', 'editor', project({user_id: 'editor', group_id: FAM}), 'own'],
+            ['family group project, read member', 'author', project({group_id: FAM}), 'group'],
+            ['published shared newsroom project only', 'author', project({status: 'published'}), 'published'],
+            ['published public group project only', 'contrib', project({status: 'published', group_id: PUB}), 'published'],
+            ['Super Editor on a draft newsroom project', 'se', project({}), 'admin'],
+            ['Super Editor on a family group project it is not in', 'se', project({group_id: FAM}), null],
+            ['admin on anything', 'admin', project({group_id: FAM}), 'admin'],
+            ['someone else\'s draft', 'author', project({}), null],
+            ['family group project, not a member', 'editor', project({group_id: FAM, status: 'published'}), null],
+            ['no user', null, project({status: 'published'}), null]
+        ];
+        for (const [label, userId, row, expected] of table) {
+            assert.equal(await scope.getProjectVisibility(userId, row), expected, label);
+        }
+        assert.equal(await scope.isEditorOrAbove('editor'), true);
+        assert.equal(await scope.isEditorOrAbove('se'), true);
+        assert.equal(await scope.isEditorOrAbove('owner'), true);
+        assert.equal(await scope.isEditorOrAbove('author'), false);
+        assert.equal(await scope.isEditorOrAbove('contrib'), false);
+        assert.equal(await scope.isEditorOrAbove(null), false);
+    });
+
     it('builds an NQL scope a caller filter cannot widen', function () {
         const db = knex({client: 'mysql2'});
         const sql = filter => nql(filter).querySQL(db('t')).toString();

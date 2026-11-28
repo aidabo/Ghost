@@ -48,7 +48,7 @@ const messages = {
     noProjectPermission: 'You are not allowed to access this project gallery.',
     jobIdRequired: '`job_id` is required.',
     jobNotFound: 'Chart job not found: {jobId}.',
-    noJobPermission: 'You are not allowed to access this chart job gallery.',
+    noJobPermission: 'You are not allowed to access this job\'s gallery.',
     invalidPathId: '`{name}` may only contain letters, digits, "-" and "_".',
     storageNoScope: 'Configured storage adapter cannot place gallery uploads (no getTargetDir).',
     keyOutOfScope: '`{field}` must be a file under {prefixes} (the area presign hands out for these values).',
@@ -1443,6 +1443,17 @@ const getTargetJobId = (frame, field) => {
     return viaJobId || viaField;
 };
 
+// Target news_jobs: only the job's owner or a site admin may put files in the job folder (the user's rule: rows
+// linked to a job are made only by its owner). Reading the job's project is not enough. A job that does not exist
+// is left to finalize's job check (422). Target chart_jobs keeps the group collaboration of #92: anyone who can
+// read the job's project (checked in finalize).
+const assertCanUploadToJobFolder = async (table, jobId, userId) => {
+    const job = await models.Base.knex(table).where({id: jobId}).first('id', 'user_id');
+    if (job && String(job.user_id || '') !== String(userId) && !(await isAdminUser(userId))) {
+        throw new errors.NoPermissionError({message: tpl(messages.noJobPermission)});
+    }
+};
+
 const resolveUploadContext = async (frame) => {
     const mediaStore = storage.getStorage('media');
     const userId = frame.options?.context?.user;
@@ -1670,6 +1681,7 @@ const resolveUploadContext = async (frame) => {
                 message: 'job_id (24-char news job id) is required for news_jobs uploads.'
             });
         }
+        await assertCanUploadToJobFolder('social_ai_news_jobs', jobId, userId);
         const baseDir = path.posix.join(root, 'gallery', 'news_jobs', jobId);
         return {
             mediaStore,

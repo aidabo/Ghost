@@ -277,6 +277,75 @@ const assertAccess = async (frame, row, write = false) => {
     }
 };
 
+// link-assets: may this job's worker reuse (re-point, remove) an existing gallery row? Same rule as chart (#99):
+// - Only a news row (owner_scope news_jobs, no other job family's id): a chart, video, deepzoom, content bundle or
+//   direct-upload row is never reused, whoever owns it.
+// - A worker artifact of the SAME project is reused whoever ran the earlier job: the newsroom project is shared by
+//   several staff and news-read publishes fixed per-item names under the project's artifacts/, so a re-run by
+//   another staff member must take the row over (the broadcast reads completed jobs' artifacts). Worker artifact =
+//   key under gallery/projects/<this project>/artifacts/, and the row's project or its news job's project is this
+//   job's project.
+// - Otherwise the job owner is the row's uploader or the owner of the news job that made it; or the job owner is a
+//   system admin. An owner-less (integration) job reuses owner-less rows only.
+const OTHER_JOB_ID_COLUMNS = ['chart_job_id', 'video_job_id', 'dzi_job_id', 'content_bundle_job_id'];
+//   The exception applies only while the calling job's owner may use the project (canUseProjectForNewsJob, the
+//   same rule as `add`): sameProjectAllowed is worked out once per link-assets call.
+const isSameProjectWorkerArtifact = async (knex, asset, job, sameProjectAllowed) => {
+    const pid = job.project_id ? String(job.project_id) : '';
+    if (!sameProjectAllowed || !pid || !String(asset.storage_key || '').includes(`gallery/projects/${pid}/artifacts/`)) {
+        return false;
+    }
+    if (String(asset.project_id || '') === pid) {
+        return true;
+    }
+    if (asset.news_job_id) {
+        const madeBy = await knex(TABLE).where({id: asset.news_job_id}).first('project_id');
+        return String(madeBy?.project_id || '') === pid;
+    }
+    return false;
+};
+const canRelinkAsset = async (knex, asset, job, sameProjectAllowed = false) => {
+    const jobUserId = job.user_id;
+    if (asset.owner_scope !== OWNER_SCOPE || OTHER_JOB_ID_COLUMNS.some(c => asset[c])) {
+        return false;
+    }
+    if (await isSameProjectWorkerArtifact(knex, asset, job, sameProjectAllowed)) {
+        return true;
+    }
+    if (!jobUserId) {
+        return !asset.user_id;
+    }
+    if (String(asset.user_id || '') === String(jobUserId)) {
+        return true;
+    }
+    if (asset.news_job_id) {
+        const madeBy = await knex(TABLE).where({id: asset.news_job_id}).first('user_id');
+        if (madeBy?.user_id && String(madeBy.user_id) === String(jobUserId)) {
+            return true;
+        }
+    }
+    return (await staffScope.getStaffScope(jobUserId)).isSystemAdmin;
+};
+
+// May this user put news jobs on this project (add), and may such a job's worker reuse the project's artifacts
+// (link-assets)? Only a project in the user's projects list (staffScope.getProjectVisibility); when it is there
+// only as a published shared newsroom project, Editor or above only. An owner-less job: a project with no owner
+// and no group only. docs (front): docs/planning/news-job-project-scope-plan.md.
+const canUseProjectForNewsJob = async (userId, project) => {
+    if (!project) {
+        return false;
+    }
+    if (!userId) {
+        return !project.user_id && !project.group_id;
+    }
+    const reason = await staffScope.getProjectVisibility(userId, project);
+    if (!reason) {
+        return false;
+    }
+    return reason !== 'published' || staffScope.isEditorOrAbove(userId);
+};
+const loadProjectRow = projectId => models.Base.knex('social_ai_projects').where({id: projectId}).first('id', 'user_id', 'group_id', 'status');
+
 const loadRow = async id => {
     if (!id) {
         throw new errors.ValidationError({message: '`id` is required.'});
@@ -427,9 +496,13 @@ const controller = {
                 throw new errors.ValidationError({message: 'user_id does not exist.'});
             }
             if (payloadInput.project_id) {
-                const project = await models.SocialAiProject.findOne({id: payloadInput.project_id});
+                const project = await loadProjectRow(payloadInput.project_id);
                 if (!project) {
                     throw new errors.NotFoundError({message: 'Project not found.'});
+                }
+                // The integration key (worker, host) is trusted; a person only on a project of their projects list.
+                if (!isIntegrationRequest(frame) && !(await canUseProjectForNewsJob(actor, project))) {
+                    throw new errors.NoPermissionError({message: 'You are not allowed to create a news job on this project.'});
                 }
             }
 
@@ -742,12 +815,26 @@ const controller = {
                 assertWorker(frame, row);
                 assertOpen(row);
             }
+            // Read once per call, before the transaction (the visibility check reads users, roles and groups).
+            const jobProject = row.project_id ? await loadProjectRow(row.project_id) : null;
+            const sameProjectAllowed = await canUseProjectForNewsJob(row.user_id, jobProject);
             const link = async (knex) => {
                 const assets = Array.isArray(payloadInput.assets) ? payloadInput.assets : [];
                 const removedKeys = Array.isArray(payloadInput.removed_keys)
                     ? payloadInput.removed_keys.map(String).map(s => s.trim()).filter(Boolean)
                     : [];
                 const mediaIds = [];
+                let skipped = 0;
+                let postSkipped = 0;
+                // post_id on the junction: only a post of this job's own work list (items[].post_id, or the lipsync
+                // payload's post) that exists. The worker's payload is not trusted with other posts; an artifact with
+                // any other post_id is still linked, without the post (counted in post_skipped_count).
+                const jobPayload = parseJson(row.payload, {}) || {};
+                const jobPostIds = new Set([
+                    ...(parseJson(row.items, []) || []).map(item => item?.post_id),
+                    jobPayload.avatar_lipsync?.post_id,
+                    jobPayload.post_id
+                ].map(id => String(id || '').trim()).filter(Boolean));
 
                 // Idempotency key is storage_key_hash ALONE (same rule as chart, H1):
                 // a different job republishing the same S3 path reuses the existing row
@@ -774,6 +861,12 @@ const controller = {
                         .where({storage_key_hash: storageKeyHash})
                         .first();
 
+                    if (existing && !(await canRelinkAsset(knex, existing, row, sameProjectAllowed))) {
+                        // Someone else's row or another job family's row: left as it is, not linked to this job.
+                        logging.warn(`[social-ai-news-jobs] link-assets skipped ${storageKey} for job ${row.id}: row ${existing.id} is not this job's to reuse`);
+                        skipped += 1;
+                        continue;
+                    }
                     if (existing) {
                         await knex('social_media_assets')
                             .where({id: existing.id})
@@ -820,6 +913,11 @@ const controller = {
                                 if (!dup) {
                                     throw err;
                                 }
+                                if (!(await canRelinkAsset(knex, dup, row, sameProjectAllowed))) {
+                                    logging.warn(`[social-ai-news-jobs] link-assets skipped ${storageKey} for job ${row.id}: row ${dup.id} is not this job's to reuse`);
+                                    skipped += 1;
+                                    continue;
+                                }
                                 await knex('social_media_assets')
                                     .where({id: dup.id})
                                     .update({
@@ -841,7 +939,12 @@ const controller = {
                     // single link column cannot express, and why the news family needs
                     // its own junction rather than chart's.
                     const itemKey = String(asset.item_key || '').trim() || null;
-                    const postId = String(asset.post_id || '').trim() || null;
+                    let postId = String(asset.post_id || '').trim() || null;
+                    if (postId && (!jobPostIds.has(postId) || !(await knex('posts').where({id: postId}).first('id')))) {
+                        logging.warn(`[social-ai-news-jobs] link-assets dropped post ${postId} for job ${row.id}: not a post of this job's items`);
+                        postSkipped += 1;
+                        postId = null;
+                    }
                     const existingJunction = await knex(JUNCTION)
                         .where({news_job_id: row.id, media_id: mediaId})
                         .first();
@@ -884,25 +987,32 @@ const controller = {
 
                 // A key that publishJob deleted from S3 must not keep its gallery row.
                 // Scoped to this family's owner_scope; the junction rows cascade via FK.
+                // Only rows this job may reuse (canRelinkAsset) are removed: someone else's row stays.
                 const removedSet = new Set(removedKeys);
+                let removed = 0;
+                let removedSkipped = 0;
                 for (const key of removedSet) {
                     const stillRegistered = assets.some(a => String(a.storage_key || '').trim() === key);
                     if (stillRegistered) {
                         continue;
                     }
-                    const selectedBroadcast = await knex('social_ai_avatar_broadcast_selections as s')
-                        .join('social_media_assets as sma', 'sma.id', 's.media_id')
-                        .where({
-                            'sma.storage_key': key,
-                            'sma.owner_scope': OWNER_SCOPE
-                        })
-                        .first('s.post_id');
-                    if (selectedBroadcast) {
-                        throw new errors.ValidationError({message: 'A published broadcast asset cannot be replaced while it is selected for a virtual broadcast.'});
+                    const stale = await knex('social_media_assets')
+                        .where({storage_key: key, owner_scope: OWNER_SCOPE});
+                    for (const staleRow of stale) {
+                        if (!(await canRelinkAsset(knex, staleRow, row, sameProjectAllowed))) {
+                            logging.warn(`[social-ai-news-jobs] link-assets kept ${key} for job ${row.id}: row ${staleRow.id} is not this job's to remove`);
+                            removedSkipped += 1;
+                            continue;
+                        }
+                        const selectedBroadcast = await knex('social_ai_avatar_broadcast_selections')
+                            .where({media_id: staleRow.id})
+                            .first('post_id');
+                        if (selectedBroadcast) {
+                            throw new errors.ValidationError({message: 'A published broadcast asset cannot be replaced while it is selected for a virtual broadcast.'});
+                        }
+                        await knex('social_media_assets').where({id: staleRow.id}).del();
+                        removed += 1;
                     }
-                    await knex('social_media_assets')
-                        .where({storage_key: key, owner_scope: OWNER_SCOPE})
-                        .del();
                 }
 
                 const artifacts = [...parseJson(row.artifacts, []), ...assets];
@@ -915,7 +1025,10 @@ const controller = {
                 return {
                     media_ids: [...new Set(mediaIds)],
                     count: mediaIds.length,
-                    removed_count: removedKeys.length
+                    skipped_count: skipped,
+                    post_skipped_count: postSkipped,
+                    removed_count: removed,
+                    removed_skipped_count: removedSkipped
                 };
             };
             return models.Base.knex.transaction(async (trx) => {
