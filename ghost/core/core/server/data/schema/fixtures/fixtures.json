@@ -909,231 +909,6 @@
                     "object_type": "estatepropertytranslation"
                 },
                 {
-                    "name": "Add persons",
-                    "action_type": "add",
-                    "object_type": "person"
-                },
-                {
-                    "name": "Browse persons",
-                    "action_type": "browse",
-                    "object_type": "person"
-                },
-                {
-                    "name": "Delete persons",
-                    "action_type": "destroy",
-                    "object_type": "person"
-                },
-                {
-                    "name": "Edit persons",
-                    "action_type": "edit",
-                    "object_type": "person"
-                },
-                {
-                    "name": "Read persons",
-                    "action_type": "read",
-                    "object_type": "person"
-                },
-                {
-                    "name": "Add person gallery assets",
-                    "action_type": "add",
-                    "object_type": "persongalleryasset"
-                },
-                {
-                    "name": "Browse person gallery assets",
-                    "action_type": "browse",
-                    "object_type": "persongalleryasset"
-                },
-                {
-                    "name": "Delete person gallery assets",
-                    "action_type": "destroy",
-                    "object_type": "persongalleryasset"
-                },
-                {
-                    "name": "Edit person gallery assets",
-                    "action_type": "edit",
-                    "object_type": "persongalleryasset"
-                },
-                {
-                    "name": "Read person gallery assets",
-                    "action_type": "read",
-                    "object_type": "persongalleryasset"
-                },
-                {
-                    "name": "Add person life events",
-                    "action_type": "add",
-                    "object_type": "personlifeevent"
-                },
-                {
-                    "name": "Browse person life events",
-                    "action_type": "browse",
-                    "object_type": "personlifeevent"
-                },
-                {
-                    "name": "Delete person life events",
-                    "action_type": "destroy",
-                    "object_type": "personlifeevent"
-                },
-                {
-                    "name": "Edit person life events",
-                    "action_type": "edit",
-                    "object_type": "personlifeevent"
-                },
-                {
-                    "name": "Read person life events",
-                    "action_type": "read",
-                    "object_type": "personlifeevent"
-                },
-                {
-                    "name": "Add person post relations",
-                    "action_type": "add",
-                    "object_type": "personpostrelation"
-                },
-                {
-                    "name": "Browse person post relations",
-                    "action_type": "browse",
-                    "object_type": "personpostrelation"
-                },
-                {
-                    "name": "Delete person post relations",
-                    "action_type": "destroy",
-                    "object_type": "personpostrelation"
-                },
-                {
-                    "name": "Edit person post relations",
-                    "action_type": "edit",
-                    "object_type": "personpostrelation"
-                },
-                {
-                    "name": "Read person post relations",
-                    "action_type": "read",
-                    "object_type": "personpostrelation"
-                },
-                {
-                    "name": "Add person relations",
-                    "action_type": "add",
-                    "object_type": "personrelation"
-                },
-                {
-                    "name": "Browse person relations",
-                    "action_type": "browse",
-                    "object_type": "personrelation"
-                },
-                {
-                    "name": "Delete person relations",
-                    "action_type": "destroy",
-                    "object_type": "personrelation"
-                },
-                {
-                    "name": "Edit person relations",
-                    "action_type": "edit",
-                    "object_type": "personrelation"
-                },
-                {
-                    "name": "Read person relations",
-                    "action_type": "read",
-                    "object_type": "personrelation"
-                },
-                {
-                    "name": "Add person roles",
-                    "action_type": "add",
-                    "object_type": "personrole"
-                },
-                {
-                    "name": "Browse person roles",
-                    "action_type": "browse",
-                    "object_type": "personrole"
-                },
-                {
-                    "name": "Delete person roles",
-                    "action_type": "destroy",
-                    "object_type": "personrole"
-                },
-                {
-                    "name": "Edit person roles",
-                    "action_type": "edit",
-                    "object_type": "personrole"
-                },
-                {
-                    "name": "Read person roles",
-                    "action_type": "read",
-                    "object_type": "personrole"
-                },
-                {
-                    "name": "Add person stories",
-                    "action_type": "add",
-                    "object_type": "personstory"
-                },
-                {
-                    "name": "Browse person stories",
-                    "action_type": "browse",
-                    "object_type": "personstory"
-                },
-                {
-                    "name": "Delete person stories",
-                    "action_type": "destroy",
-                    "object_type": "personstory"
-                },
-                {
-                    "name": "Edit person stories",
-                    "action_type": "edit",
-                    "object_type": "personstory"
-                },
-                {
-                    "name": "Read person stories",
-                    "action_type": "read",
-                    "object_type": "personstory"
-                },
-                {
-                    "name": "Add person story episodes",
-                    "action_type": "add",
-                    "object_type": "personstoryepisode"
-                },
-                {
-                    "name": "Browse person story episodes",
-                    "action_type": "browse",
-                    "object_type": "personstoryepisode"
-                },
-                {
-                    "name": "Delete person story episodes",
-                    "action_type": "destroy",
-                    "object_type": "personstoryepisode"
-                },
-                {
-                    "name": "Edit person story episodes",
-                    "action_type": "edit",
-                    "object_type": "personstoryepisode"
-                },
-                {
-                    "name": "Read person story episodes",
-                    "action_type": "read",
-                    "object_type": "personstoryepisode"
-                },
-                {
-                    "name": "Add person story series",
-                    "action_type": "add",
-                    "object_type": "personstoryseries"
-                },
-                {
-                    "name": "Browse person story series",
-                    "action_type": "browse",
-                    "object_type": "personstoryseries"
-                },
-                {
-                    "name": "Delete person story series",
-                    "action_type": "destroy",
-                    "object_type": "personstoryseries"
-                },
-                {
-                    "name": "Edit person story series",
-                    "action_type": "edit",
-                    "object_type": "personstoryseries"
-                },
-                {
-                    "name": "Read person story series",
-                    "action_type": "read",
-                    "object_type": "personstoryseries"
-                },
-                {
                     "name": "Add publish content",
                     "action_type": "add",
                     "object_type": "publishcontent"
@@ -1833,15 +1608,6 @@
                     "estatepropertytranslation": "all",
                     "estatedictionaryterm": "all",
                     "estatesetting": "all",
-                    "person": "all",
-                    "persongalleryasset": "all",
-                    "personlifeevent": "all",
-                    "personpostrelation": "all",
-                    "personrelation": "all",
-                    "personrole": "all",
-                    "personstory": "all",
-                    "personstoryepisode": "all",
-                    "personstoryseries": "all",
                     "publishcontent": "all",
                     "socialaiagentsetting": "all",
                     "socialaichat": "all",
@@ -1924,15 +1690,6 @@
                     "estatepropertytranslation": "all",
                     "estatedictionaryterm": "all",
                     "estatesetting": "all",
-                    "person": "all",
-                    "persongalleryasset": "all",
-                    "personlifeevent": "all",
-                    "personpostrelation": "all",
-                    "personrelation": "all",
-                    "personrole": "all",
-                    "personstory": "all",
-                    "personstoryepisode": "all",
-                    "personstoryseries": "all",
                     "publishcontent": "all",
                     "socialaiagentsetting": "all",
                     "socialaichat": "all",
@@ -1987,15 +1744,6 @@
                     "estatepropertytranslation": "all",
                     "estatedictionaryterm": "all",
                     "estatesetting": ["browse", "read", "edit"],
-                    "person": ["add", "destroy", "edit"],
-                    "persongalleryasset": ["add", "destroy", "edit"],
-                    "personlifeevent": ["add", "destroy", "edit"],
-                    "personpostrelation": ["add", "destroy", "edit"],
-                    "personrelation": ["add", "destroy", "edit"],
-                    "personrole": ["add", "destroy", "edit"],
-                    "personstory": ["add", "destroy", "edit"],
-                    "personstoryepisode": ["add", "destroy", "edit"],
-                    "personstoryseries": ["add", "destroy", "edit"],
                     "publishcontent": ["browse", "read", "add", "destroy", "edit"],
                     "socialaiagentsetting": "all",
                     "socialaichat": "all",
@@ -2050,15 +1798,6 @@
                     "estatepropertytranslation": "all",
                     "estatedictionaryterm": "all",
                     "estatesetting": "all",
-                    "person": "all",
-                    "persongalleryasset": "all",
-                    "personlifeevent": "all",
-                    "personpostrelation": "all",
-                    "personrelation": "all",
-                    "personrole": "all",
-                    "personstory": "all",
-                    "personstoryepisode": "all",
-                    "personstoryseries": "all",
                     "publishcontent": "all",
                     "socialaiagentsetting": "all",
                     "socialaichat": "all",
@@ -2108,15 +1847,6 @@
                     "estatepropertytag": "browse",
                     "estatedictionaryterm": ["browse", "read"],
                     "estatesetting": ["browse", "read"],
-                    "person": ["browse", "read"],
-                    "persongalleryasset": ["browse", "read"],
-                    "personlifeevent": ["browse", "read"],
-                    "personpostrelation": ["browse", "read"],
-                    "personrelation": ["browse", "read"],
-                    "personrole": ["browse", "read"],
-                    "personstory": ["browse", "read"],
-                    "personstoryepisode": ["browse", "read"],
-                    "personstoryseries": ["browse", "read"],
                     "publishcontent": ["browse", "read"],
                     "socialaiagentsetting": "all",
                     "socialaichat": "all",
@@ -2164,15 +1894,6 @@
                     "estatepropertytag": "browse",
                     "estatedictionaryterm": ["browse", "read"],
                     "estatesetting": ["browse", "read"],
-                    "person": ["browse", "read"],
-                    "persongalleryasset": ["browse", "read"],
-                    "personlifeevent": ["browse", "read"],
-                    "personpostrelation": ["browse", "read"],
-                    "personrelation": ["browse", "read"],
-                    "personrole": ["browse", "read"],
-                    "personstory": ["browse", "read"],
-                    "personstoryepisode": ["browse", "read"],
-                    "personstoryseries": ["browse", "read"],
                     "publishcontent": ["browse", "read"],
                     "socialaichat": "all",
                     "socialaiavatarbroadcastselection": ["browse", "read"],

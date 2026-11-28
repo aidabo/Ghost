@@ -18,6 +18,10 @@ function forkVersions() {
         .sort((a, b) => minor(a) - minor(b));
 }
 
+// あとの migration が消した権限（例 2026-11-28 の drop-person-tables の removedPermissionObjectTypes）は、
+// 古い migration が足していても fixtures.json に無くてよい（新しい DB にも古い DB にも残らない）
+const removedObjectTypes = new Set();
+
 function collectMigrationGrants() {
     const grants = [];
     const original = {addPermissionWithRoles: utils.addPermissionWithRoles, addPermissionToRole: utils.addPermissionToRole};
@@ -39,7 +43,8 @@ function collectMigrationGrants() {
                 current = `${version}/${file}`;
                 const full = path.join(dir, file);
                 delete require.cache[require.resolve(full)];
-                require(full);
+                const migration = require(full);
+                (migration?.removedPermissionObjectTypes || []).forEach(type => removedObjectTypes.add(type));
             }
         }
     } finally {
@@ -72,6 +77,9 @@ describe('Permission migrations are in fixtures.json (a new database gets them t
         const {byName, granted} = fixtureGrants();
         const missing = [];
         for (const grant of grants) {
+            if (grant.object && removedObjectTypes.has(grant.object)) {
+                continue;
+            }
             const permission = byName.get(grant.name);
             if (!permission) {
                 missing.push(`${grant.file}: permission "${grant.name}" is not in fixtures.json`);
