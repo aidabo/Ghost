@@ -62,4 +62,30 @@ const assertAssetsUsable = async ({knex, SocialGroup, isSystemAdmin}, actor, ass
     return rows;
 };
 
-module.exports = {assertAssetsUsable};
+// clip-presenter's phone video (front repo docs/planning/phone-video-avatar-plan.md
+// §7.3): only the caller's OWN video, uploaded to their own area (owner_scope
+// 'user', no group). Stricter than assertAssetsUsable on purpose: a video of
+// people is not pulled in from a group or by an admin.
+//
+// @param {object} deps
+// @param {Function} deps.knex
+// @param {string} actor
+// @param {string} assetId
+const assertOwnVideo = async ({knex}, actor, assetId) => {
+    if (!actor) {
+        throw new errors.NoPermissionError({message: 'A user is required to use gallery assets.'});
+    }
+    const row = await knex('social_media_assets').where({id: assetId}).first('id', 'user_id', 'group_id', 'owner_scope', 'asset_type');
+    if (!row) {
+        throw new errors.NotFoundError({message: `Gallery asset not found: ${assetId}`});
+    }
+    if (row.user_id !== actor || row.group_id || row.owner_scope !== 'user') {
+        throw new errors.NoPermissionError({message: 'Only a video you uploaded to your own area can be used.'});
+    }
+    if (String(row.asset_type || '').trim().toLowerCase() !== 'video') {
+        throw new errors.ValidationError({message: 'clip.video_asset_id must be a video.'});
+    }
+    return row;
+};
+
+module.exports = {assertAssetsUsable, assertOwnVideo};

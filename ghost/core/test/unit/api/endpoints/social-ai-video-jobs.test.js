@@ -24,6 +24,11 @@ const OWN_PHOTO = 'ddddddddddddddddddddddd1';
 const OTHER_PRIVATE = 'ddddddddddddddddddddddd2';
 const OTHER_IN_GROUP = 'ddddddddddddddddddddddd3';
 const MISSING_ASSET = 'ddddddddddddddddddddddd9';
+const OWN_VIDEO = 'ddddddddddddddddddddddd4';
+const OTHER_VIDEO = 'ddddddddddddddddddddddd5';
+// uploaded by USER, but into a group's area (shared), not USER's own area
+const GROUP_VIDEO = 'ddddddddddddddddddddddd6';
+const MIB = 1024 * 1024;
 
 const staff = (user, data = {}, options = {}) => ({data, options: {...options, context: {user}}});
 const worker = (data = {}, options = {}) => ({data, options: {...options, context: {integration: {id: 'integration-1'}}}});
@@ -55,7 +60,7 @@ describe('Video jobs and avatar consents', function () {
     const savedEnv = {};
     const ENV = ['VIDEO_JOB_FACE_ENABLED', 'VIDEO_JOB_MAX_COST_USD', 'VIDEO_JOB_TEMPLATE_IDS', 'VIDEO_JOB_MAX_LINES',
         'VIDEO_JOB_MONTHLY_MAX_COST_USD', 'VIDEO_JOB_VOICE_LINE_COST_USD', 'VIDEO_JOB_FACE_SECOND_COST_USD',
-        'VIDEO_JOB_MAX_SECONDS', 'VIDEO_JOB_MONTHLY_MAX_JOBS'];
+        'VIDEO_JOB_MAX_SECONDS', 'VIDEO_JOB_MONTHLY_MAX_JOBS', 'VIDEO_JOB_CLIP_MAX_MB', 'VIDEO_JOB_MAX_CLIP_LINES'];
     // The site timezone (settings `timezone`) the budget month is counted in.
     let siteTimezone = 'Asia/Tokyo';
 
@@ -139,13 +144,14 @@ describe('Video jobs and avatar consents', function () {
         await database('social_ai_video_cost_months').del();
         await database('social_ai_avatar_consents').del();
         await database('social_media_assets').del();
-        const asset = (id, userId, groupId = null) => ({
-            id, user_id: userId, group_id: groupId, owner_scope: 'user', storage_key: `gallery/${id}.jpg`,
-            storage_key_hash: id, storage_url: `https://example.test/${id}.jpg`, asset_type: 'image',
+        const asset = (id, userId, groupId = null, assetType = 'image') => ({
+            id, user_id: userId, group_id: groupId, owner_scope: groupId ? 'group' : 'user', storage_key: `gallery/${id}.jpg`,
+            storage_key_hash: id, storage_url: `https://example.test/${id}.jpg`, asset_type: assetType,
             created_at: '2026-01-01 00:00:00'
         });
         await database('social_media_assets').insert([
-            asset(OWN_PHOTO, USER), asset(OTHER_PRIVATE, OTHER), asset(OTHER_IN_GROUP, OTHER, GROUP_OK)
+            asset(OWN_PHOTO, USER), asset(OTHER_PRIVATE, OTHER), asset(OTHER_IN_GROUP, OTHER, GROUP_OK),
+            asset(OWN_VIDEO, USER, null, 'video'), asset(OTHER_VIDEO, OTHER, null, 'video'), asset(GROUP_VIDEO, USER, GROUP_OK, 'video')
         ]);
     });
 
@@ -997,6 +1003,141 @@ describe('Video jobs and avatar consents', function () {
             const result = estimate(face('ja', 'あ'.repeat(70)));
             assert.equal(result.face_seconds, 10);
             assert.equal(result.cost_usd, 1);
+        });
+    });
+
+    describe('clip-presenter (a phone video with a presenter)', function () {
+        const {validateVideoJobPayload} = require('../../../../core/server/api/endpoints/utils/video-job-payload');
+        const clipPayload = (clip = {}, extra = {}) => ({
+            template_id: 'clip-presenter',
+            template_version: 1,
+            aspect: '9:16',
+            lang: 'ja',
+            clip: {video_asset_id: OWN_VIDEO, duration_seconds: 20, size_bytes: 40 * MIB, ...clip},
+            scenes: [{key: 'clip'}],
+            lines: [],
+            ...extra
+        });
+        // 7 Japanese characters a second at tempo 1 (video-job-payload.js).
+        const line = (key, chars) => ({key, scene_key: 'clip', text: 'あ'.repeat(chars)});
+
+        it('accepts the caller\'s own video, with no line or with lines on the one scene', async function () {
+            const silent = await jobs.add.query(addFrame(USER, {payload: clipPayload()}));
+            assert.equal(silent.status, 'queued');
+            assert.equal(silent.estimate.video_seconds, 20);
+            assert.equal(silent.estimate.cost_usd, 0);
+            const spoken = await jobs.add.query(addFrame(USER, {payload: clipPayload({fit: 'cover', trim_start: 1, trim_end: 19, original_audio: 'duck'}, {
+                lines: [line('l1', 70), line('l2', 105)],
+                captions: 'narration',
+                avatar: {photo_asset_id: OWN_PHOTO, placement: 'bottom-left', lipsync: false}
+            })}));
+            // max(18 s of video, 25 s of speech + 0.3 s) = 25.3 → 26
+            assert.equal(spoken.estimate.video_seconds, 26);
+            assert.equal(spoken.estimate.voice_lines, 2);
+        });
+
+        it('keeps the other templates as they were (clip-presenter is allowed by default)', async function () {
+            const intro = await jobs.add.query(addFrame(USER, {payload: basePayload()}));
+            // the same estimate as before: one scene of max(speech + 0.6, reading, 3)
+            assert.equal(intro.estimate.video_seconds, 4);
+            process.env.VIDEO_JOB_TEMPLATE_IDS = 'intro,memories';
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload()})), {code: 'VIDEO_JOB_UNKNOWN_TEMPLATE'});
+        });
+
+        it('refuses a clip on another template, but passes captions and clip: null through as before', async function () {
+            await rejects(jobs.add.query(addFrame(USER, {payload: basePayload({clip: {video_asset_id: OTHER_VIDEO, duration_seconds: 5, size_bytes: MIB}})})), {errorType: 'ValidationError'});
+            assert.ok(await jobs.add.query(addFrame(USER, {payload: basePayload({captions: 'anything', clip: null})})));
+            assert.ok(await jobs.add.query(addFrame(USER, {payload: basePayload({captions: ''})})));
+        });
+
+        it('takes only the caller\'s own video in their own area', async function () {
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({video_asset_id: OWN_PHOTO})})), {errorType: 'ValidationError'});
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({video_asset_id: OTHER_VIDEO})})), {errorType: 'NoPermissionError'});
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({video_asset_id: GROUP_VIDEO})})), {errorType: 'NoPermissionError'});
+            await rejects(jobs.add.query(addFrame(ADMIN, {payload: clipPayload()})), {errorType: 'NoPermissionError'});
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({video_asset_id: MISSING_ASSET})})), {errorType: 'NotFoundError'});
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({video_asset_id: undefined})})), {errorType: 'ValidationError'});
+            assert.equal(await database('social_ai_video_jobs').first(), undefined);
+        });
+
+        it('refuses a video over the size limit (VIDEO_JOB_CLIP_MAX_MB, 500 by default) as clip_too_large', async function () {
+            assert.ok(await jobs.add.query(addFrame(USER, {payload: clipPayload({size_bytes: 500 * MIB})})));
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({size_bytes: (500 * MIB) + 1})})), {code: 'clip_too_large'});
+            process.env.VIDEO_JOB_CLIP_MAX_MB = '10';
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({size_bytes: 11 * MIB})})), {code: 'clip_too_large'});
+            process.env.VIDEO_JOB_CLIP_MAX_MB = '';
+            assert.ok(await jobs.add.query(addFrame(USER, {payload: clipPayload({size_bytes: 400 * MIB})})));
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({size_bytes: undefined})})), {errorType: 'ValidationError'});
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({size_bytes: 0})})), {errorType: 'ValidationError'});
+        });
+
+        it('refuses a video over 60 seconds after the trim (VIDEO_JOB_TOO_LONG)', async function () {
+            assert.ok(await jobs.add.query(addFrame(USER, {payload: clipPayload({duration_seconds: 60})})));
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({duration_seconds: 61})})), {code: 'VIDEO_JOB_TOO_LONG'});
+            assert.ok(await jobs.add.query(addFrame(USER, {payload: clipPayload({duration_seconds: 90, trim_start: 40})})));
+            assert.ok(await jobs.add.query(addFrame(USER, {payload: clipPayload({duration_seconds: 90, trim_end: 55})})));
+        });
+
+        it('refuses lines that make the video over 60 seconds as narration_too_long, with x1.2 for lipsync', function () {
+            // 2 x 30 s + 0.3 s on a 20 s video
+            assert.throws(() => validateVideoJobPayload(clipPayload({}, {lines: [line('l1', 210), line('l2', 210)]})), {code: 'narration_too_long'});
+            assert.equal(validateVideoJobPayload(clipPayload({}, {lines: [line('l1', 210), line('l2', 207)]})).estimate.video_seconds, 60);
+
+            process.env.VIDEO_JOB_FACE_ENABLED = 'true';
+            const talking = {photo_asset_id: OWN_PHOTO, consent_id: OTHER_PRIVATE, lipsync: true};
+            const lines = [line('l1', 7)];
+            // the video alone: 52 s x 1.2 = 62.4 s — the video is too long, not the line
+            assert.throws(() => validateVideoJobPayload(clipPayload({duration_seconds: 52}, {lines, avatar: talking})), {code: 'VIDEO_JOB_TOO_LONG', message: /video/});
+            // the lines push it over: (355 / 7 + 0.3) x 1.2 = 61.2 s on a 40 s video (48 s alone)
+            assert.throws(() => validateVideoJobPayload(clipPayload({duration_seconds: 40}, {lines: [line('l1', 300), line('l2', 55)], avatar: talking})), {code: 'narration_too_long'});
+            assert.equal(validateVideoJobPayload(clipPayload({duration_seconds: 50}, {lines, avatar: talking})).estimate.video_seconds, 60);
+            // without lipsync, no stretch
+            assert.equal(validateVideoJobPayload(clipPayload({duration_seconds: 52}, {lines})).estimate.video_seconds, 52);
+        });
+
+        it('takes one scene "clip" without an image, lines only on it, 9:16 only, at most 20 lines', async function () {
+            const bad = [
+                clipPayload({}, {scenes: [{key: 'clip'}, {key: 's2'}]}),
+                clipPayload({}, {scenes: [{key: 'clip', image_asset_id: OWN_PHOTO}]}),
+                clipPayload({}, {scenes: [{key: 'clip', title: 'x'}]}),
+                clipPayload({}, {scenes: [{key: 's1'}], lines: [{key: 'l1', scene_key: 's1', text: 'a'}]}),
+                clipPayload({}, {aspect: '16:9'})
+            ];
+            for (const payload of bad) {
+                await rejects(jobs.add.query(addFrame(USER, {payload})), {errorType: 'ValidationError'});
+            }
+            const lines = Array.from({length: 21}, (unused, index) => line(`l${index}`, 1));
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({}, {lines})})), {code: 'VIDEO_JOB_TOO_LARGE'});
+            assert.ok(await jobs.add.query(addFrame(USER, {payload: clipPayload({}, {lines: lines.slice(0, 20)})})));
+            process.env.VIDEO_JOB_MAX_CLIP_LINES = '2';
+            await rejects(jobs.add.query(addFrame(USER, {payload: clipPayload({}, {lines: lines.slice(0, 3)})})), {code: 'VIDEO_JOB_TOO_LARGE'});
+        });
+
+        it('takes only the allowed clip fields and values', async function () {
+            const bad = [
+                clipPayload({url: 'https://evil.test/x.mp4'}),
+                clipPayload({fit: 'stretch'}),
+                clipPayload({original_audio: 'loud'}),
+                clipPayload({duration_seconds: 0}),
+                clipPayload({duration_seconds: '20'}),
+                clipPayload({trim_start: -1}),
+                clipPayload({trim_start: 10, trim_end: 10}),
+                clipPayload({trim_end: 21}),
+                clipPayload({}, {captions: 'all'}),
+                clipPayload({}, {clip: null})
+            ];
+            for (const payload of bad) {
+                await rejects(jobs.add.query(addFrame(USER, {payload})), {errorType: 'ValidationError'});
+            }
+            assert.ok(await jobs.add.query(addFrame(USER, {payload: clipPayload({fit: null, trim_end: null}, {captions: 'none'})})));
+        });
+
+        it('hands the clip\'s key to the worker through input-assets', async function () {
+            const job = await jobs.add.query(addFrame(USER, {payload: clipPayload({}, {avatar: {photo_asset_id: OWN_PHOTO, lipsync: false}})}));
+            const claim = await jobs.claim.query(worker({worker_id: 'video-1'}));
+            const result = await jobs.inputAssets.query(worker(lease(claim), {id: job.id}));
+            assert.deepEqual(result.assets.map(a => a.id).sort(), [OWN_PHOTO, OWN_VIDEO].sort());
+            assert.equal(result.assets.find(a => a.id === OWN_VIDEO).asset_type, 'video');
         });
     });
 

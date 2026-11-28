@@ -12,6 +12,10 @@ Ghost 1 つが 1 テナントなので、「テナントの月の合計」はこ
 |---|---|---|
 | `VIDEO_JOB_MAX_SECONDS` | 60 | 受け付けで 422 `VIDEO_JOB_TOO_LONG` |
 | `VIDEO_JOB_MONTHLY_MAX_JOBS` | 30（仮） | 受け付けで 422 `VIDEO_JOB_MONTHLY_COUNT_EXCEEDED` |
+| `VIDEO_JOB_CLIP_MAX_MB` | 500 | `clip-presenter` の携帯の動画（`clip.size_bytes`）。受け付けで 422 `clip_too_large`（worker も同じ名前で読む） |
+| `VIDEO_JOB_MAX_CLIP_LINES` | 20 | `clip-presenter` の行の数。受け付けで 422 `VIDEO_JOB_TOO_LARGE` |
+
+`clip-presenter`（携帯の動画に案内役。front `docs/planning/phone-video-avatar-plan.md`）の長さは別の式: max（切った後の動画, 一言の見積もり＋0.3 秒）、口を動かすときは ×1.2。動画だけで長すぎる（切った後の長さ、口を動かすときは ×1.2）→ 422 `VIDEO_JOB_TOO_LONG`、動画だけなら収まるのに一言で長すぎる → 422 `narration_too_long`。動画の長さは費用に入れない。
 
 - **1 本の長さ**は worker の並べ方（front `tools/video-worker/src/templates.js` の `sceneSeconds`）と同じ式で見積もる:
   場面ごとに max（その場面の行の声の秒＋0.6 秒, 見出しと説明を読む秒〔字数×0.12＋1.5〕, 3 秒）、場面の上限 60 秒、その合計を切り上げ。
