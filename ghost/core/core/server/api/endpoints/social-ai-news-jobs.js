@@ -342,7 +342,7 @@ const canUseProjectForNewsJob = async (userId, project) => {
     if (!reason) {
         return false;
     }
-    return reason !== 'published' || staffScope.isEditorOrAbove(userId);
+    return reason !== 'published' || await staffScope.isEditorOrAbove(userId);
 };
 const loadProjectRow = projectId => models.Base.knex('social_ai_projects').where({id: projectId}).first('id', 'user_id', 'group_id', 'status');
 

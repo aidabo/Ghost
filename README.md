@@ -1,6 +1,6 @@
 # Ghost 5.116.2 の fork（aidabo/Ghost）
 
-このシステムの **backend**。Ghost 5.116.2 に、人物・不動産・AI ジョブなどの独自テーブルと API を足した fork。
+このシステムの **backend**。Ghost 5.116.2 に、不動産・AI ジョブなどの独自テーブルと API を足した fork。
 3 つのサービス（familynews・thinkestate・mars-times）が同じこのコードを使う。フロント（`01-ghost-front`）と runner は、ここの Admin / Content API を使う。
 
 ## この文書の内容
@@ -201,7 +201,6 @@ flowchart LR
 | ソーシャル（グループ・コメント・ギャラリー・ページ部品など） | `social_groups`・`social_post_comments`・`social_components`・`social_media_assets` | `social-*.js` |
 | AI（チャット・リマインダー・端末・プロジェクトなど） | `social_ai_conversations`・`social_ai_reminders`・`social_ai_projects` | `social-ai-*.js` |
 | AI ジョブ（runner が処理する） | `social_ai_media_jobs`・`social_ai_chart_jobs`・`social_ai_news_jobs`・`social_ai_dzi_jobs`・`social_ai_content_bundle_jobs` | `social-ai-*-jobs.js` |
-| 人物・家系図 | `persons`・`person_relations`・`person_stories`・`person_media` | `person-*.js` |
 | 不動産（Estate） | `estate_properties`・`estate_inquiries`・`estate_settings`・`estate_dictionary_terms` | `estate-*.js` |
 | 公開コンテンツ・販売 | `publish_posts`・`content_products`・`member_entitlements` | `publish-content*.js`・`content-products*.js` |
 | 検索・記事のメディア | `post_search_index`・`post_media` | `posts-search-index*.js`・`member-post-search.js`・`post-media-*.js` |
