@@ -415,6 +415,15 @@ All routes below are based on `custom-routes.js`.
 - root key:
   - `socialaimediajobs`
 
+### AI chart jobs（ギャラリーの行とのつながり）
+
+- 図のジョブを作る（`POST /social/ai/chart/jobs`）と、`source_path`・`preview_url` と URL が同じギャラリーの行に `chart_job_id` を書く。
+  - 書くのは、ジョブの持ち主がじかに消せる行（上げた本人・その行を作った図のジョブの持ち主＝`DELETE` のギャラリーと同じ）と管理者だけ。グループに書けるだけのメンバーは、他人の行をつなげない。
+  - 持ち主の無い鍵（integration）だけのジョブは、持ち主の無い行だけ。ほかの人の行はそのまま（応答は変わらない）。
+- ジョブを消す（`DELETE /social/ai/chart/jobs/:id`）とき:
+  - `preview_url` のファイルは、ジョブの持ち主が上げた行（持ち主の無いジョブは持ち主の無い行）があるときだけ消す（deepzoom と同じ）。
+  - `chart_job_id` でつながった行は、持ち主の行と持ち主の無い行（worker が作った行）だけ消す。ほかの人の行はつながりを外すだけ。
+
 ### Groups
 
 - endpoint:
