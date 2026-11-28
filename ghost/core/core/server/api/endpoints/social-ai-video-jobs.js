@@ -8,7 +8,7 @@ const storage = require('../../adapters/storage');
 const socialMediaAssets = require('./utils/social-media-assets');
 const staffScope = require('./utils/staff-scope');
 const {validateVideoJobPayload, estimate, limits} = require('./utils/video-job-payload');
-const {assertAssetsUsable} = require('./utils/video-asset-access');
+const {assertAssetsUsable, assertOwnVideo} = require('./utils/video-asset-access');
 const {isIntegrationRequest} = require('./utils/integration-context');
 const galleryKeyScope = require('./utils/gallery-key-scope');
 const budget = require('./utils/video-job-budget');
@@ -520,6 +520,9 @@ const controller = {
                 SocialGroup: models.SocialGroup,
                 isSystemAdmin
             }, actor, validated.assetIds);
+            if (validated.clipAssetId) {
+                await assertOwnVideo({knex: models.Base.knex}, actor, validated.clipAssetId);
+            }
             if (validated.baseJobId) {
                 await assertAccess(frame, await loadRow(validated.baseJobId));
             }
@@ -834,7 +837,8 @@ const controller = {
             const payload = parseJson(row.payload, {});
             const ids = [...new Set([
                 ...(Array.isArray(payload.scenes) ? payload.scenes.map(scene => scene?.image_asset_id) : []),
-                payload.avatar?.photo_asset_id
+                payload.avatar?.photo_asset_id,
+                payload.clip?.video_asset_id
             ].filter(Boolean))];
             // Return the rows that were checked, not a second read of them.
             const checked = await assertAssetsUsable({

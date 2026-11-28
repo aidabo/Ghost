@@ -17,6 +17,23 @@ const PLACEMENTS = ['bottom-left', 'bottom-right', 'center', 'none'];
 const VOICE_PROVIDERS = ['qwen'];
 const MAX_PAYLOAD_BYTES = 200000;
 
+// clip-presenter: a phone video with the presenter on top (front repo
+// docs/planning/phone-video-avatar-plan.md §6.1, §9). The whole video is ONE
+// scene keyed 'clip' (no image), so the worker's script, voice and face stages
+// stay as they are.
+const CLIP_TEMPLATE = 'clip-presenter';
+const CLIP_SCENE_KEY = 'clip';
+const CLIP_FIELDS = new Set(['video_asset_id', 'duration_seconds', 'size_bytes', 'fit', 'trim_start', 'trim_end', 'original_audio']);
+const CLIP_FITS = ['contain-blur', 'cover'];
+const CLIP_AUDIO = ['keep', 'duck', 'mute'];
+const CAPTIONS = ['none', 'narration'];
+const CLIP_MAX_LINES = 20;
+// The worker starts the first line 0.3 s into the scene (timeline.js
+// VOICE_LEAD_SECONDS) and stretches a lip-synced video by up to 1.2 (stretchOf).
+const VOICE_LEAD_SECONDS = 0.3;
+const LIPSYNC_STRETCH = 1.2;
+const MIB = 1024 * 1024;
+
 // An unset OR empty variable (`VIDEO_JOB_MAX_COST_USD=` in an env file) means the
 // default: Number('') is 0, which would turn every limit into 0.
 const envNumber = (name, fallback) => {
@@ -29,7 +46,7 @@ const envNumber = (name, fallback) => {
 };
 
 const limits = () => ({
-    templateIds: String(process.env.VIDEO_JOB_TEMPLATE_IDS || 'intro,memories')
+    templateIds: String(process.env.VIDEO_JOB_TEMPLATE_IDS || 'intro,memories,clip-presenter')
         .split(',').map(id => id.trim()).filter(Boolean),
     maxScenes: envNumber('VIDEO_JOB_MAX_SCENES', 30),
     maxLines: envNumber('VIDEO_JOB_MAX_LINES', 40),
@@ -43,7 +60,10 @@ const limits = () => ({
     maxCostUsd: envNumber('VIDEO_JOB_MAX_COST_USD', 3),
     voiceLineCostUsd: envNumber('VIDEO_JOB_VOICE_LINE_COST_USD', 0.002),
     faceSecondCostUsd: envNumber('VIDEO_JOB_FACE_SECOND_COST_USD', 0.02),
-    faceEnabled: String(process.env.VIDEO_JOB_FACE_ENABLED || '').toLowerCase() === 'true'
+    faceEnabled: String(process.env.VIDEO_JOB_FACE_ENABLED || '').toLowerCase() === 'true',
+    // The phone video's size limit, read at run time by Ghost here and by the
+    // worker (same env name), so it changes without a release.
+    clipMaxBytes: envNumber('VIDEO_JOB_CLIP_MAX_MB', 500) * MIB
 });
 
 const fail = (message, code = 'VIDEO_JOB_INVALID_PAYLOAD') => {
@@ -127,12 +147,35 @@ const SCENE_GAP_SECONDS = 0.6;
 const MIN_SCENE_SECONDS = 3;
 const MAX_SCENE_SECONDS = 60;
 const readingSeconds = scene => ([...`${scene.title || ''}${scene.body || ''}`.replace(/\s+/g, '')].length * 0.12) + 1.5;
+const wholeSeconds = seconds => Math.ceil(Math.round(seconds * 10) / 10);
+
+const isClipPayload = payload => isObject(payload) && payload.template_id === CLIP_TEMPLATE && isObject(payload.clip);
+
+// The clip's length after the trim (seconds).
+const clipSeconds = (clip) => {
+    const start = typeof clip.trim_start === 'number' ? clip.trim_start : 0;
+    const end = typeof clip.trim_end === 'number' ? clip.trim_end : clip.duration_seconds;
+    return typeof end === 'number' ? Math.max(0, end - start) : 0;
+};
+
+// clip-presenter (plan §4): max(the trimmed video, the lines' speech + 0.3 s),
+// times 1.2 when the face is lip-synced (the worker's stretch at most).
+const clipVideoSeconds = (payload) => {
+    const rate = speechRate(payload);
+    const lines = Array.isArray(payload.lines) ? payload.lines : [];
+    const spoken = lines.reduce((acc, line) => acc + lineSeconds(line, rate), 0);
+    const base = Math.max(clipSeconds(payload.clip), spoken > 0 ? spoken + VOICE_LEAD_SECONDS : 0);
+    return base * (lipsyncLines(payload).length ? LIPSYNC_STRETCH : 1);
+};
 
 /**
  * Estimated length of the video in whole seconds (rounded up).
  * @param {object} payload
  */
 const videoSeconds = (payload) => {
+    if (isClipPayload(payload)) {
+        return wholeSeconds(clipVideoSeconds(payload));
+    }
     if (!isObject(payload) || !Array.isArray(payload.scenes)) {
         return 0;
     }
@@ -147,7 +190,7 @@ const videoSeconds = (payload) => {
         const seconds = Math.max(spoken > 0 ? spoken + SCENE_GAP_SECONDS : 0, readingSeconds(scene), MIN_SCENE_SECONDS);
         return sum + Math.min(MAX_SCENE_SECONDS, seconds);
     }, 0);
-    return Math.ceil(Math.round(total * 10) / 10);
+    return wholeSeconds(total);
 };
 
 /**
@@ -182,12 +225,72 @@ const estimate = (payload) => {
     };
 };
 
+const optionalChoice = (value, field, choices) => {
+    if (value !== undefined && value !== null && !choices.includes(value)) {
+        fail(`${field} must be one of ${choices.join(', ')}.`);
+    }
+};
+
+const nonNegativeNumber = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+// The clip-presenter fields (allow-listed). Returns the video's asset id; the
+// endpoint checks it is the caller's own video (video-asset-access.js).
+const validateClip = (payload, lines, cfg) => {
+    const clip = payload.clip;
+    if (!isObject(clip)) {
+        fail('clip must be an object.');
+    }
+    Object.keys(clip).forEach((field) => {
+        if (!CLIP_FIELDS.has(field)) {
+            fail(`clip.${field} is not allowed.`);
+        }
+    });
+    const videoAssetId = optionalAssetId(clip.video_asset_id, 'clip.video_asset_id');
+    if (!videoAssetId) {
+        fail('clip.video_asset_id is required.');
+    }
+    if (!nonNegativeNumber(clip.duration_seconds) || clip.duration_seconds === 0) {
+        fail('clip.duration_seconds must be a positive number.');
+    }
+    if (!Number.isSafeInteger(clip.size_bytes) || clip.size_bytes < 1) {
+        fail('clip.size_bytes must be a positive integer.');
+    }
+    if (clip.size_bytes > cfg.clipMaxBytes) {
+        fail(`The video is over ${Math.floor(cfg.clipMaxBytes / MIB)} MB.`, 'clip_too_large');
+    }
+    optionalChoice(clip.fit, 'clip.fit', CLIP_FITS);
+    optionalChoice(clip.original_audio, 'clip.original_audio', CLIP_AUDIO);
+    if (clip.trim_start !== undefined && clip.trim_start !== null && !nonNegativeNumber(clip.trim_start)) {
+        fail('clip.trim_start must be a number of seconds, 0 or more.');
+    }
+    if (clip.trim_end !== undefined && clip.trim_end !== null) {
+        const start = typeof clip.trim_start === 'number' ? clip.trim_start : 0;
+        if (!nonNegativeNumber(clip.trim_end) || clip.trim_end <= start || clip.trim_end > clip.duration_seconds) {
+            fail('clip.trim_end must be after clip.trim_start and within the video.');
+        }
+    } else if (typeof clip.trim_start === 'number' && clip.trim_start >= clip.duration_seconds) {
+        fail('clip.trim_start must be within the video.');
+    }
+
+    if ((payload.aspect ?? '9:16') !== '9:16') {
+        fail('aspect must be 9:16 for clip-presenter.');
+    }
+    const [scene] = payload.scenes;
+    if (payload.scenes.length !== 1 || scene.key !== CLIP_SCENE_KEY || Object.keys(scene).some(field => field !== 'key')) {
+        fail(`clip-presenter takes exactly one scene: {key: '${CLIP_SCENE_KEY}'}.`);
+    }
+    if (lines.length > CLIP_MAX_LINES) {
+        fail(`clip-presenter takes at most ${CLIP_MAX_LINES} lines.`, 'VIDEO_JOB_TOO_LARGE');
+    }
+    return videoAssetId;
+};
+
 /**
  * Validates the payload shape. Database checks (consent, base job) are done by
  * the endpoint with the ids this returns.
  *
  * @param {unknown} payload
- * @returns {{payload: object, consentId: string|null, photoAssetId: string|null, lipsync: boolean, baseJobId: string|null, assetIds: string[], estimate: object}}
+ * @returns {{payload: object, consentId: string|null, photoAssetId: string|null, lipsync: boolean, baseJobId: string|null, assetIds: string[], clipAssetId: string|null, estimate: object}}
  */
 const validateVideoJobPayload = (payload) => {
     const cfg = limits();
@@ -243,6 +346,13 @@ const validateVideoJobPayload = (payload) => {
             fail(`lines[${index}].text must be 1-${cfg.maxLineChars} characters. Split long lines.`, 'VIDEO_JOB_LINE_TOO_LONG');
         }
     });
+
+    optionalChoice(payload.captions, 'captions', CAPTIONS);
+    const isClip = payload.template_id === CLIP_TEMPLATE;
+    if (!isClip && payload.clip !== undefined) {
+        fail('clip is only for clip-presenter.');
+    }
+    const clipAssetId = isClip ? validateClip(payload, lines, cfg) : null;
 
     if (payload.voice !== undefined && payload.voice !== null) {
         if (!isObject(payload.voice)) {
@@ -305,6 +415,12 @@ const validateVideoJobPayload = (payload) => {
 
     const cost = estimate(payload);
     const maxVideoSeconds = serviceLimits().maxVideoSeconds;
+    if (isClip && wholeSeconds(clipSeconds(payload.clip)) > maxVideoSeconds) {
+        fail(`The video is about ${wholeSeconds(clipSeconds(payload.clip))} seconds after the trim; at most ${maxVideoSeconds} seconds are allowed.`, 'VIDEO_JOB_TOO_LONG');
+    }
+    if (isClip && cost.video_seconds > maxVideoSeconds) {
+        fail(`With the lines the video would be about ${cost.video_seconds} seconds; at most ${maxVideoSeconds} seconds are allowed.`, 'narration_too_long');
+    }
     if (cost.video_seconds > maxVideoSeconds) {
         fail(`The video would be about ${cost.video_seconds} seconds; at most ${maxVideoSeconds} seconds are allowed.`, 'VIDEO_JOB_TOO_LONG');
     }
@@ -316,7 +432,7 @@ const validateVideoJobPayload = (payload) => {
     // creator may use each one (utils/video-asset-access.js), lipsync or not.
     const assetIds = [...new Set([...sceneAssetIds, photoAssetId].filter(Boolean))];
 
-    return {payload, consentId, photoAssetId, lipsync, baseJobId, assetIds, estimate: cost};
+    return {payload, consentId, photoAssetId, lipsync, baseJobId, assetIds, clipAssetId, estimate: cost};
 };
 
 module.exports = {
