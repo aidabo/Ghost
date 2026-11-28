@@ -48,7 +48,7 @@ const messages = {
     noProjectPermission: 'You are not allowed to access this project gallery.',
     jobIdRequired: '`job_id` is required.',
     jobNotFound: 'Chart job not found: {jobId}.',
-    noJobPermission: 'You are not allowed to access this chart job gallery.',
+    noJobPermission: 'You are not allowed to access this job\'s gallery.',
     invalidPathId: '`{name}` may only contain letters, digits, "-" and "_".',
     storageNoScope: 'Configured storage adapter cannot place gallery uploads (no getTargetDir).',
     keyOutOfScope: '`{field}` must be a file under {prefixes} (the area presign hands out for these values).',

@@ -52,7 +52,7 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
         endpoint = require(endpointPath);
         db = knex({client: 'sqlite3', connection: {filename: ':memory:'}, useNullAsDefault: true});
         await db.schema.createTable('social_ai_news_jobs', (t) => {
-            ['id', 'type', 'user_id', 'group_id', 'project_id', 'status', 'artifacts', 'claim_worker_id', 'claim_token',
+            ['id', 'type', 'user_id', 'group_id', 'project_id', 'status', 'artifacts', 'items', 'payload', 'claim_worker_id', 'claim_token',
                 'claim_expires_at', 'updated_at', 'updated_by'].forEach(c => t.string(c));
             t.integer('claim_generation').notNullable().defaultTo(0);
         });
@@ -66,6 +66,7 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
                 'caption', 'created_at'].forEach(c => t.string(c));
             t.integer('sort_order');
         });
+        await db.schema.createTable('posts', t => t.string('id').primary());
         await db.schema.createTable('social_ai_avatar_broadcast_selections', (t) => {
             ['id', 'post_id', 'media_id'].forEach(c => t.string(c));
         });
@@ -85,18 +86,20 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
 
     beforeEach(async function () {
         sinon.stub(staffScope, 'getStaffScope').callsFake(async userId => ({isSystemAdmin: userId === ADMIN}));
-        for (const table of ['social_ai_news_jobs', 'social_media_assets', 'social_ai_news_job_media', 'social_ai_avatar_broadcast_selections']) {
+        for (const table of ['social_ai_news_jobs', 'social_media_assets', 'social_ai_news_job_media', 'social_ai_avatar_broadcast_selections', 'posts']) {
             await db(table).del();
         }
         const job = (id, userId, status = 'running', projectId = PROJECT) => ({id, type: 'news-read', user_id: userId, project_id: projectId, status, claim_generation: 0});
         await db('social_ai_news_jobs').insert([
-            job(JOB, OWNER),
+            {...job(JOB, OWNER), items: JSON.stringify([{key: 'item-1', post_id: 'post-own-item'}])},
             job(OLD_JOB, OWNER, 'completed'),
             job(OTHERS_JOB, OTHER, 'completed'),
             job(ADMIN_JOB, ADMIN),
             job(WORKER_JOB, null),
+            {...job('00000000000000000000ee07', OWNER), type: 'news-avatar-lipsync', payload: JSON.stringify({avatar_lipsync: {item_key: 'item-1', post_id: 'post-lipsync'}})},
             job(Y_JOB, OTHER, 'completed', PROJECT_Y)
         ]);
+        await db('posts').insert([{id: 'post-own-item'}, {id: 'post-lipsync'}, {id: 'post-elsewhere'}]);
         await db('social_media_assets').insert([
             // made by an earlier job of the same owner
             row('m1', ART('own-old.mp3'), {user_id: OWNER, news_job_id: OLD_JOB, project_id: PROJECT}),
@@ -246,6 +249,33 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
         const result = await link(JOB, [], [ART_Y('y.mp3')]);
         assert.ok(await rowOf('m8'));
         assert.equal(result.removed_skipped_count, 1);
+    });
+
+    describe('post_id: only a post of this job\'s own items (and an existing post) goes into the junction', function () {
+        it('a post of the job\'s items is kept on the junction', async function () {
+            const result = await link(JOB, [asset(ART('p.mp3'), {post_id: 'post-own-item'})]);
+            assert.equal(result.post_skipped_count, 0);
+            assert.equal((await junctionsOf(JOB))[0].post_id, 'post-own-item');
+        });
+
+        it('a post of the lipsync payload is kept on the junction', async function () {
+            const LIPSYNC_JOB = '00000000000000000000ee07';
+            await link(LIPSYNC_JOB, [asset(ART('l.mp4'), {post_id: 'post-lipsync'})]);
+            assert.equal((await junctionsOf(LIPSYNC_JOB))[0].post_id, 'post-lipsync');
+        });
+
+        it('another existing post, or a post of the items that does not exist, is not written; the artifact is still linked', async function () {
+            await db('posts').where({id: 'post-own-item'}).del();
+            const result = await link(JOB, [
+                asset(ART('a.mp3'), {post_id: 'post-elsewhere'}),
+                asset(ART('b.mp3'), {post_id: 'post-own-item'})
+            ]);
+            assert.equal(result.count, 2);
+            assert.equal(result.post_skipped_count, 2);
+            const junctions = await junctionsOf(JOB);
+            assert.equal(junctions.length, 2);
+            assert.ok(junctions.every(j => j.post_id === null));
+        });
     });
 
     it('only the worker (integration) may call it', async function () {

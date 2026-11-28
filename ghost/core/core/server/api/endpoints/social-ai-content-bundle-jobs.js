@@ -113,7 +113,10 @@ const canWriteGroup = async (groupId, actor) => {
 // do it. No admin flow calls link-assets for someone else's job.
 // Worker path (integration key, no context.user): the same checks with the job's
 // owner as the caller (actor = row.user_id, posts checked with the owner's
-// permissions), so a key holder cannot tie another user's row or post to a job.
+// permissions), so the worker cannot tie another user's row or post to a job by
+// mistake or from a bad manifest. The integration key itself is trusted: it may
+// name any user_id (or none) at `add`, and the owner is fixed there; this check
+// does not defend against a malicious key holder.
 // A job without an owner (made by an integration) links owner-less rows only, and
 // only when it has no group and its project, if any, has no owner either.
 const assertOwnerCanLinkAssets = async ({frame, row, assets, store, actor = currentUser(frame), permissionContext = frame.options.context, allowOwnerless = false}) => {
@@ -122,7 +125,9 @@ const assertOwnerCanLinkAssets = async ({frame, row, assets, store, actor = curr
     const knex = models.Base.knex;
     if (row.project_id) {
         const project = await knex('social_ai_projects').where({id: row.project_id}).first('id', 'user_id', 'group_id');
-        const ownsProject = project && ((project.user_id || null) === (actor || null) || (actor && project.group_id && await canWriteGroup(project.group_id, actor)));
+        const ownsProject = project && (actor
+            ? (project.user_id === actor || (project.group_id && await canWriteGroup(project.group_id, actor)))
+            : (!project.user_id && !project.group_id));
         if (!ownsProject) throw denyLink();
     }
     for (const asset of assets) {

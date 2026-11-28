@@ -797,6 +797,16 @@ const controller = {
                     : [];
                 const mediaIds = [];
                 let skipped = 0;
+                let postSkipped = 0;
+                // post_id on the junction: only a post of this job's own work list (items[].post_id, or the lipsync
+                // payload's post) that exists. The worker's payload is not trusted with other posts; an artifact with
+                // any other post_id is still linked, without the post (counted in post_skipped_count).
+                const jobPayload = parseJson(row.payload, {}) || {};
+                const jobPostIds = new Set([
+                    ...(parseJson(row.items, []) || []).map(item => item?.post_id),
+                    jobPayload.avatar_lipsync?.post_id,
+                    jobPayload.post_id
+                ].map(id => String(id || '').trim()).filter(Boolean));
 
                 // Idempotency key is storage_key_hash ALONE (same rule as chart, H1):
                 // a different job republishing the same S3 path reuses the existing row
@@ -901,7 +911,12 @@ const controller = {
                     // single link column cannot express, and why the news family needs
                     // its own junction rather than chart's.
                     const itemKey = String(asset.item_key || '').trim() || null;
-                    const postId = String(asset.post_id || '').trim() || null;
+                    let postId = String(asset.post_id || '').trim() || null;
+                    if (postId && (!jobPostIds.has(postId) || !(await knex('posts').where({id: postId}).first('id')))) {
+                        logging.warn(`[social-ai-news-jobs] link-assets dropped post ${postId} for job ${row.id}: not a post of this job's items`);
+                        postSkipped += 1;
+                        postId = null;
+                    }
                     const existingJunction = await knex(JUNCTION)
                         .where({news_job_id: row.id, media_id: mediaId})
                         .first();
@@ -983,6 +998,7 @@ const controller = {
                     media_ids: [...new Set(mediaIds)],
                     count: mediaIds.length,
                     skipped_count: skipped,
+                    post_skipped_count: postSkipped,
                     removed_count: removed,
                     removed_skipped_count: removedSkipped
                 };
