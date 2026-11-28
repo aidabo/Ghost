@@ -280,12 +280,35 @@ const assertAccess = async (frame, row, write = false) => {
 // link-assets: may this job's worker reuse (re-point, remove) an existing gallery row? Same rule as chart (#99):
 // - Only a news row (owner_scope news_jobs, no other job family's id): a chart, video, deepzoom, content bundle or
 //   direct-upload row is never reused, whoever owns it.
-// - Then the job owner is the row's uploader or the owner of the news job that made it; or the job owner is a
+// - A worker artifact of the SAME project is reused whoever ran the earlier job: the newsroom project is shared by
+//   several staff and news-read publishes fixed per-item names under the project's artifacts/, so a re-run by
+//   another staff member must take the row over (the broadcast reads completed jobs' artifacts). Worker artifact =
+//   key under gallery/projects/<this project>/artifacts/, and the row's project or its news job's project is this
+//   job's project.
+// - Otherwise the job owner is the row's uploader or the owner of the news job that made it; or the job owner is a
 //   system admin. An owner-less (integration) job reuses owner-less rows only.
 const OTHER_JOB_ID_COLUMNS = ['chart_job_id', 'video_job_id', 'dzi_job_id', 'content_bundle_job_id'];
-const canRelinkAsset = async (knex, asset, jobUserId) => {
+const isSameProjectWorkerArtifact = async (knex, asset, job) => {
+    const pid = job.project_id ? String(job.project_id) : '';
+    if (!pid || !String(asset.storage_key || '').includes(`gallery/projects/${pid}/artifacts/`)) {
+        return false;
+    }
+    if (String(asset.project_id || '') === pid) {
+        return true;
+    }
+    if (asset.news_job_id) {
+        const madeBy = await knex(TABLE).where({id: asset.news_job_id}).first('project_id');
+        return String(madeBy?.project_id || '') === pid;
+    }
+    return false;
+};
+const canRelinkAsset = async (knex, asset, job) => {
+    const jobUserId = job.user_id;
     if (asset.owner_scope !== OWNER_SCOPE || OTHER_JOB_ID_COLUMNS.some(c => asset[c])) {
         return false;
+    }
+    if (await isSameProjectWorkerArtifact(knex, asset, job)) {
+        return true;
     }
     if (!jobUserId) {
         return !asset.user_id;
@@ -800,7 +823,7 @@ const controller = {
                         .where({storage_key_hash: storageKeyHash})
                         .first();
 
-                    if (existing && !(await canRelinkAsset(knex, existing, row.user_id))) {
+                    if (existing && !(await canRelinkAsset(knex, existing, row))) {
                         // Someone else's row or another job family's row: left as it is, not linked to this job.
                         logging.warn(`[social-ai-news-jobs] link-assets skipped ${storageKey} for job ${row.id}: row ${existing.id} is not this job's to reuse`);
                         skipped += 1;
@@ -852,7 +875,7 @@ const controller = {
                                 if (!dup) {
                                     throw err;
                                 }
-                                if (!(await canRelinkAsset(knex, dup, row.user_id))) {
+                                if (!(await canRelinkAsset(knex, dup, row))) {
                                     logging.warn(`[social-ai-news-jobs] link-assets skipped ${storageKey} for job ${row.id}: row ${dup.id} is not this job's to reuse`);
                                     skipped += 1;
                                     continue;
@@ -933,7 +956,7 @@ const controller = {
                     const stale = await knex('social_media_assets')
                         .where({storage_key: key, owner_scope: OWNER_SCOPE});
                     for (const staleRow of stale) {
-                        if (!(await canRelinkAsset(knex, staleRow, row.user_id))) {
+                        if (!(await canRelinkAsset(knex, staleRow, row))) {
                             logging.warn(`[social-ai-news-jobs] link-assets kept ${key} for job ${row.id}: row ${staleRow.id} is not this job's to remove`);
                             removedSkipped += 1;
                             continue;

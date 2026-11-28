@@ -1,6 +1,8 @@
 // news job の worker が成果物の行を登録する道（POST /social/ai/news/jobs/:id/link-assets）。chart（#99）と同じ規則。
 // - worker の正しい使い方: 自分のジョブの成果物の行を作って結びつける・同じジョブ／同じ持ち主のジョブの再公開は同じ行を使う。
-// - すでにある行を変えられるのは、ジョブの持ち主がその行を上げた本人か、行を作った news job の持ち主のときか、
+// - 同じ project の worker の成果物（project の artifacts/ の行で、行か行の news job が同じ project）は、
+//   前のジョブを誰が流したかに関係なく使い直す（ニュースルームの project は何人かで使い、記事ごとに同じ名前で出すため）。
+// - それ以外ですでにある行を変えられるのは、ジョブの持ち主がその行を上げた本人か、行を作った news job の持ち主のときか、
 //   ジョブの持ち主が管理者のときだけ。持ち主の無いジョブは持ち主の無い行だけ。
 //   ほかの人の行には news_job_id を付けず、名前・URL も変えない（skipped_count に数える）。removed_keys も同じ規則で消す。
 // - 使い直せるのは news 用の行（owner_scope news_jobs）だけ。ほかのジョブ（chart・video・dzi・content bundle）の行は使い直さない。
@@ -17,13 +19,17 @@ const OWNER = '00000000000000000000aa01';
 const OTHER = '00000000000000000000aa02';
 const ADMIN = '00000000000000000000aa04';
 const PROJECT = '00000000000000000000bb01';
+const PROJECT_Y = '00000000000000000000bb02';
 const JOB = '00000000000000000000ee01';
 const OLD_JOB = '00000000000000000000ee02';
 const OTHERS_JOB = '00000000000000000000ee03';
 const ADMIN_JOB = '00000000000000000000ee04';
 const WORKER_JOB = '00000000000000000000ee05';
+const Y_JOB = '00000000000000000000ee06';
 
 const ART = name => `content/media/gallery/projects/${PROJECT}/artifacts/audio/${name}`;
+const ART_Y = name => `content/media/gallery/projects/${PROJECT_Y}/artifacts/audio/${name}`;
+const UPLOAD = `content/media/gallery/news_jobs/${OTHERS_JOB}/2026/11/photo.png`;
 const HOST = 'https://cdn.example.com';
 const asset = (key, extra = {}) => ({storage_key: key, storage_url: `${HOST}/${key}`, asset_type: 'audio', original_filename: 'new.mp3', item_key: 'item-1', ...extra});
 
@@ -82,13 +88,14 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
         for (const table of ['social_ai_news_jobs', 'social_media_assets', 'social_ai_news_job_media', 'social_ai_avatar_broadcast_selections']) {
             await db(table).del();
         }
-        const job = (id, userId, status = 'running') => ({id, type: 'news-read', user_id: userId, project_id: PROJECT, status, claim_generation: 0});
+        const job = (id, userId, status = 'running', projectId = PROJECT) => ({id, type: 'news-read', user_id: userId, project_id: projectId, status, claim_generation: 0});
         await db('social_ai_news_jobs').insert([
             job(JOB, OWNER),
             job(OLD_JOB, OWNER, 'completed'),
             job(OTHERS_JOB, OTHER, 'completed'),
             job(ADMIN_JOB, ADMIN),
-            job(WORKER_JOB, null)
+            job(WORKER_JOB, null),
+            job(Y_JOB, OTHER, 'completed', PROJECT_Y)
         ]);
         await db('social_media_assets').insert([
             // made by an earlier job of the same owner
@@ -104,7 +111,11 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
             // uploaded by someone else, made by a job of the owner
             row('m6', ART('relinked.mp3'), {user_id: OTHER, news_job_id: OLD_JOB, project_id: PROJECT}),
             // owner's news row that also carries a video job id
-            row('m7', ART('video.mp4'), {user_id: OWNER, video_job_id: 'v1', project_id: PROJECT})
+            row('m7', ART('video.mp4'), {user_id: OWNER, video_job_id: 'v1', project_id: PROJECT}),
+            // another member's worker artifact of another project
+            row('m8', ART_Y('y.mp3'), {user_id: OTHER, news_job_id: Y_JOB, project_id: PROJECT_Y}),
+            // another member's own upload into their news job's folder (a person's file, not a worker artifact)
+            row('m9', UPLOAD, {user_id: OTHER, news_job_id: OTHERS_JOB, project_id: PROJECT})
         ]);
     });
 
@@ -149,17 +160,32 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
         assert.equal((await junctionsOf(JOB)).length, 1);
     });
 
-    it('someone else\'s row (another member\'s news row, a user upload) is not touched and not linked', async function () {
-        const result = await link(JOB, [
-            asset(ART('others.mp3')),
-            asset('content/media/gallery/users/other/2026/11/photo.png')
-        ]);
+    it('(a) another staff member\'s job artifact of the same project is relinked to this job (newsroom re-run)', async function () {
+        const result = await link(JOB, [asset(ART('others.mp3'))]);
+        assert.deepEqual(result.media_ids, ['m2']);
+        assert.equal(result.skipped_count, 0);
+        const m2 = await rowOf('m2');
+        assert.equal(m2.news_job_id, JOB);
+        assert.equal(m2.user_id, OTHER);
+        assert.equal(m2.original_filename, 'new.mp3');
+        assert.equal((await junctionsOf(JOB)).length, 1);
+    });
+
+    it('(b) a job of project X does not relink an artifact of project Y', async function () {
+        const result = await link(JOB, [asset(ART_Y('y.mp3'))]);
+        assert.equal(result.count, 0);
+        assert.equal(result.skipped_count, 1);
+        const m8 = await rowOf('m8');
+        assert.equal(m8.news_job_id, Y_JOB);
+        assert.equal(m8.project_id, PROJECT_Y);
+    });
+
+    it('(c) someone else\'s own upload (user gallery, or their news job folder) is not touched and not linked', async function () {
+        const result = await link(JOB, [asset('content/media/gallery/users/other/2026/11/photo.png'), asset(UPLOAD)]);
         assert.equal(result.count, 0);
         assert.equal(result.skipped_count, 2);
-        const m2 = await rowOf('m2');
-        assert.equal(m2.news_job_id, OTHERS_JOB);
-        assert.equal(m2.original_filename, 'old.mp3');
         assert.equal((await rowOf('m3')).news_job_id, null);
+        assert.equal((await rowOf('m9')).news_job_id, OTHERS_JOB);
         assert.equal((await junctionsOf(JOB)).length, 0);
     });
 
@@ -172,18 +198,18 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
     });
 
     it('a job of an admin may re-link someone else\'s news row', async function () {
-        const result = await link(ADMIN_JOB, [asset(ART('others.mp3'))]);
-        assert.deepEqual(result.media_ids, ['m2']);
-        const m2 = await rowOf('m2');
-        assert.equal(m2.news_job_id, ADMIN_JOB);
-        assert.equal(m2.user_id, OTHER);
+        const result = await link(ADMIN_JOB, [asset(UPLOAD)]);
+        assert.deepEqual(result.media_ids, ['m9']);
+        const m9 = await rowOf('m9');
+        assert.equal(m9.news_job_id, ADMIN_JOB);
+        assert.equal(m9.user_id, OTHER);
     });
 
-    it('an owner-less job links owner-less news rows only', async function () {
-        const result = await link(WORKER_JOB, [asset(ART('worker-old.mp3')), asset(ART('others.mp3'))]);
+    it('an owner-less job links owner-less rows and its project\'s worker artifacts only', async function () {
+        const result = await link(WORKER_JOB, [asset(ART('worker-old.mp3')), asset(UPLOAD), asset(ART_Y('y.mp3'))]);
         assert.deepEqual(result.media_ids, ['m5']);
-        assert.equal(result.skipped_count, 1);
-        assert.equal((await rowOf('m2')).news_job_id, OTHERS_JOB);
+        assert.equal(result.skipped_count, 2);
+        assert.equal((await rowOf('m9')).news_job_id, OTHERS_JOB);
     });
 
     it('a row someone else uploaded but a job of the owner made may be re-linked by the owner\'s job', async function () {
@@ -193,11 +219,14 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
     });
 
     it('removed_keys: the owner\'s own artifact row is dropped, someone else\'s is kept; the counts tell which', async function () {
-        const result = await link(JOB, [], [ART('own-old.mp3'), ART('others.mp3')]);
+        const result = await link(JOB, [], [ART('own-old.mp3'), ART('others.mp3'), ART_Y('y.mp3'), UPLOAD]);
         assert.equal(await rowOf('m1'), undefined);
-        assert.ok(await rowOf('m2'));
-        assert.equal(result.removed_count, 1);
-        assert.equal(result.removed_skipped_count, 1);
+        // the same project's artifact of another staff member's job is dropped too (the worker deleted the file)
+        assert.equal(await rowOf('m2'), undefined);
+        assert.ok(await rowOf('m8'));
+        assert.ok(await rowOf('m9'));
+        assert.equal(result.removed_count, 2);
+        assert.equal(result.removed_skipped_count, 2);
     });
 
     it('removed_keys: a row selected for a virtual broadcast is still refused (own row)', async function () {
@@ -206,10 +235,16 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
         assert.ok(await rowOf('m1'));
     });
 
-    it('removed_keys: someone else\'s selected row is kept without failing the job', async function () {
-        await db('social_ai_avatar_broadcast_selections').insert({id: 's2', post_id: 'post-2', media_id: 'm2'});
-        const result = await link(JOB, [], [ART('others.mp3')]);
+    it('removed_keys: a selected artifact of another staff member\'s job in the same project is refused too', async function () {
+        await db('social_ai_avatar_broadcast_selections').insert({id: 's3', post_id: 'post-3', media_id: 'm2'});
+        await assert.rejects(link(JOB, [], [ART('others.mp3')]), {errorType: 'ValidationError'});
         assert.ok(await rowOf('m2'));
+    });
+
+    it('removed_keys: a selected row this job may not touch (another project) is kept without failing the job', async function () {
+        await db('social_ai_avatar_broadcast_selections').insert({id: 's2', post_id: 'post-2', media_id: 'm8'});
+        const result = await link(JOB, [], [ART_Y('y.mp3')]);
+        assert.ok(await rowOf('m8'));
         assert.equal(result.removed_skipped_count, 1);
     });
 
