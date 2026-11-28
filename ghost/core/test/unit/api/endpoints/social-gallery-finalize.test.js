@@ -319,7 +319,9 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             };
 
             beforeEach(async function () {
-                await db('social_ai_news_jobs').insert({id: NEWS_PROJECT_JOB, user_id: OTHER, project_id: PROJECT});
+                // The caller's own jobs: only the job owner may put files in the job folder.
+                await db('social_ai_chart_jobs').where({id: PROJECT_JOB}).update({user_id: ME});
+                await db('social_ai_news_jobs').insert({id: NEWS_PROJECT_JOB, user_id: ME, project_id: PROJECT});
             });
 
             it('a chart job of a project the caller can read: the row gets that project, the key stays in the job folder', async function () {
@@ -365,7 +367,9 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             };
 
             beforeEach(async function () {
-                await db('social_ai_news_jobs').insert({id: NEWS_PROJECT_JOB, user_id: OTHER, project_id: PROJECT});
+                // The caller's own jobs: only the job owner may put files in the job folder.
+                await db('social_ai_chart_jobs').where({id: PROJECT_JOB}).update({user_id: ME});
+                await db('social_ai_news_jobs').insert({id: NEWS_PROJECT_JOB, user_id: ME, project_id: PROJECT});
             });
 
             it('chart_jobs + job_id: the row gets chart_job_id and the job\'s project, job_id stays empty', async function () {
@@ -401,7 +405,50 @@ describe('Social gallery: finalize only takes keys of the caller\'s own upload a
             });
         });
 
+        describe('target chart_jobs / news_jobs: only the job owner or a site admin may put files in the job folder', function () {
+            // ME can read PROJECT (its owner) but PROJECT_JOB / NEWS_OTHERS_JOB belong to OTHER.
+            const NEWS_OTHERS_JOB = '00000000000000000000ee15';
+            const ADMIN = '00000000000000000000aa09';
+
+            beforeEach(async function () {
+                await db('social_ai_news_jobs').insert({id: NEWS_OTHERS_JOB, user_id: OTHER, project_id: PROJECT});
+            });
+
+            it('presign into another user\'s job folder is refused, even for a reader of the job\'s project', async function () {
+                await assert.rejects(presign(ME, {target: 'chart_jobs', job_id: PROJECT_JOB}), {errorType: 'NoPermissionError'});
+                await assert.rejects(presign(ME, {target: 'news_jobs', job_id: NEWS_OTHERS_JOB}), {errorType: 'NoPermissionError'});
+            });
+
+            it('finalize of a key in another user\'s job folder is refused and makes no row', async function () {
+                const chartKey = `${ROOT}/gallery/chart_jobs/${PROJECT_JOB}/${YM}/mine-1234abcd.png`;
+                const newsKey = `${ROOT}/gallery/news_jobs/${NEWS_OTHERS_JOB}/${YM}/mine-1234abcd.png`;
+                await assert.rejects(finalize(ME, {...keyed(chartKey), target: 'chart_jobs', job_id: PROJECT_JOB}), {errorType: 'NoPermissionError'});
+                await assert.rejects(finalize(ME, {...keyed(newsKey), target: 'news_jobs', job_id: NEWS_OTHERS_JOB}), {errorType: 'NoPermissionError'});
+                assert.equal(await rowOf(chartKey), undefined);
+                assert.equal(await rowOf(newsKey), undefined);
+            });
+
+            it('the job owner may', async function () {
+                await db('social_ai_projects').where({id: PROJECT}).update({user_id: OTHER});
+                const signed = (await presign(OTHER, {target: 'news_jobs', job_id: NEWS_OTHERS_JOB})).data[0];
+                await finalize(OTHER, {...keyed(signed.storage_key), target: 'news_jobs', job_id: NEWS_OTHERS_JOB});
+                assert.equal((await rowOf(signed.storage_key)).user_id, OTHER);
+            });
+
+            it('a site admin may', async function () {
+                staffScope.getStaffScope.callsFake(async id => ({isSystemAdmin: id === ADMIN}));
+                await db('social_ai_projects').where({id: PROJECT}).update({user_id: ADMIN});
+                const signed = (await presign(ADMIN, {target: 'chart_jobs', job_id: PROJECT_JOB})).data[0];
+                await finalize(ADMIN, {...keyed(signed.storage_key), target: 'chart_jobs', job_id: PROJECT_JOB});
+                assert.equal((await rowOf(signed.storage_key)).chart_job_id, PROJECT_JOB);
+            });
+        });
+
         describe('a project_id sent without a job link is checked too', function () {
+            beforeEach(async function () {
+                await db('social_ai_chart_jobs').where({id: PROJECT_JOB}).update({user_id: ME});
+            });
+
             it('a project the caller cannot read is refused (target chart_jobs, no job link)', async function () {
                 const signed = (await presign(ME, {target: 'chart_jobs', job_id: PROJECT_JOB})).data[0];
                 await assert.rejects(finalize(ME, {...keyed(signed.storage_key), target: 'chart_jobs', job_id: PROJECT_JOB, project_id: OTHERS_PROJECT}), {errorType: 'NoPermissionError'});

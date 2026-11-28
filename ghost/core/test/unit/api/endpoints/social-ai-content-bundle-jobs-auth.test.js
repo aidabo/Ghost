@@ -323,4 +323,52 @@ describe('Content bundle jobs: worker integration and owner checks', function ()
             assert.deepEqual(result.media_ids, [OTHER_ASSET]);
         });
     });
+
+    describe('link-assets worker path: the same checks, with the job owner in place of the caller', function () {
+        const link = (frame, assets) => endpoint.linkAssets.query({...frame, data: {assets}});
+
+        it('refuses another user\'s asset, by id or by storage URL, and writes nothing', async function () {
+            await assert.rejects(link(workerFrame({id: JOB}), [{asset_id: OTHER_ASSET}]), forbidden);
+            await assert.rejects(link(workerFrame({id: JOB}), [{storage_url: 'https://cdn.example/other/b.png'}]), forbidden);
+            const other = await database('social_media_assets').where({id: OTHER_ASSET}).first();
+            assert.equal(other.content_bundle_job_id, null);
+            assert.equal(other.project_id, null);
+        });
+
+        it('refuses a post the job owner cannot edit', async function () {
+            await assert.rejects(link(workerFrame({id: JOB}), [
+                {asset_id: OWN_ASSET, storage_url: 'https://cdn.example/own/a.png', post_id: OTHER_POST, media_type: 'image'}
+            ]), forbidden);
+            assert.equal((await database('post_media')).length, 0);
+        });
+
+        it('refuses a job whose project the job owner does not own', async function () {
+            await database('social_ai_projects').insert({id: 'p-other', user_id: OTHER});
+            await database(TABLE).where({id: JOB}).update({project_id: 'p-other'});
+            await assert.rejects(link(workerFrame({id: JOB}), [{asset_id: OWN_ASSET}]), forbidden);
+        });
+
+        it('links the job owner\'s own asset into a post the job owner can edit, and new files by URL', async function () {
+            const result = await link(workerFrame({id: JOB}), [
+                {asset_id: OWN_ASSET, storage_url: 'https://cdn.example/own/a.png', post_id: OWN_POST, media_type: 'image'}
+            ]);
+            assert.deepEqual(result.media_ids, [OWN_ASSET]);
+            assert.equal((await database('social_media_assets').where({id: OWN_ASSET}).first()).content_bundle_job_id, JOB);
+            assert.equal((await database('post_media').where({post_id: OWN_POST})).length, 1);
+        });
+
+        it('an owner-less job links owner-less rows and new files only', async function () {
+            const OWNERLESS_ASSET = '111111111111111111111112';
+            await database(TABLE).where({id: JOB}).update({user_id: null});
+            await database('social_media_assets').insert({id: OWNERLESS_ASSET, storage_key: 'w/c.png', storage_url: 'https://cdn.example/w/c.png', user_id: null, asset_type: 'image'});
+            await assert.rejects(link(workerFrame({id: JOB}), [{asset_id: OWN_ASSET}]), forbidden);
+            const result = await link(workerFrame({id: JOB}), [{asset_id: OWNERLESS_ASSET}]);
+            assert.deepEqual(result.media_ids, [OWNERLESS_ASSET]);
+            assert.equal((await database('social_media_assets').where({id: OWN_ASSET}).first()).content_bundle_job_id, null);
+        });
+
+        it('a missing job is still 404 for the worker', async function () {
+            await assert.rejects(link(workerFrame({id: MISSING_JOB}), [{asset_id: OWN_ASSET}]), {errorType: 'NotFoundError'});
+        });
+    });
 });

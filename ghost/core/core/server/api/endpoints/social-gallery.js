@@ -1443,6 +1443,16 @@ const getTargetJobId = (frame, field) => {
     return viaJobId || viaField;
 };
 
+// Target chart_jobs / news_jobs: only the job's owner or a site admin may put files in the job folder (the
+// user's rule: rows linked to a job are made only by its owner). Reading the job's project is not enough. A job
+// that does not exist is left to finalize's job check (422).
+const assertCanUploadToJobFolder = async (table, jobId, userId) => {
+    const job = await models.Base.knex(table).where({id: jobId}).first('id', 'user_id');
+    if (job && String(job.user_id || '') !== String(userId) && !(await isAdminUser(userId))) {
+        throw new errors.NoPermissionError({message: tpl(messages.noJobPermission)});
+    }
+};
+
 const resolveUploadContext = async (frame) => {
     const mediaStore = storage.getStorage('media');
     const userId = frame.options?.context?.user;
@@ -1637,6 +1647,7 @@ const resolveUploadContext = async (frame) => {
                 message: 'job_id (24-char chart job id) is required for chart_jobs uploads.'
             });
         }
+        await assertCanUploadToJobFolder('social_ai_chart_jobs', jobId, userId);
         const baseDir = path.posix.join(root, 'gallery', 'chart_jobs', jobId);
         return {
             mediaStore,
@@ -1670,6 +1681,7 @@ const resolveUploadContext = async (frame) => {
                 message: 'job_id (24-char news job id) is required for news_jobs uploads.'
             });
         }
+        await assertCanUploadToJobFolder('social_ai_news_jobs', jobId, userId);
         const baseDir = path.posix.join(root, 'gallery', 'news_jobs', jobId);
         return {
             mediaStore,

@@ -277,6 +277,31 @@ const assertAccess = async (frame, row, write = false) => {
     }
 };
 
+// link-assets: may this job's worker reuse (re-point, remove) an existing gallery row? Same rule as chart (#99):
+// - Only a news row (owner_scope news_jobs, no other job family's id): a chart, video, deepzoom, content bundle or
+//   direct-upload row is never reused, whoever owns it.
+// - Then the job owner is the row's uploader or the owner of the news job that made it; or the job owner is a
+//   system admin. An owner-less (integration) job reuses owner-less rows only.
+const OTHER_JOB_ID_COLUMNS = ['chart_job_id', 'video_job_id', 'dzi_job_id', 'content_bundle_job_id'];
+const canRelinkAsset = async (knex, asset, jobUserId) => {
+    if (asset.owner_scope !== OWNER_SCOPE || OTHER_JOB_ID_COLUMNS.some(c => asset[c])) {
+        return false;
+    }
+    if (!jobUserId) {
+        return !asset.user_id;
+    }
+    if (String(asset.user_id || '') === String(jobUserId)) {
+        return true;
+    }
+    if (asset.news_job_id) {
+        const madeBy = await knex(TABLE).where({id: asset.news_job_id}).first('user_id');
+        if (madeBy?.user_id && String(madeBy.user_id) === String(jobUserId)) {
+            return true;
+        }
+    }
+    return (await staffScope.getStaffScope(jobUserId)).isSystemAdmin;
+};
+
 const loadRow = async id => {
     if (!id) {
         throw new errors.ValidationError({message: '`id` is required.'});
@@ -748,6 +773,7 @@ const controller = {
                     ? payloadInput.removed_keys.map(String).map(s => s.trim()).filter(Boolean)
                     : [];
                 const mediaIds = [];
+                let skipped = 0;
 
                 // Idempotency key is storage_key_hash ALONE (same rule as chart, H1):
                 // a different job republishing the same S3 path reuses the existing row
@@ -774,6 +800,12 @@ const controller = {
                         .where({storage_key_hash: storageKeyHash})
                         .first();
 
+                    if (existing && !(await canRelinkAsset(knex, existing, row.user_id))) {
+                        // Someone else's row or another job family's row: left as it is, not linked to this job.
+                        logging.warn(`[social-ai-news-jobs] link-assets skipped ${storageKey} for job ${row.id}: row ${existing.id} is not this job's to reuse`);
+                        skipped += 1;
+                        continue;
+                    }
                     if (existing) {
                         await knex('social_media_assets')
                             .where({id: existing.id})
@@ -819,6 +851,11 @@ const controller = {
                                     .first();
                                 if (!dup) {
                                     throw err;
+                                }
+                                if (!(await canRelinkAsset(knex, dup, row.user_id))) {
+                                    logging.warn(`[social-ai-news-jobs] link-assets skipped ${storageKey} for job ${row.id}: row ${dup.id} is not this job's to reuse`);
+                                    skipped += 1;
+                                    continue;
                                 }
                                 await knex('social_media_assets')
                                     .where({id: dup.id})
@@ -884,25 +921,32 @@ const controller = {
 
                 // A key that publishJob deleted from S3 must not keep its gallery row.
                 // Scoped to this family's owner_scope; the junction rows cascade via FK.
+                // Only rows this job may reuse (canRelinkAsset) are removed: someone else's row stays.
                 const removedSet = new Set(removedKeys);
+                let removed = 0;
+                let removedSkipped = 0;
                 for (const key of removedSet) {
                     const stillRegistered = assets.some(a => String(a.storage_key || '').trim() === key);
                     if (stillRegistered) {
                         continue;
                     }
-                    const selectedBroadcast = await knex('social_ai_avatar_broadcast_selections as s')
-                        .join('social_media_assets as sma', 'sma.id', 's.media_id')
-                        .where({
-                            'sma.storage_key': key,
-                            'sma.owner_scope': OWNER_SCOPE
-                        })
-                        .first('s.post_id');
-                    if (selectedBroadcast) {
-                        throw new errors.ValidationError({message: 'A published broadcast asset cannot be replaced while it is selected for a virtual broadcast.'});
+                    const stale = await knex('social_media_assets')
+                        .where({storage_key: key, owner_scope: OWNER_SCOPE});
+                    for (const staleRow of stale) {
+                        if (!(await canRelinkAsset(knex, staleRow, row.user_id))) {
+                            logging.warn(`[social-ai-news-jobs] link-assets kept ${key} for job ${row.id}: row ${staleRow.id} is not this job's to remove`);
+                            removedSkipped += 1;
+                            continue;
+                        }
+                        const selectedBroadcast = await knex('social_ai_avatar_broadcast_selections')
+                            .where({media_id: staleRow.id})
+                            .first('post_id');
+                        if (selectedBroadcast) {
+                            throw new errors.ValidationError({message: 'A published broadcast asset cannot be replaced while it is selected for a virtual broadcast.'});
+                        }
+                        await knex('social_media_assets').where({id: staleRow.id}).del();
+                        removed += 1;
                     }
-                    await knex('social_media_assets')
-                        .where({storage_key: key, owner_scope: OWNER_SCOPE})
-                        .del();
                 }
 
                 const artifacts = [...parseJson(row.artifacts, []), ...assets];
@@ -915,7 +959,9 @@ const controller = {
                 return {
                     media_ids: [...new Set(mediaIds)],
                     count: mediaIds.length,
-                    removed_count: removedKeys.length
+                    skipped_count: skipped,
+                    removed_count: removed,
+                    removed_skipped_count: removedSkipped
                 };
             };
             return models.Base.knex.transaction(async (trx) => {

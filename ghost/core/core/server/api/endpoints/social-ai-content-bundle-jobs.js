@@ -111,14 +111,18 @@ const canWriteGroup = async (groupId, actor) => {
 // assets/posts to a job they did not create. Linking writes post_media and
 // re-parents assets, so only the job's own creator (or a worker integration) may
 // do it. No admin flow calls link-assets for someone else's job.
-const assertOwnerCanLinkAssets = async ({frame, row, assets, store}) => {
-    const actor = currentUser(frame);
-    if (!actor || !row || row.user_id !== actor) throw denyLink();
-    if (row.group_id && !(await canWriteGroup(row.group_id, actor))) throw denyLink();
+// Worker path (integration key, no context.user): the same checks with the job's
+// owner as the caller (actor = row.user_id, posts checked with the owner's
+// permissions), so a key holder cannot tie another user's row or post to a job.
+// A job without an owner (made by an integration) links owner-less rows only, and
+// only when it has no group and its project, if any, has no owner either.
+const assertOwnerCanLinkAssets = async ({frame, row, assets, store, actor = currentUser(frame), permissionContext = frame.options.context, allowOwnerless = false}) => {
+    if ((!actor && !allowOwnerless) || !row || (row.user_id || null) !== (actor || null)) throw denyLink();
+    if (row.group_id && (!actor || !(await canWriteGroup(row.group_id, actor)))) throw denyLink();
     const knex = models.Base.knex;
     if (row.project_id) {
         const project = await knex('social_ai_projects').where({id: row.project_id}).first('id', 'user_id', 'group_id');
-        const ownsProject = project && (project.user_id === actor || (project.group_id && await canWriteGroup(project.group_id, actor)));
+        const ownsProject = project && ((project.user_id || null) === (actor || null) || (actor && project.group_id && await canWriteGroup(project.group_id, actor)));
         if (!ownsProject) throw denyLink();
     }
     for (const asset of assets) {
@@ -131,13 +135,13 @@ const assertOwnerCanLinkAssets = async ({frame, row, assets, store}) => {
             const storageKey = socialMediaAssets.getStorageKeyFromUrl(store, assetStorageUrl(asset));
             existing = storageKey ? await socialMediaAssets.findAssetRowByStorageKey(knex, storageKey, ['id', 'user_id']) : null;
         }
-        if (existing && existing.user_id !== actor) throw denyLink();
+        if (existing && (existing.user_id || null) !== (actor || null)) throw denyLink();
         const postId = String(asset.post_id || '').trim();
         if (postId) {
             const post = await knex('posts').where({id: postId}).first('id');
             if (!post) throw denyLink();
             try {
-                await permissionsService.canThis(frame.options.context).edit.post(postId);
+                await permissionsService.canThis(permissionContext).edit.post(postId);
             } catch (err) {
                 throw denyLink();
             }
@@ -361,6 +365,11 @@ const controller = {
             let row;
             if (isIntegrationRequest(frame)) {
                 row = await loadRow(jobId(frame));
+                await assertOwnerCanLinkAssets({
+                    frame, row, assets, store, allowOwnerless: true,
+                    actor: row.user_id || null,
+                    permissionContext: row.user_id ? {user: row.user_id} : frame.options.context
+                });
             } else {
                 const id = jobId(frame);
                 if (!id) throw new errors.ValidationError({message: '`id` is required.'});
