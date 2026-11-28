@@ -38,6 +38,11 @@ describe('migration: drop-person-tables', function () {
             t.string('role_id');
             t.string('permission_id');
         });
+        await db.schema.createTable('permissions_users', (t) => {
+            t.string('id').primary();
+            t.string('user_id');
+            t.string('permission_id');
+        });
         await db('persons').insert({id: 'p1'});
         await db('person_roles').insert({id: 'r1', person_id: 'p1'});
         await db('posts').insert({id: 'post1'});
@@ -51,13 +56,17 @@ describe('migration: drop-person-tables', function () {
             {id: 'pr2', role_id: 'editor', permission_id: 'perm-story'},
             {id: 'pr3', role_id: 'admin', permission_id: 'perm-post'}
         ]);
+        await db('permissions_users').insert([
+            {id: 'pu1', user_id: 'u1', permission_id: 'perm-person'},
+            {id: 'pu2', user_id: 'u1', permission_id: 'perm-post'}
+        ]);
     });
 
     afterEach(async function () {
         await db.destroy();
     });
 
-    it('9 表を消し、person の権限と結び付きだけを消す（ほかの表・権限は残る）', async function () {
+    it('9 表を消し、person の権限と結び付き（役割・ユーザー）だけを消す（ほかの表・権限は残る）', async function () {
         await migration.up({connection: db});
         for (const name of migration.droppedTables) {
             assert.equal(await db.schema.hasTable(name), false, name);
@@ -66,6 +75,7 @@ describe('migration: drop-person-tables', function () {
         assert.equal(await db.schema.hasTable('posts'), true);
         assert.deepEqual((await db('permissions').select('id')).map(r => r.id), ['perm-post']);
         assert.deepEqual((await db('permissions_roles').select('id')).map(r => r.id), ['pr3']);
+        assert.deepEqual((await db('permissions_users').select('id')).map(r => r.id), ['pu2']);
     });
 
     it('何度流しても同じ（表・権限が無ければ何もしない）', async function () {

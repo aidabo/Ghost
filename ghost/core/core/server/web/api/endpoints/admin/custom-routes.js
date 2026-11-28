@@ -351,7 +351,7 @@ module.exports = function customApiRoutes(router) {
 
     // ## news worker の記事の upsert（slug で引いて internal 文脈で add / edit）
     // 名前は古い person の名残りだが、tools/news-worker（janabiz の毎日の記事・顔・seed）が使うので残す。
-    // 古い person の表の API（/person/persons ほか）は 2026-11-28 に消した（表は残す）。
+    // 古い person の表の API（/person/persons ほか）は 2026-11-28 に消した。表も 2026-11-28 の migration（drop-person-tables）で消した。
     router.post('/person/graph/posts', mw.authAdminApi, createOrUpdatePost);
 
     router.get('/estate/properties/:propertyId/posts', mw.authAdminApi, http(api.estatePropertyPosts.browse));

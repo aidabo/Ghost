@@ -1,7 +1,7 @@
 // 古い person の仕組み（人物の表・/person/* の API）を消す（front の person-legacy-removal-plan.md の PR 5）。
 // 人物の物語は今、下書きの Post ＋ タグ ＋ プロジェクトで登録し、この表は使っていない（API は Ghost #100 で消した）。
 // - 表が在るときだけ DROP する（子の表から、persons を最後に）。何度流しても同じ。
-// - person の権限（permissions の object_type が person 系）と、その役割との結び付き（permissions_roles）も消す。無ければ何もしない。
+// - person の権限（permissions の object_type が person 系）と、それを指す役割との結び付き（permissions_roles）・ユーザーへの直接の付与（permissions_users）も消す。無ければ何もしない。
 // - 戻せない（irreversible）: down で空の表を作り直してもデータは戻らない。戻すときは配布前に取ったダンプから入れ直す。
 const logging = require('@tryghost/logging');
 const {createIrreversibleMigration} = require('../../utils');
@@ -36,9 +36,11 @@ const PERMISSION_OBJECT_TYPES = [
 module.exports = createIrreversibleMigration(async function up(connection) {
     const permissionIds = (await connection('permissions').whereIn('object_type', PERMISSION_OBJECT_TYPES).select('id')).map(row => row.id);
     if (permissionIds.length > 0) {
+        // permissions を消す前に、それを指す行を消す（孤立した行を残さない）
         const grants = await connection('permissions_roles').whereIn('permission_id', permissionIds).del();
+        const userGrants = await connection('permissions_users').whereIn('permission_id', permissionIds).del();
         const permissions = await connection('permissions').whereIn('id', permissionIds).del();
-        logging.info(`Removed person permissions: ${permissions} (role grants: ${grants})`);
+        logging.info(`Removed person permissions: ${permissions} (role grants: ${grants}, user grants: ${userGrants})`);
     } else {
         logging.warn('Skipping removing person permissions - none found');
     }
