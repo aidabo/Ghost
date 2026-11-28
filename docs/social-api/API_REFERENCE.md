@@ -260,7 +260,8 @@ All routes below are based on `custom-routes.js`.
     - 例: `{"target":"chart_jobs","job_id":"<jobId>","chart_job_id":"<jobId>","storage_key":"…/gallery/chart_jobs/<jobId>/a.png","storage_url":"…"}` → 行の `project_id` はそのジョブの project になり、その project の一覧（`GET /social/gallery/project`）に出る（finalize の応答には `project_id` は入らない）。
     - すでに同じ key の行があるとき、上書きするのはその行を上げた本人の再送（同じ範囲・同じ本人・同じグループ）だけ。ほかのメンバーが上げたファイルを finalize し直すと 409（行の持ち主・名前はそのまま）。
     - `target: "chart_jobs"`・`"news_jobs"` の `job_id` はそのジョブの id として扱い、行の `chart_job_id`・`news_job_id` に入れる（行の `job_id` 欄＝メディアジョブには入れない。確かめは上と同じ）。`job_id` と `chart_job_id`・`news_job_id` が食い違えば 422。
-    - `target: "chart_jobs"`・`"news_jobs"` に上げられるのは、そのジョブの持ち主かサイトの管理者だけ（presign も finalize も）。ジョブの project を読めるだけの人は 403。持ち主でない project の読者は `target: "project"`（プロジェクトのツリー）へ上げる。無いジョブは presign は通り、finalize で 422。
+    - `target: "news_jobs"` に上げられるのは、そのジョブの持ち主かサイトの管理者だけ（presign も finalize も）。ジョブの project を読めるだけの人は 403。持ち主でない project の読者は `target: "project"`（プロジェクトのツリー）へ上げる。無いジョブは presign は通り、finalize で 422。
+    - `target: "chart_jobs"` は今までどおり、ジョブの project を読める人（グループのメンバーを含む。#92 のグループでの共同作業）が上げられる。
   - `POST /social/gallery/sync-tags` — Post の主タグをその Post に出ているファイルの行に付ける。body `{post_id, mode: "primary", urls?}`。
     - ログインした人だけ（Admin API の鍵＝integration だけの呼び出しは 403）。Post を直せる人だけ: グループの Post はそのグループに書ける人、それ以外は Ghost の Post の編集の権限。
     - 使う URL は Post の中（`feature_image`・html・lexical）のものだけ。body の `urls` はそれを絞るだけで、storage key で比べる（html の `&amp;`・percent-encode の違いは同じとみなす）。すでにある行は percent-encode した綴りと戻した綴りの両方で探し、2 つ目の行は作らない。Post に無い URL・メディアストアの URL として読めない URL（media の外のリンクなど）は使わず、その数を `dropped_url_count` で返す。
@@ -291,10 +292,14 @@ All routes below are based on `custom-routes.js`.
   - skip された成果物には行ができないので、worker はジョブ固有のファイル名（key）にする。
 - news job の worker の `POST /social/ai/news/jobs/:id/link-assets`（integration だけ）:
   - 新しい成果物はジョブの持ち主・project・`news_job_id` の行として作る。使い直すのは news の行（`owner_scope` が `news_jobs` で、ほかのジョブの `*_job_id` が無い行）だけ。news はほかの置き場所の行（直接アップロードの `user`・`group`、chart の行）を使い直さない。
-  - 同じ project の worker の成果物（key が `gallery/projects/<このジョブの project>/artifacts/` の下で、行か行の news job が同じ project）は、前のジョブを誰が流したかに関係なく使い直す（ニュースルームの project は何人かで使い、記事ごとに同じ名前で出し直すため）。
+  - 同じ project の worker の成果物（key が `gallery/projects/<このジョブの project>/artifacts/` の下で、行か行の news job が同じ project）は、前のジョブを誰が流したかに関係なく使い直す（ニュースルームの project は何人かで使い、記事ごとに同じ名前で出し直すため）。ただし link-assets を呼んでいる今のジョブの持ち主が、下の `add` と同じ判定でその project を使えるときだけ（その後に project が非公開に戻った・グループを抜けた・役割が下がったときは使わない）。持ち主の無いジョブは、持ち主もグループも無い project だけ。
   - それ以外の行を使い直すのは、ジョブの持ち主が上げた行・持ち主の news job が作った行・管理者のジョブだけ。持ち主の無いジョブは持ち主の無い行だけ。ほかは結ばず `skipped_count`。`removed_keys` で消すのも同じ規則の行だけ（放送に選ばれた行は消さず 422）。
-  - junction の `post_id` に入れるのは、このジョブの記事（`items[].post_id`、lipsync は `payload.avatar_lipsync.post_id`）の、今ある Post だけ。ほかの `post_id` は入れず（成果物は結ぶ）、`post_skipped_count` に数える。
+  - junction の `post_id` に入れるのは、このジョブの記事（`items[].post_id`、lipsync は `payload.avatar_lipsync.post_id`、ほかに `payload.post_id`）の、今ある Post だけ。Post の編集権限は見ない（ニュースルームのジョブは他人の公開記事も読み上げるため）。ほかの `post_id` は入れず（成果物は結ぶ）、`post_skipped_count` に数える。
   - 応答: `media_ids`・`count`・`skipped_count`・`post_skipped_count`・`removed_count`（実際に消した数）・`removed_skipped_count`。
+- news job を作る `POST /social/ai/news/jobs/`（共有ニュースルームの決まり）:
+  - `project_id` を付けられるのは、作る人の project の一覧（`GET /social/ai/projects/`、group_id を付けた一覧も含む）に出る project だけ。自分の project・read で入っているグループの project・公開済み（`published`）でグループ無しか public グループの project（共有ニュースルーム）。Super Editor はニュースルームの project（下書きも）、サイトの管理者はすべて。ほかは 403、無い project は 404。
+  - 一覧に出る理由が「公開済みの共有ニュースルーム」だけのとき（自分のでもグループで read でもない）は、Editor 以上（Editor・Super Editor・Administrator・Owner）だけ。Contributor・Author は 403。
+  - 連携キー（worker・host）は確かめない。判定は `staffScope.getProjectVisibility`（理由 `admin`／`own`／`group`／`published`／null）と `isEditorOrAbove`。
 - content-bundle の `POST /social/ai/content-bundle/jobs/:id/link-assets`:
   - ログイン（ブラウザ・Staff Access Token）は呼んだ人がジョブの持ち主のときだけ。integration（worker）の呼び出しも同じ確かめを**ジョブの持ち主**で行う（行・project・グループ・Post の編集権限）。持ち主の無いジョブは、持ち主の無い行と、持ち主もグループも無い project だけ。違えば 403、書き込みの前に確かめる。
 

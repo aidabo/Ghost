@@ -1443,9 +1443,10 @@ const getTargetJobId = (frame, field) => {
     return viaJobId || viaField;
 };
 
-// Target chart_jobs / news_jobs: only the job's owner or a site admin may put files in the job folder (the
-// user's rule: rows linked to a job are made only by its owner). Reading the job's project is not enough. A job
-// that does not exist is left to finalize's job check (422).
+// Target news_jobs: only the job's owner or a site admin may put files in the job folder (the user's rule: rows
+// linked to a job are made only by its owner). Reading the job's project is not enough. A job that does not exist
+// is left to finalize's job check (422). Target chart_jobs keeps the group collaboration of #92: anyone who can
+// read the job's project (checked in finalize).
 const assertCanUploadToJobFolder = async (table, jobId, userId) => {
     const job = await models.Base.knex(table).where({id: jobId}).first('id', 'user_id');
     if (job && String(job.user_id || '') !== String(userId) && !(await isAdminUser(userId))) {
@@ -1647,7 +1648,6 @@ const resolveUploadContext = async (frame) => {
                 message: 'job_id (24-char chart job id) is required for chart_jobs uploads.'
             });
         }
-        await assertCanUploadToJobFolder('social_ai_chart_jobs', jobId, userId);
         const baseDir = path.posix.join(root, 'gallery', 'chart_jobs', jobId);
         return {
             mediaStore,

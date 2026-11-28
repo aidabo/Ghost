@@ -26,6 +26,16 @@ const OTHERS_JOB = '00000000000000000000ee03';
 const ADMIN_JOB = '00000000000000000000ee04';
 const WORKER_JOB = '00000000000000000000ee05';
 const Y_JOB = '00000000000000000000ee06';
+const SHARED = '00000000000000000000bb03';
+const PUBLIC_GROUP_PROJECT = '00000000000000000000bb04';
+const GROUP_PROJECT = '00000000000000000000bb05';
+const PRIVATE_GROUP_PROJECT = '00000000000000000000bb06';
+const PUBLIC_GROUP = 'public-group';
+const READ_GROUP = 'read-group';
+const EDITOR_B = '00000000000000000000aa05';
+const SUPER_EDITOR = '00000000000000000000aa06';
+const CONTRIB = '00000000000000000000aa07';
+const ROLES = {[OWNER]: ['Editor'], [OTHER]: ['Author'], [ADMIN]: ['Administrator'], [EDITOR_B]: ['Editor'], [SUPER_EDITOR]: ['Super Editor'], [CONTRIB]: ['Contributor']};
 
 const ART = name => `content/media/gallery/projects/${PROJECT}/artifacts/audio/${name}`;
 const ART_Y = name => `content/media/gallery/projects/${PROJECT_Y}/artifacts/audio/${name}`;
@@ -53,8 +63,10 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
         db = knex({client: 'sqlite3', connection: {filename: ':memory:'}, useNullAsDefault: true});
         await db.schema.createTable('social_ai_news_jobs', (t) => {
             ['id', 'type', 'user_id', 'group_id', 'project_id', 'status', 'artifacts', 'items', 'payload', 'claim_worker_id', 'claim_token',
-                'claim_expires_at', 'updated_at', 'updated_by'].forEach(c => t.string(c));
+                'claim_expires_at', 'updated_at', 'updated_by', 'current_step_id', 'status_message', 'steps', 'result', 'scope_type',
+                'created_at', 'created_by', 'started_at', 'completed_at', 'error_code', 'error_message'].forEach(c => t.string(c));
             t.integer('claim_generation').notNullable().defaultTo(0);
+            t.integer('progress');
         });
         await db.schema.createTable('social_media_assets', (t) => {
             ['id', 'storage_key', 'storage_key_hash', 'storage_url', 'thumbnail_url', 'original_filename', 'asset_type',
@@ -67,6 +79,14 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
             t.integer('sort_order');
         });
         await db.schema.createTable('posts', t => t.string('id').primary());
+        await db.schema.createTable('users', t => t.string('id').primary());
+        await db.schema.createTable('social_groups', (t) => {
+            ['id', 'type', 'status'].forEach(c => t.string(c));
+        });
+        await db('social_groups').insert([{id: PUBLIC_GROUP, type: 'public', status: 'active'}, {id: READ_GROUP, type: 'private', status: 'active'}]);
+        await db.schema.createTable('social_ai_projects', (t) => {
+            ['id', 'user_id', 'group_id', 'status'].forEach(c => t.string(c));
+        });
         await db.schema.createTable('social_ai_avatar_broadcast_selections', (t) => {
             ['id', 'post_id', 'media_id'].forEach(c => t.string(c));
         });
@@ -86,7 +106,14 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
 
     beforeEach(async function () {
         sinon.stub(staffScope, 'getStaffScope').callsFake(async userId => ({isSystemAdmin: userId === ADMIN}));
-        for (const table of ['social_ai_news_jobs', 'social_media_assets', 'social_ai_news_job_media', 'social_ai_avatar_broadcast_selections', 'posts']) {
+        // Roles for staff-scope's own getStaffScope (getProjectVisibility / isEditorOrAbove read users through models).
+        sinon.stub(models.User, 'findOne').callsFake(async ({id}) => {
+            const names = ROLES[id];
+            return names ? {related: () => ({models: names.map(name => ({get: () => name}))})} : null;
+        });
+        sinon.stub(models.SocialGroup, 'findOne').callsFake(async ({id}) => ({id}));
+        sinon.stub(models.SocialGroup, 'canAccessGroup').callsFake(async (group, userId) => group.id === READ_GROUP && [OTHER, CONTRIB].includes(userId));
+        for (const table of ['social_ai_news_jobs', 'social_media_assets', 'social_ai_news_job_media', 'social_ai_avatar_broadcast_selections', 'posts', 'users', 'social_ai_projects']) {
             await db(table).del();
         }
         const job = (id, userId, status = 'running', projectId = PROJECT) => ({id, type: 'news-read', user_id: userId, project_id: projectId, status, claim_generation: 0});
@@ -98,6 +125,15 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
             job(WORKER_JOB, null),
             {...job('00000000000000000000ee07', OWNER), type: 'news-avatar-lipsync', payload: JSON.stringify({avatar_lipsync: {item_key: 'item-1', post_id: 'post-lipsync'}})},
             job(Y_JOB, OTHER, 'completed', PROJECT_Y)
+        ]);
+        await db('users').insert(Object.keys(ROLES).map(id => ({id})));
+        await db('social_ai_projects').insert([
+            {id: PROJECT, user_id: OWNER, group_id: null, status: 'draft'},
+            {id: PROJECT_Y, user_id: OTHER, group_id: null, status: 'draft'},
+            {id: SHARED, user_id: OWNER, group_id: null, status: 'published'},
+            {id: PUBLIC_GROUP_PROJECT, user_id: OWNER, group_id: PUBLIC_GROUP, status: 'published'},
+            {id: GROUP_PROJECT, user_id: OWNER, group_id: READ_GROUP, status: 'draft'},
+            {id: PRIVATE_GROUP_PROJECT, user_id: OWNER, group_id: 'private-group', status: 'draft'}
         ]);
         await db('posts').insert([{id: 'post-own-item'}, {id: 'post-lipsync'}, {id: 'post-elsewhere'}]);
         await db('social_media_assets').insert([
@@ -275,6 +311,99 @@ describe('News jobs link-assets: the worker links its own job\'s rows, never som
             const junctions = await junctionsOf(JOB);
             assert.equal(junctions.length, 2);
             assert.ok(junctions.every(j => j.post_id === null));
+        });
+    });
+
+    describe('the same-project exception: only while the calling job\'s owner may use the project (same rule as add)', function () {
+        const B_JOB = '00000000000000000000ee08';
+        const addJob = (projectId, userId) => db('social_ai_news_jobs').insert({id: B_JOB, type: 'news-read', user_id: userId, project_id: projectId, status: 'running', claim_generation: 0});
+        // m1 (OWNER's job artifact) moved into the given project.
+        const moveArtifact = projectId => db('social_media_assets').where({id: 'm1'}).update({
+            storage_key: `content/media/gallery/projects/${projectId}/artifacts/audio/own-old.mp3`,
+            storage_key_hash: socialMediaAssets.buildStorageKeyHash(`content/media/gallery/projects/${projectId}/artifacts/audio/own-old.mp3`),
+            storage_url: `${HOST}/content/media/gallery/projects/${projectId}/artifacts/audio/own-old.mp3`,
+            project_id: projectId
+        });
+        const key = projectId => `content/media/gallery/projects/${projectId}/artifacts/audio/own-old.mp3`;
+        const relinkBy = async (projectId, userId) => {
+            await db('social_ai_news_jobs').where({id: OLD_JOB}).update({project_id: projectId});
+            await moveArtifact(projectId);
+            await addJob(projectId, userId);
+            return link(B_JOB, [asset(key(projectId))]);
+        };
+
+        it('a draft project the job owner cannot see: not relinked, and removed_keys do not delete it', async function () {
+            await addJob(PROJECT, EDITOR_B);
+            const result = await link(B_JOB, [asset(ART('own-old.mp3'))]);
+            assert.equal(result.skipped_count, 1);
+            assert.equal((await rowOf('m1')).news_job_id, OLD_JOB);
+            const removed = await link(B_JOB, [], [ART('own-old.mp3')]);
+            assert.ok(await rowOf('m1'));
+            assert.equal(removed.removed_skipped_count, 1);
+        });
+
+        it('a published shared newsroom project: an Editor\'s job relinks, an Author\'s job does not', async function () {
+            let result = await relinkBy(SHARED, OTHER);
+            assert.equal(result.skipped_count, 1);
+            assert.equal((await rowOf('m1')).news_job_id, OLD_JOB);
+            await db('social_ai_news_jobs').where({id: B_JOB}).del();
+            result = await relinkBy(SHARED, EDITOR_B);
+            assert.deepEqual(result.media_ids, ['m1']);
+            assert.equal((await rowOf('m1')).news_job_id, B_JOB);
+        });
+
+        it('an Author who reads the project\'s group: the job relinks', async function () {
+            const result = await relinkBy(GROUP_PROJECT, OTHER);
+            assert.deepEqual(result.media_ids, ['m1']);
+        });
+
+        it('an owner-less job uses the exception only on a project with no owner and no group', async function () {
+            await db('social_ai_projects').where({id: PROJECT}).update({status: 'published'});
+            let result = await link(WORKER_JOB, [asset(ART('own-old.mp3'))]);
+            assert.equal(result.skipped_count, 1);
+            await db('social_ai_projects').where({id: PROJECT}).update({user_id: null});
+            result = await link(WORKER_JOB, [asset(ART('own-old.mp3'))]);
+            assert.deepEqual(result.media_ids, ['m1']);
+        });
+    });
+
+    describe('add: only a project in the creator\'s projects list; a shared newsroom project only for Editor or above', function () {
+        const sessionAdd = (userId, projectId) => endpoint.add.query({options: {context: {user: userId}}, data: {socialainewsjobs: [{project_id: projectId, items: [{key: 'item-1'}]}]}});
+
+        it('Contributor / Author on a published shared project (not theirs, not their group): 403; Editor or above: accepted', async function () {
+            for (const userId of [OTHER, CONTRIB]) {
+                await assert.rejects(sessionAdd(userId, SHARED), {errorType: 'NoPermissionError'});
+                await assert.rejects(sessionAdd(userId, PUBLIC_GROUP_PROJECT), {errorType: 'NoPermissionError'});
+            }
+            for (const userId of [EDITOR_B, SUPER_EDITOR, ADMIN]) {
+                assert.equal((await sessionAdd(userId, SHARED)).project_id, SHARED);
+                assert.equal((await sessionAdd(userId, PUBLIC_GROUP_PROJECT)).project_id, PUBLIC_GROUP_PROJECT);
+            }
+        });
+
+        it('another user\'s draft project, or a private group project the creator is not in: 403, nothing created', async function () {
+            await assert.rejects(sessionAdd(EDITOR_B, PROJECT), {errorType: 'NoPermissionError'});
+            await assert.rejects(sessionAdd(EDITOR_B, PRIVATE_GROUP_PROJECT), {errorType: 'NoPermissionError'});
+            assert.equal((await db('social_ai_news_jobs').where({user_id: EDITOR_B})).length, 0);
+        });
+
+        it('own project and a group the creator reads: accepted, whatever the role', async function () {
+            assert.equal((await sessionAdd(OTHER, PROJECT_Y)).project_id, PROJECT_Y);
+            assert.equal((await sessionAdd(OTHER, GROUP_PROJECT)).project_id, GROUP_PROJECT);
+            assert.equal((await sessionAdd(CONTRIB, GROUP_PROJECT)).project_id, GROUP_PROJECT);
+        });
+
+        it('a site admin and an integration key pass', async function () {
+            assert.equal((await sessionAdd(ADMIN, PROJECT)).project_id, PROJECT);
+            const created = await endpoint.add.query({
+                options: {context: {integration: {id: 'integration-1'}}},
+                data: {socialainewsjobs: [{project_id: PROJECT, user_id: OTHER, items: [{key: 'item-1'}]}]}
+            });
+            assert.equal(created.project_id, PROJECT);
+        });
+
+        it('a project that does not exist is still 404', async function () {
+            await assert.rejects(sessionAdd(OWNER, '00000000000000000000bb99'), {errorType: 'NotFoundError'});
         });
     });
 

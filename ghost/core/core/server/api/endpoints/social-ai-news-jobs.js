@@ -288,9 +288,11 @@ const assertAccess = async (frame, row, write = false) => {
 // - Otherwise the job owner is the row's uploader or the owner of the news job that made it; or the job owner is a
 //   system admin. An owner-less (integration) job reuses owner-less rows only.
 const OTHER_JOB_ID_COLUMNS = ['chart_job_id', 'video_job_id', 'dzi_job_id', 'content_bundle_job_id'];
-const isSameProjectWorkerArtifact = async (knex, asset, job) => {
+//   The exception applies only while the calling job's owner may use the project (canUseProjectForNewsJob, the
+//   same rule as `add`): sameProjectAllowed is worked out once per link-assets call.
+const isSameProjectWorkerArtifact = async (knex, asset, job, sameProjectAllowed) => {
     const pid = job.project_id ? String(job.project_id) : '';
-    if (!pid || !String(asset.storage_key || '').includes(`gallery/projects/${pid}/artifacts/`)) {
+    if (!sameProjectAllowed || !pid || !String(asset.storage_key || '').includes(`gallery/projects/${pid}/artifacts/`)) {
         return false;
     }
     if (String(asset.project_id || '') === pid) {
@@ -302,12 +304,12 @@ const isSameProjectWorkerArtifact = async (knex, asset, job) => {
     }
     return false;
 };
-const canRelinkAsset = async (knex, asset, job) => {
+const canRelinkAsset = async (knex, asset, job, sameProjectAllowed = false) => {
     const jobUserId = job.user_id;
     if (asset.owner_scope !== OWNER_SCOPE || OTHER_JOB_ID_COLUMNS.some(c => asset[c])) {
         return false;
     }
-    if (await isSameProjectWorkerArtifact(knex, asset, job)) {
+    if (await isSameProjectWorkerArtifact(knex, asset, job, sameProjectAllowed)) {
         return true;
     }
     if (!jobUserId) {
@@ -324,6 +326,25 @@ const canRelinkAsset = async (knex, asset, job) => {
     }
     return (await staffScope.getStaffScope(jobUserId)).isSystemAdmin;
 };
+
+// May this user put news jobs on this project (add), and may such a job's worker reuse the project's artifacts
+// (link-assets)? Only a project in the user's projects list (staffScope.getProjectVisibility); when it is there
+// only as a published shared newsroom project, Editor or above only. An owner-less job: a project with no owner
+// and no group only. docs (front): docs/planning/news-job-project-scope-plan.md.
+const canUseProjectForNewsJob = async (userId, project) => {
+    if (!project) {
+        return false;
+    }
+    if (!userId) {
+        return !project.user_id && !project.group_id;
+    }
+    const reason = await staffScope.getProjectVisibility(userId, project);
+    if (!reason) {
+        return false;
+    }
+    return reason !== 'published' || staffScope.isEditorOrAbove(userId);
+};
+const loadProjectRow = projectId => models.Base.knex('social_ai_projects').where({id: projectId}).first('id', 'user_id', 'group_id', 'status');
 
 const loadRow = async id => {
     if (!id) {
@@ -475,9 +496,13 @@ const controller = {
                 throw new errors.ValidationError({message: 'user_id does not exist.'});
             }
             if (payloadInput.project_id) {
-                const project = await models.SocialAiProject.findOne({id: payloadInput.project_id});
+                const project = await loadProjectRow(payloadInput.project_id);
                 if (!project) {
                     throw new errors.NotFoundError({message: 'Project not found.'});
+                }
+                // The integration key (worker, host) is trusted; a person only on a project of their projects list.
+                if (!isIntegrationRequest(frame) && !(await canUseProjectForNewsJob(actor, project))) {
+                    throw new errors.NoPermissionError({message: 'You are not allowed to create a news job on this project.'});
                 }
             }
 
@@ -790,6 +815,9 @@ const controller = {
                 assertWorker(frame, row);
                 assertOpen(row);
             }
+            // Read once per call, before the transaction (the visibility check reads users, roles and groups).
+            const jobProject = row.project_id ? await loadProjectRow(row.project_id) : null;
+            const sameProjectAllowed = await canUseProjectForNewsJob(row.user_id, jobProject);
             const link = async (knex) => {
                 const assets = Array.isArray(payloadInput.assets) ? payloadInput.assets : [];
                 const removedKeys = Array.isArray(payloadInput.removed_keys)
@@ -833,7 +861,7 @@ const controller = {
                         .where({storage_key_hash: storageKeyHash})
                         .first();
 
-                    if (existing && !(await canRelinkAsset(knex, existing, row))) {
+                    if (existing && !(await canRelinkAsset(knex, existing, row, sameProjectAllowed))) {
                         // Someone else's row or another job family's row: left as it is, not linked to this job.
                         logging.warn(`[social-ai-news-jobs] link-assets skipped ${storageKey} for job ${row.id}: row ${existing.id} is not this job's to reuse`);
                         skipped += 1;
@@ -885,7 +913,7 @@ const controller = {
                                 if (!dup) {
                                     throw err;
                                 }
-                                if (!(await canRelinkAsset(knex, dup, row))) {
+                                if (!(await canRelinkAsset(knex, dup, row, sameProjectAllowed))) {
                                     logging.warn(`[social-ai-news-jobs] link-assets skipped ${storageKey} for job ${row.id}: row ${dup.id} is not this job's to reuse`);
                                     skipped += 1;
                                     continue;
@@ -971,7 +999,7 @@ const controller = {
                     const stale = await knex('social_media_assets')
                         .where({storage_key: key, owner_scope: OWNER_SCOPE});
                     for (const staleRow of stale) {
-                        if (!(await canRelinkAsset(knex, staleRow, row))) {
+                        if (!(await canRelinkAsset(knex, staleRow, row, sameProjectAllowed))) {
                             logging.warn(`[social-ai-news-jobs] link-assets kept ${key} for job ${row.id}: row ${staleRow.id} is not this job's to remove`);
                             removedSkipped += 1;
                             continue;

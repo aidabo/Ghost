@@ -17,6 +17,7 @@ const models = require('../../../models');
 
 const SYSTEM_ADMIN_ROLES = new Set(['Owner', 'Administrator', 'Admin']);
 const NO_GROUP_READER_ROLES = new Set(['Super Editor']);
+const EDITOR_OR_ABOVE_ROLES = new Set(['Editor', 'Super Editor', 'Owner', 'Administrator', 'Admin']);
 const PUBLIC_GROUP_TYPE = 'public';
 
 const NO_SCOPE = Object.freeze({isSystemAdmin: false, isNoGroupReader: false, publicGroupIds: Object.freeze([])});
@@ -134,6 +135,52 @@ const isNewsroomJob = async (job, publicGroupIds = []) => {
     }
     const project = await loadProject(getField(job, 'project_id'));
     return !project || isNewsroomRow(project, publicGroupIds);
+};
+
+// Why a project is in the user's projects list (GET /social/ai/projects/ and the group listing), or null when it is
+// not: 'admin' (system admin, or a Super Editor on a newsroom project), 'own', 'group' (read member of the
+// project's group) or 'published' (only as a published shared newsroom project). `project` is a row or model with
+// user_id, group_id and status.
+const getProjectVisibility = async (userId, project) => {
+    if (!userId || !project) {
+        return null;
+    }
+    const scope = await getNewsroomReadScope(userId);
+    if (!scope) {
+        return null;
+    }
+    if (scope.isSystemAdmin) {
+        return 'admin';
+    }
+    if (String(getField(project, 'user_id') || '') === String(userId)) {
+        return 'own';
+    }
+    if (bypassesRowCheck(scope, project)) {
+        return 'admin';
+    }
+    const groupId = getGroupId(project);
+    if (groupId) {
+        // @ts-ignore
+        const group = await models.SocialGroup.findOne({id: groupId});
+        // @ts-ignore
+        if (group && await models.SocialGroup.canAccessGroup(group, userId, 'read')) {
+            return 'group';
+        }
+    }
+    if (canReadPublishedProject(scope, project)) {
+        return 'published';
+    }
+    return null;
+};
+
+// Editor or above: Editor, Super Editor, Administrator, Owner (and the legacy 'Admin').
+const isEditorOrAbove = async (userId) => {
+    if (!userId) {
+        return false;
+    }
+    // @ts-ignore
+    const user = await models.User.findOne({id: userId}, {withRelated: ['roles']});
+    return Boolean(user && (user.related('roles')?.models || []).some(role => EDITOR_OR_ABOVE_ROLES.has(role.get('name'))));
 };
 
 // Projects whose jobs a Super Editor must not list (non-public groups).
@@ -343,6 +390,8 @@ module.exports = {
     canManageAsNewsroomEditor,
     canManageJobAsNewsroomEditor,
     getNewsroomReadScope,
+    getProjectVisibility,
+    isEditorOrAbove,
     isNewsroomJob,
     loadProject,
     loadNonNewsroomProjectIds,
