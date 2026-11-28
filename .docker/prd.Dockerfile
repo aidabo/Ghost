@@ -133,8 +133,7 @@ COPY --chown=node:node ghost/core/core/server/services/post-search-index ${GHOST
 COPY --chown=node:node ghost/core/core/server/services/post-media-index ${GHOST_INSTALL}/current/core/server/services/post-media-index
 COPY --chown=node:node ghost/core/core/server/adapters/scheduling/post-scheduling/PostScheduler.js ${GHOST_INSTALL}/current/core/server/adapters/scheduling/post-scheduling
 COPY --chown=node:node ghost/core/core/server/lib/common ${GHOST_INSTALL}/current/core/server/lib/common
-COPY --chown=node:node ghost/core/core/server/lib/person-graph ${GHOST_INSTALL}/current/core/server/lib/person-graph
-COPY --chown=node:node ghost/core/core/server/lib/person-story ${GHOST_INSTALL}/current/core/server/lib/person-story
+# lib/person-graph・lib/person-story は古い person の API と一緒に消した（2026-11-28）
 COPY --chown=node:node ghost/core/core/server/lib/lexical.js ${GHOST_INSTALL}/current/core/server/lib
 
 # Install dependencies as node user

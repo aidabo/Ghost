@@ -51,18 +51,7 @@ const notImplemented = function notImplemented(req, res, next) {
         settings: ['GET'],
         oembed: ['GET'],
         social: ['GET', 'POST', 'DELETE', 'PUT'],
-        publish: ['GET', 'POST', 'PUT', 'DELETE'],
-        // person: ['GET', 'POST', 'PUT', 'DELETE'],
-        // // 'person-stories': ['GET', 'POST', 'PUT', 'DELETE'],
-        // // 'person-graph': ['POST'],
-        // persons: ['GET', 'POST', 'PUT', 'DELETE'],
-        // 'person-roles': ['GET', 'POST', 'PUT', 'DELETE'],
-        // 'person-life-events': ['GET', 'POST', 'PUT', 'DELETE'],
-        // 'person-story-series': ['GET', 'POST', 'PUT', 'DELETE'],
-        // 'person-story-episodes': ['GET', 'POST', 'PUT', 'DELETE'],
-        // 'person-relations': ['GET', 'POST', 'PUT', 'DELETE'],
-        // 'person-post-relations': ['GET', 'POST', 'PUT', 'DELETE'],
-        // 'person-gallery-assets': ['GET', 'POST', 'PUT', 'DELETE']
+        publish: ['GET', 'POST', 'PUT', 'DELETE']
     };
 
     const match = req.url.match(/^\/([\w-]+)\/?/);
