@@ -280,6 +280,32 @@ const loadModelOrThrow = async (id) => {
     return model;
 };
 
+// link-assets: may this job's worker reuse (re-point, rename, remove) an existing gallery row?
+// - Only a chart row or a direct upload (owner_scope chart_jobs / user / group, no other job's id): a row of another
+//   job family (news, video, deepzoom, content bundle, ...) is never reused, whoever owns it.
+// - Then the same owner rule as destroyAsset: the job owner is the row's uploader or the owner of the chart job that
+//   made it; or the job owner is a system admin. An owner-less (integration) job reuses owner-less rows only.
+const RELINKABLE_OWNER_SCOPES = ['chart_jobs', 'user', 'group'];
+const OTHER_JOB_ID_COLUMNS = ['news_job_id', 'video_job_id', 'dzi_job_id', 'content_bundle_job_id'];
+const canRelinkAsset = async (knex, asset, jobUserId) => {
+    if (!RELINKABLE_OWNER_SCOPES.includes(asset.owner_scope) || OTHER_JOB_ID_COLUMNS.some(c => asset[c])) {
+        return false;
+    }
+    if (!jobUserId) {
+        return !asset.user_id;
+    }
+    if (String(asset.user_id || '') === String(jobUserId)) {
+        return true;
+    }
+    if (asset.chart_job_id) {
+        const madeBy = await knex(TABLE).where({id: asset.chart_job_id}).first('user_id');
+        if (madeBy?.user_id && String(madeBy.user_id) === String(jobUserId)) {
+            return true;
+        }
+    }
+    return isAdminUser(jobUserId);
+};
+
 // @ts-ignore
 const loadRowOrThrow = async (knex, id) => {
     if (!id) {
@@ -1025,6 +1051,7 @@ const controller = {
                 ? payloadInput.removed_keys.map(String).map((s) => String(s).trim()).filter(Boolean)
                 : [];
             const mediaIds = [];
+            let skipped = 0;
 
             // Register worker-written S3 artifacts in social_media_assets +
             // social_ai_chart_job_media so the gallery can show them
@@ -1061,9 +1088,16 @@ const controller = {
                 // project_id keeps the row's existing value (null for new rows).
                 const jobProjectId = row.project_id || null;
 
+                if (existing && !(await canRelinkAsset(knex, existing, row.user_id))) {
+                    // Someone else's row or another job's row (canRelinkAsset): left as it is, not linked to this job.
+                    logging.warn(`[social-ai-chart-jobs] link-assets skipped ${storageKey} for job ${row.id}: row ${existing.id} is not this job's to reuse`);
+                    skipped += 1;
+                    continue;
+                }
                 if (existing) {
-                    // Same S3 key: latest publisher wins. chart_job_id is
-                    // re-pointed; user/group fall back to existing values.
+                    // Same S3 key: latest publisher wins (a row the job owner may
+                    // reuse). chart_job_id is re-pointed; user/group fall back to
+                    // existing values.
                     await knex('social_media_assets')
                         .where({id: existing.id})
                         .update({
@@ -1110,6 +1144,11 @@ const controller = {
                                 .first();
                             if (!dup) {
                                 throw err;
+                            }
+                            if (!(await canRelinkAsset(knex, dup, row.user_id))) {
+                                logging.warn(`[social-ai-chart-jobs] link-assets skipped ${storageKey} for job ${row.id}: row ${dup.id} is not this job's to reuse`);
+                                skipped += 1;
+                                continue;
                             }
                             await knex('social_media_assets')
                                 .where({id: dup.id})
@@ -1174,21 +1213,34 @@ const controller = {
             // payload (a key can be both in assets[] and removed_keys[] when a
             // later entry re-publishes the same path — the asset wins).
             const removedSet = new Set(removedKeys);
+            let removed = 0;
+            let removedSkipped = 0;
             for (const key of removedSet) {
                 const stillRegistered = assets.some((a) =>
                     String(a.storage_key || '').trim() === key);
                 if (stillRegistered) {
                     continue;
                 }
-                await knex('social_media_assets')
-                    .where({storage_key: key, owner_scope: 'chart_jobs'})
-                    .del();
+                // Only rows this job may reuse (canRelinkAsset): someone else's row stays.
+                const stale = await knex('social_media_assets')
+                    .where({storage_key: key, owner_scope: 'chart_jobs'});
+                for (const staleRow of stale) {
+                    if (await canRelinkAsset(knex, staleRow, row.user_id)) {
+                        await knex('social_media_assets').where({id: staleRow.id}).del();
+                        removed += 1;
+                    } else {
+                        logging.warn(`[social-ai-chart-jobs] link-assets kept ${key} for job ${row.id}: row ${staleRow.id} is not this job's to remove`);
+                        removedSkipped += 1;
+                    }
+                }
             }
 
             return {
                 media_ids: mediaIds,
                 count: mediaIds.length,
-                removed_count: removedKeys.length
+                skipped_count: skipped,
+                removed_count: removed,
+                removed_skipped_count: removedSkipped
             };
         }
     },
