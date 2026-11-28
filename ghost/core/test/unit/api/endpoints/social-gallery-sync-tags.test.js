@@ -1,6 +1,7 @@
 // ギャラリーの行に Post の主タグを付ける道（sync-tags）と、行のタグを 1 つ変える道（PUT /social/gallery/tag）。
 // - sync-tags: Post を直せる人だけ（グループの Post はグループに書ける人、それ以外は Ghost の Post の編集の権限）。
-//   body の urls は Post に入っているものだけを使う。すでにある行は、書ける人の行（上げた本人・Post の作者・
+//   body の urls は Post に入っているものだけを使う（storage key で比べる。&amp;・percent-encode は同じ。使わない数は dropped_url_count）。
+//   すでにある行は、書ける人の行（上げた本人・Post の作者＝created_by と authors・
 //   chart job の持ち主・グループに書けるメンバー・管理者）だけタグを変え、ほかの人の行はそのまま（skipped_count）。
 //   行の無い URL は、Post の作者の置き場所（gallery/users/<作者>/）か Post のグループの置き場所
 //   （gallery/groups/<グループ>/）の中の key だけ行を作る。外の key は作らず out_of_area_count に数える。
@@ -14,6 +15,7 @@ const permissionsService = require('../../../../core/server/services/permissions
 
 const galleryPath = require.resolve('../../../../core/server/api/endpoints/social-gallery');
 const staffScopePath = require.resolve('../../../../core/server/api/endpoints/utils/staff-scope');
+const assetWriteAccessPath = require.resolve('../../../../core/server/api/endpoints/utils/asset-write-access');
 
 const HOST = 'https://cdn.example.com';
 const ME = '00000000000000000000aa01';
@@ -39,9 +41,9 @@ const OTHER_GROUP_KEY = 'content/media/gallery/groups/h/2026/11/other-group.png'
 const ALIASES = {[ME]: 'me', [OTHER]: 'other', [EDITOR]: 'editor', [ADMIN]: 'admin', [GROUP]: 'g'};
 const url = key => `${HOST}/${key}`;
 
-const makePost = ({id, createdBy, groupId = null, html, authors = []}) => ({
+const makePost = ({id, createdBy, authors = [], groupId = null, html = null, featureImage = null, lexical = null}) => ({
     id,
-    get: key => ({id, created_by: createdBy, group_id: groupId, html, feature_image: null, lexical: null})[key],
+    get: key => ({id, created_by: createdBy, group_id: groupId, html, feature_image: featureImage, lexical})[key],
     related: name => ({toJSON: () => (name === 'authors' ? authors.map(authorId => ({id: authorId})) : [TAG])})
 });
 
@@ -57,6 +59,7 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
         models.init();
         delete require.cache[galleryPath];
         delete require.cache[staffScopePath];
+        delete require.cache[assetWriteAccessPath];
         staffScope = require(staffScopePath);
         endpoint = require(galleryPath);
         db = knex({client: 'sqlite3', connection: {filename: ':memory:'}, useNullAsDefault: true});
@@ -90,7 +93,13 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
             host: HOST,
             pathPrefix: 'content/media',
             list: async () => [],
-            urlToPath: value => value.replace(`${HOST}/`, '')
+            urlToPath: (value) => {
+                // like LocalStorageBase: a URL on the host but outside the media area throws
+                if (!value.startsWith(`${HOST}/content/media/`)) {
+                    throw new Error('IncorrectUsageError: not a media URL');
+                }
+                return value.replace(`${HOST}/`, '');
+            }
         };
         sinon.stub(storage, 'getStorage').returns(store);
         posts = {
@@ -157,6 +166,69 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
             assert.equal(await tagOf(STRAY_KEY), 'family');
             assert.equal(await rowOf('content/media/gallery/users/other/2026/11/unseen.png'), undefined);
             assert.equal(result.data[0].synced_count, 1);
+            assert.equal(result.data[0].dropped_url_count, 2);
+        });
+
+        it('urls in the body match the post by storage key: `&amp;` in the html and percent-encoding do not drop them', async function () {
+            const ampKey = 'content/media/gallery/users/me/2026/11/a&b.png';
+            const jaKey = 'content/media/gallery/users/me/2026/11/写真.png';
+            await db('social_media_assets').insert([
+                {id: 'a6', storage_key: ampKey, storage_url: url(ampKey), owner_scope: 'user', user_id: ME},
+                {id: 'a7', storage_key: jaKey, storage_url: url(jaKey), owner_scope: 'user', user_id: ME}
+            ]);
+            posts[POST] = makePost({id: POST, createdBy: ME, html: `<img src="${url('content/media/gallery/users/me/2026/11/a&amp;b.png')}"><img src="${url(jaKey)}">`});
+            const result = await sync(ME, {post_id: POST, mode: 'primary', urls: [url(ampKey), encodeURI(url(jaKey))]});
+            assert.equal(await tagOf(ampKey), 'travel');
+            assert.equal(await tagOf(jaKey), 'travel');
+            assert.equal(result.data[0].updated_count, 2);
+            assert.equal(result.data[0].dropped_url_count, 0);
+        });
+
+        it('the post spells a file percent-encoded and the row is stored decoded (or the reverse): the row is found, no second row is made', async function () {
+            const jaKey = 'content/media/gallery/users/me/2026/11/写真.png';
+            const encKey = 'content/media/gallery/users/me/2026/11/%E7%94%BB.png';
+            const before = (await db('social_media_assets')).length;
+            await db('social_media_assets').insert([
+                {id: 'a8', storage_key: jaKey, storage_url: url(jaKey), owner_scope: 'user', user_id: ME},
+                {id: 'a9', storage_key: encKey, storage_url: url(encKey), owner_scope: 'user', user_id: ME}
+            ]);
+            posts[POST] = makePost({id: POST, createdBy: ME, html: `<img src="${encodeURI(url(jaKey))}"><img src="${url('content/media/gallery/users/me/2026/11/画.png')}">`});
+            const result = await sync(ME, {post_id: POST, mode: 'primary', urls: [url(jaKey), encodeURI(url('content/media/gallery/users/me/2026/11/画.png'))]});
+            assert.equal(await tagOf(jaKey), 'travel');
+            assert.equal(await tagOf(encKey), 'travel');
+            assert.equal((await db('social_media_assets').whereIn('id', ['a8', 'a9'])).length, 2);
+            assert.equal(result.data[0].updated_count, 2);
+            assert.equal(result.data[0].inserted_count, 0);
+            assert.equal(result.data[0].dropped_url_count, 0);
+            assert.equal((await db('social_media_assets')).length, before + 2);
+        });
+
+        it('a link on the media host but outside the media area (e.g. <a href>) is not a file: no 500, it is left out', async function () {
+            posts[POST] = makePost({id: POST, createdBy: ME, html: `<a href="${HOST}/about/">about</a><img src="${url(MINE_KEY)}">`});
+            const plain = await sync(ME, {post_id: POST, mode: 'primary'});
+            assert.equal(plain.data[0].synced_count, 1);
+            const narrowed = await sync(ME, {post_id: POST, mode: 'primary', urls: [`${HOST}/about/`, url(MINE_KEY)]});
+            assert.equal(narrowed.data[0].synced_count, 1);
+            assert.equal(narrowed.data[0].dropped_url_count, 1);
+            assert.equal(await tagOf(MINE_KEY), 'travel');
+        });
+
+        it('urls in the body narrow a post whose files are only in feature_image and lexical', async function () {
+            const lexical = JSON.stringify({root: {children: [{type: 'image', src: url(CHART_KEY)}]}});
+            posts[POST] = makePost({id: POST, createdBy: ME, featureImage: url(MINE_KEY), lexical});
+            const result = await sync(ME, {post_id: POST, mode: 'primary', urls: [url(CHART_KEY), url(STRAY_KEY)]});
+            assert.equal(await tagOf(CHART_KEY), 'travel');
+            assert.equal(await tagOf(MINE_KEY), null);
+            assert.equal(await tagOf(STRAY_KEY), 'family');
+            assert.equal(result.data[0].synced_count, 1);
+            assert.equal(result.data[0].dropped_url_count, 1);
+        });
+
+        it('an author who is only in the post\'s authors (not created_by) counts as the author', async function () {
+            posts[POST] = makePost({id: POST, createdBy: EDITOR, authors: [EDITOR, OTHER], html: `<img src="${url(OTHERS_KEY)}">`});
+            const result = await sync(EDITOR, {post_id: POST, mode: 'primary'});
+            assert.equal(await tagOf(OTHERS_KEY), 'travel');
+            assert.equal(result.data[0].skipped_count, 0);
         });
 
         it('an editor syncing someone\'s post retags the author\'s rows (the post author\'s rows count as writable)', async function () {

@@ -9,6 +9,7 @@ const socialMediaAssets = require('./utils/social-media-assets');
 const staffScope = require('./utils/staff-scope');
 const permissionsService = require('../../services/permissions');
 const galleryKeyScope = require('./utils/gallery-key-scope');
+const {isAdminUser, canRenameAsset, canRetagAsset} = require('./utils/asset-write-access');
 
 const messages = {
     userRequired: 'No login user authentication, can not read gallery in this scope.',
@@ -65,12 +66,13 @@ const TYPE_FILE = 'file';
 const getCurrentUserId = frame => frame.options?.context?.user || null;
 const {getIntegrationId: getCurrentIntegrationId} = require('./utils/integration-context');
 
-// System admin (Owner / Administrator / Admin). Super Editor is not: it only
-// widens the gallery listings below (isNoGroupReader), writes as a normal user.
-const isAdminUser = async userId => (await staffScope.getStaffScope(userId)).isSystemAdmin;
+// isAdminUser (utils/asset-write-access): system admin (Owner / Administrator / Admin). Super Editor is not:
+// it only widens the gallery listings below (isNoGroupReader), writes as a normal user.
 
-// A project / chart job the caller may add files to: its own, or one of a group the caller may write
-// (the rule of the content-bundle link-assets). A group project / job of a group the caller is not in is refused.
+// A project / chart job the caller may add files to (copy-to-project / copy-to-job): the caller's own row
+// (row.user_id), or a row of a group the caller may write (canAccessGroup 'write': an active member of an active
+// group, or an admin of a group that is not archived). A member who may only read the group, a group the caller
+// is not in, and a group that no longer exists are refused. Same rule as the content-bundle link-assets.
 const canWriteOwnOrGroupRow = async (row, userId) => {
     if (String(row.user_id || '') === String(userId)) {
         return true;
@@ -377,22 +379,87 @@ const getFrameValue = (frame, key) => {
     return row?.[key] || body[key] || frame.options?.[key] || null;
 };
 
-// The post's own URLs (feature_image, html, lexical). urls in the body only narrow them: a URL that is not in the
-// post is dropped, so sync-tags never makes or retags a row for a file the post does not show.
-const getSyncUrls = (frame, post) => {
+// store.urlToPath, but a URL it does not serve is null: LocalStorageBase throws for a URL on its host outside the
+// media area (an <a href> in the html), which must not turn sync-tags into a 500.
+const safeUrlToPath = (store, url) => {
+    try {
+        return store.urlToPath(url) || null;
+    } catch (err) {
+        return null;
+    }
+};
+
+// A URL of the media store as its storage key, for comparing a URL of the body with one of the post:
+// `&amp;` of the html and percent-encoding do not change the key. null when the URL is not on the store.
+const toComparableKey = (store, url) => {
+    if (typeof url !== 'string' || typeof store.urlToPath !== 'function') {
+        return null;
+    }
+    const value = url.replace(/&amp;/gi, '&');
+    if (!value.startsWith(store.host)) {
+        return null;
+    }
+    const key = safeUrlToPath(store, value);
+    return key ? (decodeKey(key) || key) : null;
+};
+
+// The post's own URLs (feature_image, html, lexical). urls in the body only narrow them, matched by storage key:
+// a URL that is not in the post is dropped (droppedUrlCount), so sync-tags never makes or retags a row for a file
+// the post does not show.
+const getSyncUrls = (frame, post, store) => {
     const urls = new Set();
     if (post.get('feature_image')) {
         urls.add(post.get('feature_image'));
     }
 
-    extractUrlsFromHtml(post.get('html')).forEach(url => urls.add(url));
+    extractUrlsFromHtml(post.get('html')).forEach(url => urls.add(url.replace(/&amp;/gi, '&')));
     extractUrlsFromLexical(post.get('lexical')).forEach(url => urls.add(url));
 
     const payloadUrls = getFrameValue(frame, 'urls');
-    if (Array.isArray(payloadUrls) && payloadUrls.length > 0) {
-        return payloadUrls.filter(url => typeof url === 'string' && urls.has(url));
+    if (!Array.isArray(payloadUrls) || payloadUrls.length === 0) {
+        return {urls: Array.from(urls), droppedUrlCount: 0};
     }
-    return Array.from(urls);
+    const postUrlByKey = new Map();
+    urls.forEach((url) => {
+        const key = toComparableKey(store, url);
+        if (key && !postUrlByKey.has(key)) {
+            postUrlByKey.set(key, url);
+        }
+    });
+    const kept = new Set();
+    let droppedUrlCount = 0;
+    payloadUrls.forEach((url) => {
+        const key = toComparableKey(store, url);
+        if (key && postUrlByKey.has(key)) {
+            kept.add(postUrlByKey.get(key));
+        } else {
+            droppedUrlCount += 1;
+        }
+    });
+    return {urls: Array.from(kept), droppedUrlCount};
+};
+
+// A row may be stored under the percent-encoded or the decoded spelling of its key (finalize keeps the key of the
+// URL the client sent; a post may show the other spelling). Look under both so sync-tags never makes a second row.
+const keySpellings = (key) => {
+    const decoded = decodeKey(key) || key;
+    let encoded = decoded;
+    try {
+        encoded = encodeURI(decoded);
+    } catch (err) {
+        encoded = decoded;
+    }
+    return Array.from(new Set([key, decoded, encoded]));
+};
+
+const findRowBySpellings = async (knex, key, columns) => {
+    for (const spelling of keySpellings(key)) {
+        const row = await socialMediaAssets.findAssetRowByStorageKey(knex, spelling, columns);
+        if (row) {
+            return row;
+        }
+    }
+    return null;
 };
 
 const getPrimaryTag = (post) => {
@@ -479,8 +546,9 @@ const syncAssetsFromPost = async (frame) => {
     await assertCanSyncPost(frame, post);
 
     const selectedTag = mode === 'primary' ? getPrimaryTag(post) : null;
-    const urls = getSyncUrls(frame, post);
+    const {urls, droppedUrlCount} = getSyncUrls(frame, post, mediaStore);
     const keyToUrl = new Map();
+    const seenFiles = new Set();
     urls.forEach((url) => {
         if (typeof url !== 'string') {
             return;
@@ -491,9 +559,13 @@ const syncAssetsFromPost = async (frame) => {
         if (typeof mediaStore.urlToPath !== 'function') {
             return;
         }
-        const key = mediaStore.urlToPath(url);
-        if (key) {
+        const key = safeUrlToPath(mediaStore, url);
+        const sameFile = toComparableKey(mediaStore, url);
+        if (key && !(sameFile && seenFiles.has(sameFile))) {
             keyToUrl.set(key, url);
+            if (sameFile) {
+                seenFiles.add(sameFile);
+            }
         }
     });
 
@@ -506,7 +578,9 @@ const syncAssetsFromPost = async (frame) => {
     let skipped = 0;
     let outOfArea = 0;
     const callerId = frame.options?.context?.user;
-    const authorId = post.get('created_by');
+    // the post's authors: created_by and everyone in its authors
+    const authorIds = new Set([post.get('created_by'), ...(post.related('authors')?.toJSON?.() || []).map(author => author?.id)]
+        .filter(Boolean).map(String));
     // A URL with no row becomes a row only when its key is in the post author's own area or the post's group's area
     // (the areas presign / finalize hand out for them, same check as finalize): a key of someone else's area written
     // into the post must not become a row that the author owns.
@@ -519,10 +593,6 @@ const syncAssetsFromPost = async (frame) => {
         const root = galleryKeyScope.mediaRootOf(mediaStore);
         newRowAreas = [];
         // every author of the post (created_by and the co-authors of posts_authors) has an own area
-        const authorIds = new Set(post.related('authors').toJSON().map(author => String(author.id)));
-        if (authorId) {
-            authorIds.add(String(authorId));
-        }
         for (const id of authorIds) {
             // @ts-ignore
             const userAlias = await models.User.ensureMediaFolderAlias(id);
@@ -538,7 +608,7 @@ const syncAssetsFromPost = async (frame) => {
         return newRowAreas;
     };
     for (const key of keys) {
-        const existing = await socialMediaAssets.findAssetRowByStorageKey(knex, key, ['id', 'user_id', 'group_id', 'chart_job_id']);
+        const existing = await findRowBySpellings(knex, key, ['id', 'user_id', 'group_id', 'chart_job_id']);
         const patch = {
             tag_id: selectedTag?.id || null,
             tag_slug: selectedTag?.slug || null,
@@ -547,7 +617,7 @@ const syncAssetsFromPost = async (frame) => {
 
         if (existing) {
             // only rows the caller may retag, or the post author's own: someone else's file shown in the post keeps its tag
-            const writable = (authorId && String(existing.user_id || '') === String(authorId)) ||
+            const writable = authorIds.has(String(existing.user_id || '')) ||
                 await canRetagAsset(knex, existing, callerId);
             if (!writable) {
                 skipped += 1;
@@ -600,6 +670,7 @@ const syncAssetsFromPost = async (frame) => {
             updated_count: updated,
             inserted_count: inserted,
             skipped_count: skipped,
+            dropped_url_count: droppedUrlCount,
             out_of_area_count: outOfArea,
             category: selectedTag?.name || null,
             category_slug: selectedTag?.slug || null,
@@ -804,41 +875,6 @@ const listByPrefix = async (store, prefix, limit, nextCursor, type) => {
             next_cursor: cursor || null
         }
     };
-};
-
-// Who may rename a gallery file: the uploader, or the owner of the chart job that produced the row
-// (the same people destroyAsset lets delete). row carries user_id and the chart job's user_id.
-const canRenameAsset = (row, userId) => {
-    if (!userId) {
-        return false;
-    }
-    return String(row.user_id || '') === String(userId) ||
-        (Boolean(row.chart_job_user_id) && String(row.chart_job_user_id) === String(userId));
-};
-
-// Who may change a gallery row's tag (sync-tags, PUT /social/gallery/tag): who may rename it (the uploader, the owner
-// of the chart job that made it), a member who may write the row's group, or a system admin.
-const canRetagAsset = async (knex, row, userId) => {
-    if (!userId) {
-        return false;
-    }
-    let chartJobUserId = null;
-    if (row.chart_job_id) {
-        const job = await knex('social_ai_chart_jobs').where({id: row.chart_job_id}).first('user_id');
-        chartJobUserId = job?.user_id || null;
-    }
-    if (canRenameAsset({...row, chart_job_user_id: chartJobUserId}, userId)) {
-        return true;
-    }
-    if (row.group_id) {
-        // @ts-ignore
-        const group = await models.SocialGroup.findOne({id: row.group_id});
-        // @ts-ignore
-        if (group && await models.SocialGroup.canAccessGroup(group, userId, 'write')) {
-            return true;
-        }
-    }
-    return isAdminUser(userId);
 };
 
 // The name lists show: the display name (alias) first, then the uploaded file name, then the last part of the key.
