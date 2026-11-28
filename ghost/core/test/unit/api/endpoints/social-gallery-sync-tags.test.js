@@ -3,6 +3,8 @@
 //   body の urls は Post に入っているものだけを使う（storage key で比べる。&amp;・percent-encode は同じ。使わない数は dropped_url_count）。
 //   すでにある行は、書ける人の行（上げた本人・Post の作者＝created_by と authors・
 //   chart job の持ち主・グループに書けるメンバー・管理者）だけタグを変え、ほかの人の行はそのまま（skipped_count）。
+//   行の無い URL は、Post の作者の置き場所（gallery/users/<作者>/）か Post のグループの置き場所
+//   （gallery/groups/<グループ>/）の中の key だけ行を作る。外の key は作らず out_of_area_count に数える。
 // - tag: 変えられるのは上の「書ける人」だけ。鍵（integration）だけ・ログイン無しは断る。
 const assert = require('assert/strict');
 const sinon = require('sinon');
@@ -32,6 +34,11 @@ const NEW_KEY = 'content/media/gallery/users/me/2026/11/new.png';
 const STRAY_KEY = 'content/media/gallery/users/other/2026/11/stray.png';
 const CHART_KEY = 'content/media/gallery/chart_jobs/c1/out.png';
 const GROUP_KEY = 'content/media/gallery/groups/g/2026/11/group.png';
+// files with no row yet: someone else's area, the group's area, the caller's own area
+const PLANTED_KEY = 'content/media/gallery/users/other/2026/11/planted.png';
+const NEW_GROUP_KEY = 'content/media/gallery/groups/g/2026/11/new-group.png';
+const OTHER_GROUP_KEY = 'content/media/gallery/groups/h/2026/11/other-group.png';
+const ALIASES = {[ME]: 'me', [OTHER]: 'other', [EDITOR]: 'editor', [ADMIN]: 'admin', [GROUP]: 'g'};
 const url = key => `${HOST}/${key}`;
 
 const makePost = ({id, createdBy, authors = [], groupId = null, html = null, featureImage = null, lexical = null}) => ({
@@ -84,6 +91,7 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
     beforeEach(async function () {
         const store = {
             host: HOST,
+            pathPrefix: 'content/media',
             list: async () => [],
             urlToPath: (value) => {
                 // like LocalStorageBase: a URL on the host but outside the media area throws
@@ -113,6 +121,8 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
         }));
         sinon.stub(models.SocialGroup, 'findOne').callsFake(async ({id}) => (id === GROUP ? {id} : null));
         sinon.stub(models.SocialGroup, 'canAccessGroup').callsFake(async (group, userId) => [ME, OTHER].includes(userId));
+        sinon.stub(models.User, 'ensureMediaFolderAlias').callsFake(async id => ALIASES[id]);
+        sinon.stub(models.SocialGroup, 'ensureMediaFolderAlias').callsFake(async id => ALIASES[id]);
         sinon.stub(staffScope, 'getStaffScope').callsFake(async userId => ({isSystemAdmin: userId === ADMIN}));
         await db('social_media_assets').del();
         await db('social_ai_chart_jobs').del();
@@ -227,6 +237,64 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
             assert.equal(await tagOf(OTHERS_KEY), 'travel');
         });
 
+        it('a URL with no row outside the author\'s area (someone else\'s or a group\'s) makes no row and is counted', async function () {
+            posts[POST] = makePost({id: POST, createdBy: ME, html: `<img src="${url(NEW_KEY)}"><img src="${url(PLANTED_KEY)}"><img src="${url(NEW_GROUP_KEY)}">`});
+            const result = await sync(ME, {post_id: POST, mode: 'primary'});
+            assert.equal((await rowOf(NEW_KEY)).user_id, ME);
+            assert.equal(await rowOf(PLANTED_KEY), undefined);
+            assert.equal(await rowOf(NEW_GROUP_KEY), undefined);
+            assert.equal(result.data[0].inserted_count, 1);
+            assert.equal(result.data[0].out_of_area_count, 2);
+        });
+
+        it('an editor syncing someone\'s post: a new URL in the author\'s area becomes the author\'s row, one in the editor\'s own area does not', async function () {
+            const editorKey = 'content/media/gallery/users/editor/2026/11/e.png';
+            const authorKey = 'content/media/gallery/users/other/2026/11/a.png';
+            posts[POST] = makePost({id: POST, createdBy: OTHER, html: `<img src="${url(editorKey)}"><img src="${url(authorKey)}">`});
+            const result = await sync(EDITOR, {post_id: POST, mode: 'primary'});
+            assert.equal((await rowOf(authorKey)).user_id, OTHER);
+            assert.equal(await rowOf(editorKey), undefined);
+            assert.equal(result.data[0].out_of_area_count, 1);
+        });
+
+        it('an author with no alias (deleted user) gets no area: nobody\'s key becomes a row', async function () {
+            posts[POST] = makePost({id: POST, createdBy: 'gone', html: `<img src="${url(PLANTED_KEY)}">`});
+            const result = await sync(ADMIN, {post_id: POST, mode: 'primary'});
+            assert.equal(await rowOf(PLANTED_KEY), undefined);
+            assert.equal(result.data[0].inserted_count, 0);
+            assert.equal(result.data[0].out_of_area_count, 1);
+        });
+
+        it('a group post: a key in the author\'s own area becomes a user row, one in the group\'s area a group row', async function () {
+            const ownKey = 'content/media/gallery/users/other/2026/11/own.png';
+            posts[GROUP_POST] = makePost({id: GROUP_POST, createdBy: OTHER, groupId: GROUP, html: `<img src="${url(ownKey)}"><img src="${url(NEW_GROUP_KEY)}">`});
+            await sync(OTHER, {post_id: GROUP_POST, mode: 'primary'});
+            const own = await rowOf(ownKey);
+            assert.equal(own.owner_scope, 'user');
+            assert.equal(own.group_id, null);
+            const grp = await rowOf(NEW_GROUP_KEY);
+            assert.equal(grp.owner_scope, 'group');
+            assert.equal(grp.group_id, GROUP);
+        });
+
+        it('a percent-encoded key inside the author\'s area becomes a row', async function () {
+            const encoded = 'content/media/gallery/users/me/2026/11/a%20b.png';
+            posts[POST] = makePost({id: POST, createdBy: ME, html: `<img src="${url(encoded)}">`});
+            const result = await sync(ME, {post_id: POST, mode: 'primary'});
+            assert.equal(result.data[0].inserted_count, 1);
+            assert.equal(result.data[0].out_of_area_count, 0);
+        });
+
+        it('a co-author\'s area counts like the author\'s: the row is the co-author\'s; a non-author\'s area is out of area', async function () {
+            const coKey = 'content/media/gallery/users/editor/2026/11/co.png';
+            posts[POST] = makePost({id: POST, createdBy: ME, authors: [ME, EDITOR], html: `<img src="${url(coKey)}"><img src="${url(PLANTED_KEY)}">`});
+            const result = await sync(ME, {post_id: POST, mode: 'primary'});
+            assert.equal((await rowOf(coKey)).user_id, EDITOR);
+            assert.equal(await rowOf(PLANTED_KEY), undefined);
+            assert.equal(result.data[0].inserted_count, 1);
+            assert.equal(result.data[0].out_of_area_count, 1);
+        });
+
         it('a post outside any group that the caller may not edit is refused, and nothing changes', async function () {
             await assert.rejects(sync(OTHER, {post_id: POST, mode: 'primary'}), {errorType: 'NoPermissionError'});
             assert.equal(await tagOf(MINE_KEY), null);
@@ -240,6 +308,18 @@ describe('Social gallery: sync-tags and tag only touch rows the caller may write
             // OTHERS_KEY belongs to OTHER, who is also the post's author: the author's rows count
             assert.equal(await tagOf(OTHERS_KEY), 'travel');
             assert.equal(result.data[0].skipped_count, 0);
+        });
+
+        it('a group post: the uploader retags own rows; a new URL in the group\'s area becomes a group row, another group\'s is not made', async function () {
+            posts[GROUP_POST] = makePost({id: GROUP_POST, createdBy: OTHER, groupId: GROUP, html: `<img src="${url(GROUP_KEY)}"><img src="${url(OTHERS_KEY)}"><img src="${url(NEW_GROUP_KEY)}"><img src="${url(OTHER_GROUP_KEY)}">`});
+            const result = await sync(OTHER, {post_id: GROUP_POST, mode: 'primary'});
+            assert.equal(await tagOf(GROUP_KEY), 'travel');
+            assert.equal(await tagOf(OTHERS_KEY), 'travel');
+            const inserted = await rowOf(NEW_GROUP_KEY);
+            assert.equal(inserted.group_id, GROUP);
+            assert.equal(inserted.user_id, OTHER);
+            assert.equal(await rowOf(OTHER_GROUP_KEY), undefined);
+            assert.equal(result.data[0].out_of_area_count, 1);
         });
 
         it('a group post: someone who may not write the group is refused', async function () {

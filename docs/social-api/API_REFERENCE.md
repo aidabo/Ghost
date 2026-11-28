@@ -242,6 +242,12 @@ All routes below are based on `custom-routes.js`.
   - `/ghost/api/admin/social/gallery`
 - endpoint export:
   - `api.socialGallery`
+- 行（`social_media_assets` の 1 件）を変えられる人（実装と同じ）:
+  | 操作 | 変えられる人 |
+  | --- | --- |
+  | 上書き（finalize で同じ key を登録し直す） | その行を上げた本人の再送だけ（同じ範囲・同じ本人・同じグループ）。ほかは 409 |
+  | 名前・削除 | 上げた本人、行を作った chart job の持ち主（管理者は不可） |
+  | タグ（`PUT /social/gallery/tag`・sync-tags） | 上げた本人・Post の作者・chart job の持ち主・グループに書けるメンバー・管理者（main のまま変えない） |
 - routes:
   - `GET /social/gallery/user`
   - `GET /social/gallery/group`
@@ -252,12 +258,14 @@ All routes below are based on `custom-routes.js`.
     - `chart_job_id`・`news_job_id` を付けられるのは、行の project の今あるジョブで、呼んだ人がその project を読めるものだけ（project の無いジョブは持ち主か管理者）。違えば 422 か 403。
       `project_id` を省いたとき（`target: "chart_jobs"`・`"news_jobs"` など）は、ジョブの project を行の `project_id` にする（S3 の置き場所はそのまま）。integration（worker）の finalize はどちらも確かめない。
     - 例: `{"target":"chart_jobs","job_id":"<jobId>","chart_job_id":"<jobId>","storage_key":"…/gallery/chart_jobs/<jobId>/a.png","storage_url":"…"}` → 行の `project_id` はそのジョブの project になり、その project の一覧（`GET /social/gallery/project`）に出る（finalize の応答には `project_id` は入らない）。
+    - すでに同じ key の行があるとき、上書きするのはその行を上げた本人の再送（同じ範囲・同じ本人・同じグループ）だけ。ほかのメンバーが上げたファイルを finalize し直すと 409（行の持ち主・名前はそのまま）。
     - `target: "chart_jobs"`・`"news_jobs"` の `job_id` はそのジョブの id として扱い、行の `chart_job_id`・`news_job_id` に入れる（行の `job_id` 欄＝メディアジョブには入れない。確かめは上と同じ）。`job_id` と `chart_job_id`・`news_job_id` が食い違えば 422。
   - `POST /social/gallery/sync-tags` — Post の主タグをその Post に出ているファイルの行に付ける。body `{post_id, mode: "primary", urls?}`。
     - ログインした人だけ（Admin API の鍵＝integration だけの呼び出しは 403）。Post を直せる人だけ: グループの Post はそのグループに書ける人、それ以外は Ghost の Post の編集の権限。
     - 使う URL は Post の中（`feature_image`・html・lexical）のものだけ。body の `urls` はそれを絞るだけで、storage key で比べる（html の `&amp;`・percent-encode の違いは同じとみなす）。すでにある行は percent-encode した綴りと戻した綴りの両方で探し、2 つ目の行は作らない。Post に無い URL・メディアストアの URL として読めない URL（media の外のリンクなど）は使わず、その数を `dropped_url_count` で返す。
-    - すでにある行は、書ける行（上げた本人・Post の作者＝`created_by` と `authors`・chart job の持ち主・グループに書けるメンバー・管理者）だけタグを変える。ほかの人の行はそのままで `skipped_count` に数える。行の無い URL は Post の作者の行として作る（`inserted_count`）。
-    - 応答: `{post_id, synced_count, updated_count, inserted_count, skipped_count, dropped_url_count, category, category_slug, mode}`
+    - すでにある行は、書ける行（上げた本人・Post の作者＝`created_by` と `authors`・chart job の持ち主・グループに書けるメンバー・管理者）だけタグを変える。ほかの人の行はそのままで `skipped_count` に数える。
+    - 行の無い URL は、key が Post の作者（共同の作者も含む全員）の個人の置き場所（`gallery/users/<作者>/…`）か Post のグループの置き場所（`gallery/groups/<グループ>/…`）の中にあるときだけ作る（個人の置き場所ならその作者の個人の行、グループの置き場所ならグループの行。別名が読めない置き場所は許さない。`inserted_count`。範囲の確かめは finalize と同じ）。外の key は行を作らず `out_of_area_count` に数える。
+    - 応答: `{post_id, synced_count, updated_count, inserted_count, skipped_count, dropped_url_count, out_of_area_count, category, category_slug, mode}`
   - `PUT /social/gallery/tag` — 1 つの行のタグを変える。body `{storage_key, tag_slug}`。
     - ログインした人だけ（鍵だけは 403）。変えられるのは、上げた本人・chart job の持ち主・グループに書けるメンバー・管理者の行だけ（Post を見ないので、Post の作者であることは理由にならない）。ほかの人の行は 403。
   - `POST /social/gallery/copy-to-project` — body `{id, project_id}`。自分のギャラリーのファイルを project に写す。

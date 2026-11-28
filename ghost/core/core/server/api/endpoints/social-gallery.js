@@ -576,10 +576,37 @@ const syncAssetsFromPost = async (frame) => {
     let updated = 0;
     let inserted = 0;
     let skipped = 0;
+    let outOfArea = 0;
     const callerId = frame.options?.context?.user;
     // the post's authors: created_by and everyone in its authors
     const authorIds = new Set([post.get('created_by'), ...(post.related('authors')?.toJSON?.() || []).map(author => author?.id)]
         .filter(Boolean).map(String));
+    // A URL with no row becomes a row only when its key is in the post author's own area or the post's group's area
+    // (the areas presign / finalize hand out for them, same check as finalize): a key of someone else's area written
+    // into the post must not become a row that the author owns.
+    // An area whose alias cannot be read (deleted user or group) is not added: an empty alias must never widen the prefix.
+    let newRowAreas = null;
+    const getNewRowAreas = async () => {
+        if (newRowAreas) {
+            return newRowAreas;
+        }
+        const root = galleryKeyScope.mediaRootOf(mediaStore);
+        newRowAreas = [];
+        // every author of the post (created_by and the co-authors of posts_authors) has an own area
+        for (const id of authorIds) {
+            // @ts-ignore
+            const userAlias = await models.User.ensureMediaFolderAlias(id);
+            if (userAlias) {
+                newRowAreas.push({prefix: galleryKeyScope.buildAreaPrefix(root, 'gallery', 'users', userAlias), ownerScope: 'user', userId: id, groupId: null});
+            }
+        }
+        // @ts-ignore
+        const groupAlias = post.get('group_id') ? await models.SocialGroup.ensureMediaFolderAlias(post.get('group_id')) : null;
+        if (groupAlias) {
+            newRowAreas.push({prefix: galleryKeyScope.buildAreaPrefix(root, 'gallery', 'groups', groupAlias), ownerScope: 'group', userId: null, groupId: post.get('group_id')});
+        }
+        return newRowAreas;
+    };
     for (const key of keys) {
         const existing = await findRowBySpellings(knex, key, ['id', 'user_id', 'group_id', 'chart_job_id']);
         const patch = {
@@ -601,15 +628,22 @@ const syncAssetsFromPost = async (frame) => {
             continue;
         }
 
+        const decodedKey = decodeKey(key);
+        const area = decodedKey && (await getNewRowAreas()).find(a => galleryKeyScope.isKeyInAreas(key, [a.prefix]) && galleryKeyScope.isKeyInAreas(decodedKey, [a.prefix]));
+        if (!area) {
+            outOfArea += 1;
+            continue;
+        }
+
         const insertPayload = {
             id: ObjectId().toHexString(),
             storage_key: key,
             storage_key_hash: socialMediaAssets.buildStorageKeyHash(key),
             storage_url: keyToUrl.get(key),
             asset_type: inferAssetTypeByKey(key),
-            owner_scope: post.get('group_id') ? 'group' : 'user',
-            user_id: post.get('created_by') || frame.options?.context?.user || null,
-            group_id: post.get('group_id') || null,
+            owner_scope: area.ownerScope,
+            user_id: area.userId || post.get('created_by') || frame.options?.context?.user || null,
+            group_id: area.groupId,
             tag_id: selectedTag?.id || null,
             tag_slug: selectedTag?.slug || null,
             created_at: now,
@@ -637,6 +671,7 @@ const syncAssetsFromPost = async (frame) => {
             inserted_count: inserted,
             skipped_count: skipped,
             dropped_url_count: droppedUrlCount,
+            out_of_area_count: outOfArea,
             category: selectedTag?.name || null,
             category_slug: selectedTag?.slug || null,
             mode
